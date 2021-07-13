@@ -20,3 +20,4 @@ endif()
 
 
 add_subdirectory(wgma)
+add_subdirectory(wr90)
