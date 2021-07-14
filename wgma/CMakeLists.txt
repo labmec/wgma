@@ -8,11 +8,13 @@ target_include_directories(wgma PUBLIC
 
 set(headers
   include/bctypes.hpp
+  include/gmeshtools.hpp
   include/cmeshtools.hpp
   )
 
 set(sources
   src/cmeshtools.cpp
+  src/gmeshtools.cpp
   )
 
 
