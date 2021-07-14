@@ -12,6 +12,7 @@ The wgma library currently consists of
 - `gmeshtools`: auxiliary routines for creating structured curved meshes
 - `cmeshtools`: auxiliary routines for dealing with computational meshes containing multiple approximation spaces
 - `bctype`: `enum` class with commonly used electromagnetic boundary conditions
+- `pmltype`: `enum` class for identifying direction of attenuation of a given PML region
 
 ## requirements
 - A C++ 17 compiler
