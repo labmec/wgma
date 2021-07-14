@@ -21,3 +21,4 @@ endif()
 
 add_subdirectory(wgma)
 add_subdirectory(wr90)
+add_subdirectory(stepfiber)
