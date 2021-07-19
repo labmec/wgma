@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
   //whether to split the domain in two for exploring symmetries
   constexpr bool usingSymmetry{false};
   //which BC to apply if symmetry is used
-  constexpr wgma::bctype sym{wgma::bctype::PEC};
+  constexpr wgma::bc::type sym{wgma::bc::type::PEC};
   // n divisions in x direction
   constexpr int nDivX{32};
   // n divisions in y direction
