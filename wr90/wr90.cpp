@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
   lowest cutoff frequency*/
   constexpr CSTATE target = -1;
   // Dimension of the krylov space to be used. Suggested to be at least nev * 10
-  constexpr int krylovDim{500};
+  constexpr int krylovDim{100};
 
 
   /*********************
@@ -252,8 +252,6 @@ int main(int argc, char *argv[]) {
   TPZStack<std::string> scalnames, vecnames;
   scalnames.Push("Ez");
   vecnames.Push("Et");
-  scalnames.Push("CurlEt");
-  vecnames.Push("CurlEz");
   const std::string plotfile = "fieldPlot.vtk";
   constexpr int dim{2};
   an.DefineGraphMesh(dim, scalnames, vecnames,plotfile);
