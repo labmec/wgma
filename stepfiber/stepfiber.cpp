@@ -47,7 +47,7 @@ CreateStepFiberMesh(
   const REAL rCore, const REAL boundDist, const REAL dPML, const int nLayersPML,
   const int factor, bool refine, const REAL scale, const bool print,
   const std::string &prefix, TPZVec<int> &matIdVec,
-  TPZVec<wgma::pmltype> &pmlTypeVec
+  TPZVec<wgma::pml::type> &pmlTypeVec
   );
 
 
@@ -154,7 +154,7 @@ int main(int argc, char *argv[]) {
      In this example, we have one material for the interior of the waveguide
      and one for each BC*/
   TPZManVector<int, 11> matIdVec;
-  TPZManVector<wgma::pmltype,8> pmlTypeVec;
+  TPZManVector<wgma::pml::type,8> pmlTypeVec;
   constexpr int factor{3};
   constexpr bool refine{true};
   //whether to print the geometric mesh in .vtk and .txt files
@@ -178,7 +178,7 @@ CreateStepFiberMesh(
   const REAL realRCore, const REAL boundDist, const REAL dPML, const int nLayersPml,
   const int factor, bool refine, const REAL scale, const bool print,
   const std::string &prefix, TPZVec<int> &matIdVec,
-  TPZVec<wgma::pmltype> &pmlTypeVec)
+  TPZVec<wgma::pml::type> &pmlTypeVec)
 {
 
   using wgma::gmeshtools::EdgeData;
@@ -364,21 +364,21 @@ CreateStepFiberMesh(
   matIdVec[0]=matIdCore;
   matIdVec[1]=matIdCladding;
   pmlTypeVec.Resize(8);
-  pmlTypeVec[0]=wgma::pmltype::xp;
+  pmlTypeVec[0]=wgma::pml::type::xp;
   matIdVec[2]=matIdPMLxp;
-  pmlTypeVec[1]=wgma::pmltype::yp;
+  pmlTypeVec[1]=wgma::pml::type::yp;
   matIdVec[3]=matIdPMLyp;
-  pmlTypeVec[2]=wgma::pmltype::xm;
+  pmlTypeVec[2]=wgma::pml::type::xm;
   matIdVec[4]=matIdPMLxm;
-  pmlTypeVec[3]=wgma::pmltype::ym;
+  pmlTypeVec[3]=wgma::pml::type::ym;
   matIdVec[5]=matIdPMLym;
-  pmlTypeVec[4]=wgma::pmltype::xpym;
+  pmlTypeVec[4]=wgma::pml::type::xpym;
   matIdVec[6]=matIdPMLxpym;
-  pmlTypeVec[5]=wgma::pmltype::xpyp;
+  pmlTypeVec[5]=wgma::pml::type::xpyp;
   matIdVec[7]=matIdPMLxpyp;
-  pmlTypeVec[6]=wgma::pmltype::xmyp;
+  pmlTypeVec[6]=wgma::pml::type::xmyp;
   matIdVec[8]=matIdPMLxmyp;
-  pmlTypeVec[7]=wgma::pmltype::xmym;
+  pmlTypeVec[7]=wgma::pml::type::xmym;
   matIdVec[9]=matIdPMLxmym;
   
   matIdVec[10]=matIdBC;
