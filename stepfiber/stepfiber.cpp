@@ -156,7 +156,7 @@ int main(int argc, char *argv[]) {
   TPZManVector<int, 11> matIdVec;
   TPZManVector<wgma::pmltype,8> pmlTypeVec;
   constexpr int factor{3};
-  constexpr bool refine{false};
+  constexpr bool refine{true};
   //whether to print the geometric mesh in .vtk and .txt files
   constexpr bool print{true};
   //prefix for the gmesh files
@@ -183,9 +183,12 @@ CreateStepFiberMesh(
 
   using wgma::gmeshtools::EdgeData;
   using wgma::gmeshtools::QuadrilateralData;
-  const int nDivTCore = factor * 2, nDivRCore = factor * 5, nDivTCladding = factor * 4, nDivPml = factor * nLayersPml + 1;
+  const int nPtsCoreR = factor * 2,//number of points in core (radial direction)
+    nPtsCoreT = factor * 5,//number of points in core (tangential direction)
+    nPtsCladdingR = factor * 4,
+    nDivPml = factor * nLayersPml + 1;
 
-  if(std::min<int>({nDivTCore,nDivRCore,nDivTCladding,nDivPml}) < 2 ) {
+  if(std::min<int>({nPtsCoreR,nPtsCoreT,nPtsCladdingR,nDivPml}) < 2 ) {
     std::cout<<"Mesh has not sufficient divisions."<<std::endl;
     std::cout<<"Minimum is 2."<<std::endl;
     DebugStop();
@@ -287,21 +290,21 @@ CreateStepFiberMesh(
   TPZManVector<int,nQuads> nDivQsi(nQuads,-1);
   TPZManVector<int,nQuads> nDivEta(nQuads,-1);
   //first hole
-  nDivQsi[0]=nDivRCore;nDivEta[0]=nDivRCore;
-  nDivQsi[1]=nDivTCore; nDivEta[1]=nDivRCore;
-  nDivQsi[2]=nDivRCore; nDivEta[2]=nDivTCore;
-  nDivQsi[3]=nDivTCore; nDivEta[3]=nDivRCore;
-  nDivQsi[4]=nDivRCore; nDivEta[4]=nDivTCore;
+  nDivQsi[0]=nPtsCoreT;nDivEta[0]=nPtsCoreT;
+  nDivQsi[1]=nPtsCoreR; nDivEta[1]=nPtsCoreT;
+  nDivQsi[2]=nPtsCoreT; nDivEta[2]=nPtsCoreR;
+  nDivQsi[3]=nPtsCoreR; nDivEta[3]=nPtsCoreT;
+  nDivQsi[4]=nPtsCoreT; nDivEta[4]=nPtsCoreR;
   //cladding
-  nDivQsi[5]=nDivTCladding; nDivEta[5]=nDivRCore;
-  nDivQsi[6]=nDivRCore;     nDivEta[6]=nDivTCladding;
-  nDivQsi[7]=nDivTCladding; nDivEta[7]=nDivRCore;
-  nDivQsi[8]=nDivRCore;     nDivEta[8]=nDivTCladding;
+  nDivQsi[5]=nPtsCladdingR; nDivEta[5]=nPtsCoreT;
+  nDivQsi[6]=nPtsCoreT;     nDivEta[6]=nPtsCladdingR;
+  nDivQsi[7]=nPtsCladdingR; nDivEta[7]=nPtsCoreT;
+  nDivQsi[8]=nPtsCoreT;     nDivEta[8]=nPtsCladdingR;
 
-  nDivQsi[9]=nDivPml; nDivEta[9]=nDivRCore;
-  nDivQsi[10]=nDivRCore;    nDivEta[10]=nDivPml;
-  nDivQsi[11]=nDivPml; nDivEta[11]=nDivRCore;
-  nDivQsi[12]=nDivRCore;     nDivEta[12]=nDivPml;
+  nDivQsi[9]=nDivPml; nDivEta[9]=nPtsCoreT;
+  nDivQsi[10]=nPtsCoreT;    nDivEta[10]=nDivPml;
+  nDivQsi[11]=nDivPml; nDivEta[11]=nPtsCoreT;
+  nDivQsi[12]=nPtsCoreT;     nDivEta[12]=nDivPml;
 
   nDivQsi[13]=nDivPml; nDivEta[13]=nDivPml;
   nDivQsi[14]=nDivPml;     nDivEta[14]=nDivPml;
@@ -386,32 +389,20 @@ CreateStepFiberMesh(
   long nel = gmesh->NElements();
 
   if(refine){
-    TPZRefPatternDataBase db;
-    db.InitializeUniformRefPattern(EQuadrilateral);
-    const REAL margin = 0.4 * rCore;
+    const REAL margin = 0.1 * rCore;
     TPZManVector<REAL,3> qsiPos(2,0);
     TPZManVector<REAL,3> xPos(3,0);
     TPZManVector<TPZGeoEl *,10>sons;
     int nel = gmesh->NElements();
     for(int iel =0 ; iel< nel; iel++){
-      auto geo =
-        dynamic_cast<TPZGeoElRefPattern<pzgeom::TPZGeoQuad> *> (gmesh->Element(iel));
-      if(!geo) continue;
+      auto geo = gmesh->Element(iel);
+      if(geo->Type() != EQuadrilateral) continue;
+      
       geo->X(qsiPos,xPos);
       const REAL dist = sqrt((xPos[0]-xc[0])*(xPos[0]-xc[0])+(xPos[1]-xc[1])*(xPos[1]-xc[1]));
       if(std::abs(rCore - dist) < margin){
-        if(geo->Type() == EQuadrilateral && geo->HasSubElement() == 0){
-          if(!geo->Father()){
-            const auto oldref = geo->GetRefPattern();
-            const auto uniformref = db.GetUniformRefPattern(EQuadrilateral);
-            geo->SetRefPattern(uniformref);
-            geo->Divide(sons);
-            //geo->SetRefPattern(oldref);
-            for(int i = 0; i < sons.size(); i++){
-              sons[i]->SetRefPattern(oldref);
-            }
-            nel = gmesh->NElements();
-          }
+        if(geo->HasSubElement() == 0){
+          geo->Divide(sons);
         }
       }
     }
