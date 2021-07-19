@@ -227,26 +227,8 @@ wgma::gmeshtools::CreateStructuredMesh(
                     *side1pts, *side2pts, revEl);
   }
 
-  ///creates refpattern
-  TPZAutoPointer<TPZRefPattern> refp;
-  char buf[] =
-    "4 3 "
-    "-50 Quad0000111111111 "
-    "-1 -1 0 "
-    "1 -1 0 "
-    "1 1 0 "
-    "-1 1 0 "
-    "3 4 0  1  2  3 "
-    "2 3 0  1  2 "
-    "2 3 0  2  3 ";
-  std::istringstream str(buf);
-  refp = new TPZRefPattern(str);
-  refp->GenerateSideRefPatterns();
-  gRefDBase.InsertRefPattern(refp);
-  gRefDBase.InitializeUniformRefPattern(EOned);
-  if (!refp) {
-    DebugStop();
-  }
+  gRefDBase.InitializeUniformRefPattern(EQuadrilateral);
+  const auto refpQuad = gRefDBase.GetUniformRefPattern(EQuadrilateral);
   for (int quad = 0; quad < nQuads; quad++) {
     for (int i = 0; i < nDivEta[quad] - 1; i++) {
       for (int j = 0; j < nDivQsi[quad] - 1; j++) {
@@ -266,25 +248,25 @@ wgma::gmeshtools::CreateStructuredMesh(
         if (nodesIdVec[0] == -1 || nodesIdVec[1] == -1 || nodesIdVec[2] == -1 || nodesIdVec[3] == -1) {
           DebugStop();
         }
+        TPZGeoEl *quadEl{nullptr};
         if ((i == 0 && quadVec[quad]->isSide1nonLinear) ||
             (j == nDivQsi[quad] - 2 && quadVec[quad]->isSide2nonLinear) ||
             (i == nDivEta[quad] - 2 && quadVec[quad]->isSide3nonLinear) ||
             (j == 0 && quadVec[quad]->isSide4nonLinear)) {
-          TPZGeoElRefPattern<pzgeom::TPZGeoBlend<pzgeom::TPZGeoQuad> > *quadEl =
+          quadEl =
             new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<pzgeom::TPZGeoQuad> >(nodesIdVec, matId,
                                                                              *gmesh);
-          quadEl->SetRefPattern(refp);
         } else {
-          TPZGeoElRefPattern<pzgeom::TPZGeoQuad> *quadEl =
+          quadEl =
             new TPZGeoElRefPattern<pzgeom::TPZGeoQuad>(nodesIdVec, matId, *gmesh);
-          quadEl->SetRefPattern(refp);
         }
+        quadEl->SetRefPattern(refpQuad);
       }
     }
   }
-
+  gRefDBase.InitializeUniformRefPattern(EOned);
+  auto refpArc = gRefDBase.GetUniformRefPattern(EOned);
   for (int edge = 0; edge < nEdges; edge++) {
-    auto refpArc = gRefDBase.GetUniformRefPattern(EOned);
     int quad = edgesVec[edge].quad1, side = edgesVec[edge].side1;
     if (edgesVec[edge].amIboundaryEdge) {//boundary edge
       const int nArcs = side % 2 ? nDivQsi[quad] - 1 : nDivEta[quad] - 1;
@@ -373,14 +355,33 @@ wgma::gmeshtools::CreateStructuredMesh(
 void
 wgma::gmeshtools::SplitQuadMeshIntoTriangles(TPZAutoPointer<TPZGeoMesh> gmesh)
 {
+
+  ///creates refpattern
+  TPZAutoPointer<TPZRefPattern> refp;
+  constexpr char buf[] =
+    "4 3 "
+    "-50 Quad0000111111111 "
+    "-1 -1 0 "
+    "1 -1 0 "
+    "1 1 0 "
+    "-1 1 0 "
+    "3 4 0  1  2  3 "
+    "2 3 0  1  2 "
+    "2 3 0  2  3 ";
+  std::istringstream str(buf);
+  refp = new TPZRefPattern(str);
+  refp->GenerateSideRefPatterns();
+  gRefDBase.InsertRefPattern(refp);
+  if (!refp) {
+    DebugStop();
+  }
   auto nel = gmesh->NElements();
   TPZVec<TPZGeoEl *>sons;
   for (long iel = 0; iel < nel; iel++) {
     TPZGeoEl *gelQuad = gmesh->ElementVec()[iel];
     if(gelQuad->Type() == EQuadrilateral && gelQuad->HasSubElement() == 0){
+      gelQuad->SetRefPattern(refp);
       gelQuad->Divide(sons);
-      nel = gmesh->NElements();
-      continue;
     }
   }
   gmesh->BuildConnectivity();
