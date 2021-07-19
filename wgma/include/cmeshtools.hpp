@@ -2,7 +2,7 @@
 #define _CMESHTOOLS_HPP_
 
 #include "bctypes.hpp"
-
+#include "pmltypes.hpp"
 #include <pzreal.h>
 
 #include <set>
@@ -22,12 +22,50 @@ namespace wgma::cmeshtools{
      @brief Creates the computational meshes used for approximating the waveguide EVP.
      Three meshes will be created: one for the H1 approximation space, one for the
      HCurl approximation space and one multiphysics mesh combining both spaces.
-     @note The material ids should be the same given to CreateGMeshRectangularWaveguide.
+     If `pmlDataVec.size()>0`, the PML regions will be created and their 
+     corresponding domain regions automatically identified.
+     @param[in] gmesh geometrical mesh
+     @param[in] pOrder polynomial order
+     @param[in] volMatIdVec material identifiers of domain regions (no PML or BC)
+     @param[in] urVec magnetic permeability of domain regions
+     @param[in] erVec electric permittivity of domain regions
+     @param[in] pmlDataVec array with PML data
+     @param[in] bcDataVec array with BC data
+     @param[in] lambda operational wavelength
+     @param[in] scale geometric scaling for better floating point precision
   */
   TPZVec<TPZAutoPointer<TPZCompMesh>>
   CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
-              const TPZVec<int> &matIdVec, const CSTATE ur, const CSTATE er,
-              const STATE lambda, const REAL &scale, bool usingSymmetry, bctype sym);
+              const TPZVec<int> &volMatIdVec, const TPZVec<CSTATE> &urVec,
+              const TPZVec<CSTATE> &erVec, const TPZVec<pml::data> &pmlDataVec,
+              const TPZVec<bc::data> &bcDataVec, const STATE lambda, const REAL &scale);
+
+  /**
+     @brief Adds a rectangular PML region to a computational mesh.
+     All the other mesh regions (excluding BCs) should have been previously inserted,
+     so the function can identify to which region the PML is associated.
+     @param[in] matId pml material identifier.
+     @param[in] alpha attenuation constant.
+     @param[in] type pml type.
+     @param[in] cmesh the computational mesh.
+     @return This method calls FindPMLNeighbourMaterial internally.
+  */
+  void
+  AddRectangularPMLRegion(const int matId, const int alpha,
+                          const wgma::pml::type type,
+                          TPZAutoPointer<TPZCompMesh> cmesh);
+
+  /**
+     @brief Finds the neighbouring material of a given pml region.
+     @param[in] gmesh geometrical mesh.
+     @param[in] pmlId pml material identifier.
+     @param[in] boundPosX x-coordinate of the pml with the inner domain
+     @param[in] boundPosY y-coordinate of the pml with the inner domain
+  */
+  int
+  FindPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,const int pmlId,
+                           const REAL boundPosX, const REAL boundPosY);
+  
   /** @brief Counts active equations per approximation space*/
   void CountActiveEquations(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
                             const std::set<int64_t> &boundConnects,

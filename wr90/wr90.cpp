@@ -159,12 +159,21 @@ int main(int argc, char *argv[]) {
     TPZVTKGeoMesh::PrintGMeshVTK(gmesh, gmeshFileVtk, true);
   }
 
+  TPZVec<int> volMatIdVec({1});
+  TPZVec<wgma::bc::data> bcDataVec(4);
+  for(int i = 0; i < 4; i++){
+    bcDataVec[i].id = matIdVec[i+1];
+    bcDataVec[i].t = i == 1 && usingSymmetry ?
+      wgma::bc::type::PMC : wgma::bc::type::PEC;
+    
+  }
+
   /*
    The problem uses an H1 approximation space for the longitudinal component 
    and a HCurl approximation space for the transversal one. Therefore, three
-  computational meshes are generated. One for each space and a multiphysics mesh*/
-  auto meshVec = wgma::cmeshtools::CreateCMesh(gmesh,pOrder,matIdVec,ur,er,lambda,
-                                               scale,usingSymmetry,sym);
+  // computational meshes are generated. One for each space and a multiphysics mesh*/
+  auto meshVec = wgma::cmeshtools::CreateCMesh(gmesh,pOrder,volMatIdVec,{ur},{er},{},
+                                               bcDataVec, lambda,scale);
   //gets the multiphysics mesh (main mesh)
   auto cmesh = meshVec[0];
 

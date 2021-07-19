@@ -1,9 +1,11 @@
 #include "cmeshtools.hpp"
+#include "pmltypes.hpp"
 
 #include <pzgmesh.h>
 #include <pzcmesh.h>
 #include <TPZNullMaterial.h>
 #include <Electromagnetics/TPZWaveguideModalAnalysis.h>
+#include <Electromagnetics/TPZWaveguideModalAnalysisPML.h>
 #include <pzbuildmultiphysicsmesh.h>
 #include <TPZSimpleTimer.h>
 
@@ -11,14 +13,20 @@ using namespace wgma;
 
 
 TPZVec<TPZAutoPointer<TPZCompMesh>>
-cmeshtools::CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
-            const TPZVec<int> &matIdVec, const CSTATE ur, const CSTATE er,
-            const STATE lambda, const REAL &scale, bool usingSymmetry, bctype sym)
+cmeshtools::CreateCMesh(
+  TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
+  const TPZVec<int> &volMatIdVec, const TPZVec<CSTATE> &urVec,
+  const TPZVec<CSTATE> &erVec, const TPZVec<pml::data> &pmlDataVec,
+  const TPZVec<bc::data> &bcDataVec, const STATE lambda, const REAL &scale)
 {
   TPZSimpleTimer timer ("Create cmesh");
   constexpr int dim = 2;
   constexpr bool isComplex{true};
 
+  const int nVolMats = volMatIdVec.size();
+  const int nPmlMats = pmlDataVec.size();
+  const int nBcMats = bcDataVec.size();
+  
 
   /*
    First we create the computational mesh associated with the H1 space
@@ -26,24 +34,27 @@ cmeshtools::CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
   auto * cmeshH1 =new TPZCompMesh(gmesh,isComplex);
   cmeshH1->SetDefaultOrder(pOrder +1);//for deRham compatibility
   cmeshH1->SetDimModel(dim);
-
-  const int volMatId = matIdVec[0];
   //number of state variables in the problem
   constexpr int nState = 1;
-
-  auto dummyMat = new TPZNullMaterial<CSTATE>(volMatId,dim,nState);
-  cmeshH1->InsertMaterialObject(dummyMat);
+  TPZMaterialT<CSTATE> *dummyMat{nullptr};
+  for(auto matid : volMatIdVec){
+    dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+    cmeshH1->InsertMaterialObject(dummyMat);
+  }
+  for(auto pml : pmlDataVec){
+    const auto matid = pml.id;
+    dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+    cmeshH1->InsertMaterialObject(dummyMat);
+  }
 
   
   TPZFNMatrix<1, CSTATE> val1(1, 1, 1);
   TPZManVector<CSTATE,1> val2(1, 0.);
-  const int nMats = matIdVec.size();
   TPZBndCond *dummyBC = nullptr;
-  for (int i = 1; i <nMats; i++) {
-    //0 for dirichlet (PEC) and 1 for neumann (PMC)
-    const int bcType = i==1 && usingSymmetry && sym == bctype::PMC ? 1 : 0;
-    dummyBC =
-      dummyMat->CreateBC(dummyMat, matIdVec[i], bcType, val1, val2);
+  for(auto bc : bcDataVec){
+    const int bctype = wgma::bc::to_int(bc.t);
+    const int id = bc.id;
+    dummyBC = dummyMat->CreateBC(dummyMat, id, bctype, val1, val2);
     cmeshH1->InsertMaterialObject(dummyBC);
   }
 
@@ -58,16 +69,22 @@ cmeshtools::CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
   cmeshHCurl->SetDefaultOrder(pOrder);
   cmeshHCurl->SetDimModel(dim);
   
-  dummyMat = new TPZNullMaterial<CSTATE>(volMatId,dim,nState);
-  cmeshHCurl->InsertMaterialObject(dummyMat);
+  for(auto matid : volMatIdVec){
+    dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+    cmeshHCurl->InsertMaterialObject(dummyMat);
+  }
+  for(auto pml : pmlDataVec){
+    const auto matid = pml.id;
+    dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+    cmeshHCurl->InsertMaterialObject(dummyMat);
+  }
 
   
   dummyBC = nullptr;
-  for (int i = 1; i <nMats; i++) {
-    //0 for dirichlet (PEC) and 1 for neumann (PMC)
-    const int bcType = i==1 && usingSymmetry && sym == bctype::PMC ? 1 : 0;
-    dummyBC =
-      dummyMat->CreateBC(dummyMat, matIdVec[i], bcType, val1, val2);
+  for(auto bc : bcDataVec){
+    const int bctype = wgma::bc::to_int(bc.t);
+    const int id = bc.id;
+    dummyBC = dummyMat->CreateBC(dummyMat, id, bctype, val1, val2);
     cmeshHCurl->InsertMaterialObject(dummyBC);
   }
 
@@ -77,17 +94,26 @@ cmeshtools::CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
 
   
   auto *cmeshMF =new TPZCompMesh(gmesh,isComplex);
+  TPZWaveguideModalAnalysis *matWG = nullptr;
+  for(auto i = 0; i < nVolMats; i++){
+    matWG = new TPZWaveguideModalAnalysis(
+      volMatIdVec[i], urVec[i], erVec[i], lambda, 1. / scale);
+    cmeshMF->InsertMaterialObject(matWG);
+  }
   
-  TPZWaveguideModalAnalysis *matWG  = new TPZWaveguideModalAnalysis(
-      volMatId, ur, er, lambda, 1. / scale);
-  cmeshMF->InsertMaterialObject(matWG);
-
+  //insert PML regions
+  for(auto pml : pmlDataVec){
+    const auto id = pml.id;
+    const auto alpha = pml.alpha;
+    const auto type = pml.t;
+    AddRectangularPMLRegion(id, alpha, type, cmeshMF);
+  }
+  
   TPZBndCond *bcMat = nullptr;
-  for (int i = 1; i <nMats; i++) {
-    //0 for dirichlet (PEC) and 1 for neumann (PMC)
-    const int bcType = i==1 && usingSymmetry && sym == bctype::PMC ? 1 : 0;
-    bcMat =
-      matWG->CreateBC(matWG, matIdVec[i], bcType, val1, val2);
+  for(auto bc : bcDataVec){
+    const int bctype = wgma::bc::to_int(bc.t);
+    const int id = bc.id;
+    bcMat = matWG->CreateBC(matWG, id, bctype, val1, val2);
     cmeshMF->InsertMaterialObject(bcMat);
   }
 
@@ -111,11 +137,122 @@ cmeshtools::CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
   cmeshMF->CleanUpUnconnectedNodes();
 
   TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec(3,nullptr);
-
   meshVec[0] = cmeshMF;
   meshVec[1 + TPZWaveguideModalAnalysis::H1Index()] = cmeshH1;
   meshVec[1 + TPZWaveguideModalAnalysis::HCurlIndex()] = cmeshHCurl;
   return meshVec;
+  
+}
+
+
+int
+cmeshtools::FindPMLNeighbourMaterial(
+  TPZAutoPointer<TPZGeoMesh> gmesh,const int pmlId,
+  const REAL boundPosX, const REAL boundPosY)
+{
+  TPZGeoEl * closestEl = nullptr;
+  REAL dist = 1e16;
+  for(auto &currentEl : gmesh->ElementVec()){
+    if ( !currentEl ||
+         currentEl->NSubElements() > 0  ||
+         currentEl->Dimension() != 2 ) continue;
+    if ( currentEl->MaterialId() == pmlId) continue;
+    TPZVec<REAL> qsi(2,-1);
+    const int largerSize = currentEl->NSides() - 1;
+    currentEl->CenterPoint(largerSize, qsi);
+    TPZVec<REAL> xCenter(3,-1);
+    currentEl->X(qsi, xCenter);
+    const REAL currentDist = (xCenter[0]-boundPosX)*(xCenter[0]-boundPosX) +
+      (xCenter[1]-boundPosY)*(xCenter[1]-boundPosY);
+    if(currentDist < dist){
+      dist = currentDist;
+      closestEl = currentEl;
+    }
+  }
+
+  if(!closestEl){
+    PZError<<"Could not find pml neighbour, aborting...."<<std::endl;
+    DebugStop();
+  }
+  return closestEl->MaterialId();
+}
+
+void
+cmeshtools::AddRectangularPMLRegion(const int matId, const int alpha,
+                                    const wgma::pml::type type,
+                                    TPZAutoPointer<TPZCompMesh> cmesh)
+{
+
+  //let us find the (xmin,xmax) and (ymin,ymax) of the PML region
+  REAL xMax = -1e20, xMin = 1e20, yMax = -1e20, yMin = 1e20;
+  TPZGeoMesh *gmesh = cmesh->Reference();
+  for (auto geo : gmesh->ElementVec()){
+    if (geo->MaterialId() == matId) {
+      for (int iNode = 0; iNode < geo->NCornerNodes(); ++iNode) {
+        TPZManVector<REAL, 3> co(3);
+        geo->Node(iNode).GetCoordinates(co);
+        const REAL &xP = co[0];
+        const REAL &yP = co[1];
+        if (xP > xMax) {
+          xMax = xP;
+        }
+        if (xP < xMin) {
+          xMin = xP;
+        }
+        if (yP > yMax) {
+          yMax = yP;
+        }
+        if (yP < yMin) {
+          yMin = yP;
+        }
+      }
+    }
+  }
+
+
+  //now we compute xBegin, yBegin, attx, atty and d for the material ctor
+  const bool attx = wgma::pml::attx(type);
+  const bool atty = wgma::pml::atty(type);
+  
+  REAL xBegin{-1}, yBegin{-1}, dX{-01101991.}, dY{-01101991.};
+  REAL boundPosX{-01101991.}, boundPosY{-01101991.};
+  if(attx){
+    const int xdir = wgma::pml::xinfo(type);
+    dX = xMax - xMin;
+    xBegin = xdir > 0 ? xMin : xMax;
+    boundPosX = xBegin;
+    boundPosY = (yMax + yMin)/2;
+  }
+
+  if(atty){
+    const int ydir = wgma::pml::yinfo(type);
+    dY = yMax - yMin;
+    yBegin = ydir > 0 ? yMin : yMax;
+    boundPosX = (xMax + xMin)/2;
+    boundPosY = yBegin;
+  }
+
+  if(attx && atty){
+    boundPosX = xBegin;
+    boundPosY = yBegin;
+  }
+  //find the neighbouring material
+  const auto neighMatId =
+    FindPMLNeighbourMaterial(gmesh, matId, boundPosX, boundPosY);
+
+  auto neighMat = dynamic_cast<TPZWaveguideModalAnalysis*>(
+    cmesh->FindMaterial(neighMatId));
+  if(!neighMat){
+    PZError<<__PRETTY_FUNCTION__;
+    PZError<<"\n neighbouring material not found in mesh, aborting...."<<std::endl;
+    DebugStop();
+  }
+  
+  auto pmlMat = new TPZWaveguideModalAnalysisPML(matId, *neighMat);
+  if(attx) pmlMat->SetAttX(xBegin, alpha, dX);
+  if(atty) pmlMat->SetAttY(yBegin, alpha, dY);
+  cmesh->InsertMaterialObject(pmlMat);
+  
 }
 
 void
