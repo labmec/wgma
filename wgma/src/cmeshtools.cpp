@@ -155,8 +155,8 @@ cmeshtools::FindPMLNeighbourMaterial(
   for(auto &currentEl : gmesh->ElementVec()){
     if ( !currentEl ||
          currentEl->NSubElements() > 0  ||
-         currentEl->Dimension() != 2 ) continue;
-    if ( currentEl->MaterialId() == pmlId) continue;
+         currentEl->Dimension() != 2 ||
+         currentEl->MaterialId() == pmlId) continue;
     TPZVec<REAL> qsi(2,-1);
     const int largerSize = currentEl->NSides() - 1;
     currentEl->CenterPoint(largerSize, qsi);

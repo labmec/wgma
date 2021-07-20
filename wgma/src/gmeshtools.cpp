@@ -9,14 +9,14 @@
 
 TPZAutoPointer<TPZGeoMesh>
 wgma::gmeshtools::CreateStructuredMesh(
-  const TPZVec<TPZVec<REAL>> &pointsVec, TPZVec<EdgeData> &edgesVec,
-  const TPZFMatrix<int> &quadPointsVec, const TPZVec<int> &matIdsQuads,
+  const TPZVec<TPZVec<REAL>> &pointsVec, const TPZFMatrix<int> &quadPointsVec,
+  const TPZVec<int> &matIdsQuads,
   const TPZVec<int> &nDivQsi, const TPZVec<int> &nDivEta,
   const TPZVec<bool> &side1NonLinearVec, const TPZVec<bool> &side2NonLinearVec,
   const TPZVec<bool> &side3NonLinearVec, const TPZVec<bool> &side4NonLinearVec,
-  const TPZVec<TPZVec<REAL>> &thetaVec, const TPZVec<TPZVec<REAL> *> &xcRef,
-  const TPZVec<int> &matIdBoundVec, const TPZVec<REAL> &boundDistVec,
-  const TPZVec<REAL> &rVec, const bool nonLinearMapping)
+  const TPZVec<TPZVec<REAL>> &thetaVec, const TPZVec<TPZVec<REAL>> &xcRef,
+  const TPZVec<REAL> &rVec, const TPZVec<int> &matIdBoundVec,
+  const TPZVec<REAL> &boundDistVec, const bool nonLinearMapping)
 {
 
   auto map_quad_side_arc = [](const TPZVec<REAL> &theta ,const TPZVec<REAL> &xc, const REAL r, const REAL s) {
@@ -27,6 +27,7 @@ wgma::gmeshtools::CreateStructuredMesh(
   };
   const int nQuads = side1NonLinearVec.size();
 
+  TPZVec<EdgeData> edgesVec(0);
   TPZVec<QuadrilateralData *> quadVec(nQuads, nullptr);
   int iNonLinear = 0;
   for (int iQuad = 0; iQuad < nQuads; iQuad++) {
@@ -37,7 +38,7 @@ wgma::gmeshtools::CreateStructuredMesh(
                                            pointsVec[quadPointsVec.GetVal(iQuad, 2)],
                                            pointsVec[quadPointsVec.GetVal(iQuad, 3)]);
     if (side1NonLinearVec[iQuad]) {
-      TPZVec<REAL> &xc = *(xcRef[iNonLinear]);
+      TPZVec<REAL> xc = xcRef[iNonLinear];
       quadVec[iQuad]->mapSide1 =
         [map_quad_side_arc, iNonLinear, thetaVec, xc, rVec](const REAL s)
         {
@@ -45,7 +46,7 @@ wgma::gmeshtools::CreateStructuredMesh(
         };
       iNonLinear++;
     } else if (side2NonLinearVec[iQuad]) {
-      TPZVec<REAL> &xc = *(xcRef[iNonLinear]);
+      TPZVec<REAL> xc = xcRef[iNonLinear];
       quadVec[iQuad]->mapSide2 =
         [map_quad_side_arc, iNonLinear, thetaVec, xc, rVec](const REAL s)
         {
@@ -53,7 +54,7 @@ wgma::gmeshtools::CreateStructuredMesh(
         };
       iNonLinear++;
     } else if (side3NonLinearVec[iQuad]) {
-      TPZVec<REAL> &xc = *(xcRef[iNonLinear]);
+      TPZVec<REAL> xc = xcRef[iNonLinear];
       quadVec[iQuad]->mapSide3 =
         [map_quad_side_arc, iNonLinear, thetaVec, xc, rVec](const REAL s)
         {
@@ -61,7 +62,7 @@ wgma::gmeshtools::CreateStructuredMesh(
         };
       iNonLinear++;
     } else if (side4NonLinearVec[iQuad]) {
-      TPZVec<REAL> &xc = *(xcRef[iNonLinear]);
+      TPZVec<REAL> xc = xcRef[iNonLinear];
       quadVec[iQuad]->mapSide4 =
         [map_quad_side_arc, iNonLinear, thetaVec, xc, rVec](const REAL s)
         {

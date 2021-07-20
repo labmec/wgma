@@ -44,12 +44,11 @@ a H1-conforming approximation space for the axial component.
 */
 TPZAutoPointer<TPZGeoMesh>
 CreateStepFiberMesh(
-  const REAL rCore, const REAL boundDist, const REAL dPML, const int nLayersPML,
-  const int factor, bool refine, const REAL scale, const bool print,
-  const std::string &prefix, TPZVec<int> &matIdVec,
-  TPZVec<wgma::pml::type> &pmlTypeVec
+  const REAL rCore, const REAL boundDist, const int factor,
+  bool refine, const REAL scale, const bool print,
+  const std::string &prefix, TPZVec<int> &matIdVec, const bool usingPML,
+  const REAL dPML, const int nLayersPML, TPZVec<wgma::pml::type> &pmlTypeVec
   );
-
 
 int main(int argc, char *argv[]) {
 #ifdef PZ_LOG
@@ -74,14 +73,21 @@ int main(int argc, char *argv[]) {
   constexpr STATE claddingUr{1};
   //radius of the core
   constexpr REAL rCore{0.000008};
-  //distance from the core from which the PML begins
-  constexpr REAL boundDist{4*claddingReffIndex*2*M_PI};
-  //pml width
-  constexpr REAL dPML{7.5*claddingReffIndex*2*M_PI};
-  //number of layers in the pml
-  constexpr int nLayersPML{2};
   // operational wavelength
   constexpr STATE lambda{1.55e-6};
+  /*both distances from the core and pml width are measured
+   in wavelengths in the cladding material*/
+  constexpr REAL lambdaCladding = lambda/claddingReffIndex;
+  constexpr REAL boundDist{4*lambdaCladding};
+  //whether to surround the domain by a PML
+  constexpr bool usingPML{false};
+  //distance from the core from which the PML begins
+  //pml width
+  constexpr REAL dPML{7.5*lambdaCladding};
+  //number of layers in the pml
+  constexpr int nLayersPML{2};
+  //PML attenuation constant
+  constexpr STATE alphaPML{7.445402009962082};
   /*Given the small dimensions of the domain, scaling it can help in 
     achieving good precision. Uing k0 as a scale factor results in 
     the eigenvalues -(propagationConstant/k0)^2 = -effectiveIndex^2*/
@@ -100,7 +106,7 @@ int main(int argc, char *argv[]) {
   //number of threads to use
   constexpr int nThreads{8};
   //number of genvalues to be computed
-  constexpr int nEigenpairs{10};
+  constexpr int nEigenpairs{1};
   //whether to compute eigenvectors (instead of just eigenvalues)
   constexpr bool computeVectors{true};
   //how to sort the computed eigenvalues
@@ -113,7 +119,7 @@ int main(int argc, char *argv[]) {
    the effective index neff).*/
   constexpr CSTATE target = -2.086289757;
   // Dimension of the krylov space to be used. Suggested to be at least nev * 10
-  constexpr int krylovDim{500};
+  constexpr int krylovDim{20};
 
 
   /*********************
@@ -134,7 +140,7 @@ int main(int argc, char *argv[]) {
    ********************/
   
   //reorder the equations in order to optimize bandwidth
-  constexpr bool optimizeBandwidth{true};
+  constexpr bool optimizeBandwidth{false};
   /*
     The equations corresponding to homogeneous dirichlet boundary condition(PEC)
     can be filtered out of the global system in order to achieve better conditioning.
@@ -156,29 +162,186 @@ int main(int argc, char *argv[]) {
   TPZManVector<int, 11> matIdVec;
   TPZManVector<wgma::pml::type,8> pmlTypeVec;
   constexpr int factor{3};
-  constexpr bool refine{true};
+  constexpr bool refine{false};
   //whether to print the geometric mesh in .vtk and .txt files
   constexpr bool print{true};
   //prefix for the gmesh files
   const std::string prefix = refine ? "ref" : "noref";
-  // const REAL realRCore = simData.physicalOpts.stepFiberOpts.realRCore;
-  // const REAL dPML = simData.physicalOpts.stepFiberOpts.dPML;
-  // const REAL boundDist = simData.physicalOpts.stepFiberOpts.boundDist;
-  // const REAL outerMaterialReffIndex = std::sqrt(std::real(simData.physicalOpts.erVec[1]));
-  // const int nLayersPML = simData.physicalOpts.stepFiberOpts.nLayersPml;
-  auto gmesh = CreateStepFiberMesh(rCore,boundDist,dPML,nLayersPML,
-                                   factor,refine,scale,print,prefix,
-                                   matIdVec,pmlTypeVec);
+
+  //creates gmesh
+  auto gmesh = CreateStepFiberMesh(rCore,boundDist,factor,refine,scale,print,prefix,
+                                   matIdVec,usingPML,dPML,nLayersPML,pmlTypeVec);
+  //setting up cmesh data
+  TPZVec<int> volMatIdVec(2,-1);
+  TPZVec<wgma::pml::data> pmlDataVec(usingPML ? 8 : 0);
+  TPZVec<wgma::bc::data> bcDataVec(1);
+  {
+    int matCount = 0;
+    for(auto &matid: volMatIdVec){
+      matid = matIdVec[matCount++];
+    }
+
+    int pmlCount{0};
+    for(auto &pml : pmlDataVec){
+      pml.id = matIdVec[matCount++];
+      pml.alpha = alphaPML;
+      pml.t = pmlTypeVec[pmlCount++];
+    }
+
+    bcDataVec[0].id = matIdVec[matCount];
+    bcDataVec[0].t = wgma::bc::type::PEC;
+  }
+  
+  TPZVec<CSTATE> urVec({coreUr, claddingUr});
+  TPZVec<CSTATE> erVec({coreReffIndex*coreReffIndex,
+      claddingReffIndex*claddingReffIndex});
+
+  /*
+   The problem uses an H1 approximation space for the longitudinal component 
+   and a HCurl approximation space for the transversal one. Therefore, three
+  // computational meshes are generated. One for each space and a multiphysics mesh*/
+  auto meshVec = wgma::cmeshtools::CreateCMesh(gmesh,pOrder,volMatIdVec,
+                                               urVec, erVec, pmlDataVec,
+                                               bcDataVec, lambda,scale);
+  //gets the multiphysics mesh (main mesh)
+  auto cmesh = meshVec[0];
+
+  
+  TPZEigenAnalysis an(cmesh, optimizeBandwidth);
+  an.SetComputeEigenvectors(computeVectors);
+
+  /**
+     When using NeoPZ with MKL, an sparse matrix should be used for better
+     performance. Otherwise, the skyline matrix has available inhouse solvers.
+  */
+  TPZAutoPointer<TPZStructMatrix> strmtrx{nullptr};
+#ifdef PZ_USING_MKL
+  strmtrx = new TPZSpStructMatrix<CSTATE>(cmesh);
+#else
+  strmtrx = new TPZSkylineNSymStructMatrix<CSTATE>(cmesh);
+#endif
+  
+  strmtrx->SetNumThreads(nThreads);
+  
+  TPZVec<int64_t> activeEquations;
+  //this value is the total number of dofs including dirichlet bcs
+  int neq, neqOriginal, neqH1, neqHCurl;
+  
+  
+  if(filterBoundaryEqs){
+      wgma::cmeshtools::FilterBoundaryEquations(meshVec, activeEquations,
+                                                neq, neqOriginal,
+                                                neqH1, neqHCurl);
+    std::cout<<"neq(before): "<<neqOriginal
+             <<"\tneq(after): "<<neq<<std::endl;
+    strmtrx->EquationFilter().SetActiveEquations(activeEquations);
+  }else{
+    std::set<int64_t> boundConnects;
+    wgma::cmeshtools::CountActiveEquations(meshVec,boundConnects,neqOriginal,
+                                           neqH1,neqHCurl);
+  }
+  
+  an.SetStructuralMatrix(strmtrx);
+
+  
+  
+  TPZKrylovEigenSolver<CSTATE> solver;
+  TPZSTShiftAndInvert<CSTATE> st;
+  solver.SetSpectralTransform(st);
+  solver.SetKrylovDim(krylovDim);
+
+  {
+    /**this is to ensure that the eigenvector subspace is orthogonal to
+       the spurious solutions associated with et = 0 ez != 0*/
+    TPZFMatrix<CSTATE> initVec(neq, 1, 0.);
+    constexpr auto firstHCurl = TPZWaveguideModalAnalysis::HCurlIndex();
+    for (int i = 0; i < neqHCurl; i++) {
+      initVec(firstHCurl + i, 0) = 1;
+    }
+    solver.SetKrylovInitialVector(initVec);
+  }
+
+  solver.SetTarget(target);
+  solver.SetNEigenpairs(nEigenpairs);
+  solver.SetAsGeneralised(true);
+  solver.SetEigenSorting(sortingRule);
+
+  an.SetSolver(solver);
+  {
+    std::cout<<"Assembling..."<<std::flush;
+    TPZSimpleTimer assemble("Assemble");
+    an.Assemble();
+    std::cout<<"\rAssembled!"<<std::endl;
+  }
+  {
+    TPZSimpleTimer solv("Solve");
+    std::cout<<"Solving..."<<std::flush;
+    an.Solve();
+    std::cout<<"\rSolved!"<<std::endl;
+  }
+  auto ev = an.GetEigenvalues();
+
+  for(auto &w : ev){
+    std::cout<<w<<std::endl;
+  }
+  
+  if (!computeVectors && !exportVtk) return 0;
+  
+  TPZStack<std::string> scalnames, vecnames;
+  scalnames.Push("Ez");
+  vecnames.Push("Et");
+  const std::string plotfile = "fieldPlot.vtk";
+  constexpr int dim{2};
+  an.DefineGraphMesh(dim, scalnames, vecnames,plotfile);
+
+  auto eigenvectors = an.GetEigenvectors();
+
+  TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
+  const auto nev = ev.size();
+
+  TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshVecPost(2);
+  meshVecPost[0] = meshVec[1];
+  meshVecPost[1] = meshVec[2];
+  
+  std::cout<<"Post processing..."<<std::endl;
+  
+  for (int iSol = 0; iSol < nev; iSol++) {
+    const CSTATE currentKz = [&ev,iSol](){
+      auto tmp = std::sqrt(-1.0*ev[iSol]);
+      constexpr auto epsilon = std::numeric_limits<STATE>::epsilon()/
+      (10*std::numeric_limits<STATE>::digits10);
+      //let us discard extremely small imag parts
+      if (tmp.imag() < epsilon)
+        {tmp = tmp.real();}
+      return tmp;
+    }();
+    eigenvectors.GetSub(0, iSol, neqOriginal, 1, evector);
+    for(auto id : matIdVec){
+      auto matPtr =
+        dynamic_cast<TPZWaveguideModalAnalysis *>(cmesh->FindMaterial(id));
+      if(!matPtr) continue;
+      matPtr->SetKz(currentKz);
+      matPtr->SetPrintFieldRealPart(printRealPart);
+    }
+    std::cout<<"\rPost processing step "<<iSol+1<<" out of "<<ev.size()
+             <<"(kz = "<<currentKz<<")"<<std::flush;
+    an.LoadSolution(evector);
+    TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshVecPost, cmesh);
+    an.PostProcess(vtkRes);
+  }
+  std::cout<<"\rFinished post processing\n"<<std::endl;
+  
   return 0;
 }
 
 
 TPZAutoPointer<TPZGeoMesh>
 CreateStepFiberMesh(
-  const REAL realRCore, const REAL boundDist, const REAL dPML, const int nLayersPml,
-  const int factor, bool refine, const REAL scale, const bool print,
-  const std::string &prefix, TPZVec<int> &matIdVec,
-  TPZVec<wgma::pml::type> &pmlTypeVec)
+  const REAL realRCore, const REAL boundDist, const int factor,
+  bool refine, const REAL scale, const bool print,
+  const std::string &prefix, TPZVec<int> &matIdVec, const bool usingPML,
+  const REAL realDPML, const int nLayersPML, TPZVec<wgma::pml::type> &pmlTypeVec
+  )
 {
 
   using wgma::gmeshtools::EdgeData;
@@ -186,7 +349,7 @@ CreateStepFiberMesh(
   const int nPtsCoreR = factor * 2,//number of points in core (radial direction)
     nPtsCoreT = factor * 5,//number of points in core (tangential direction)
     nPtsCladdingR = factor * 4,
-    nDivPml = factor * nLayersPml + 1;
+    nDivPml = factor * nLayersPML + 1;
 
   if(std::min<int>({nPtsCoreR,nPtsCoreT,nPtsCladdingR,nDivPml}) < 2 ) {
     std::cout<<"Mesh has not sufficient divisions."<<std::endl;
@@ -194,9 +357,19 @@ CreateStepFiberMesh(
     DebugStop();
   }
 
-  constexpr int nQuads = 17;
-  constexpr int nPoints = 24;
+  constexpr int nPtsCore = 8;
+  constexpr int nPtsCladding = 4;
+  const int nPtsPML = usingPML ? 12 : 0;
+  const int nPoints = nPtsCore + nPtsCladding + nPtsPML;
+  constexpr int maxNPts = 24;
 
+  constexpr int nQuadsCore = 5;
+  constexpr int nQuadsCladding = 4;
+  const int nQuadsPML = usingPML ? 8 : 0;
+  const int nQuads = nQuadsCore + nQuadsCladding + nQuadsPML;
+  constexpr int maxNQuads = 17;
+
+  
   constexpr int matIdCore = 1, matIdCladding = 2, matIdBC= 18;
   constexpr int matIdPMLxp = 10,
     matIdPMLyp = 11,
@@ -207,8 +380,9 @@ CreateStepFiberMesh(
     matIdPMLxmyp = 16,
     matIdPMLxmym = 17;
 
-  const REAL rCore = scale * realRCore;
-  const REAL bound = rCore + boundDist;
+  const REAL rCore = realRCore * scale;
+  const REAL bound = rCore + boundDist * scale;
+  const REAL dPML = realDPML * scale;
   TPZManVector<REAL,2> xc(2, 0.);
   xc[0] = 0.;
   xc[1] = 0.;
@@ -216,8 +390,7 @@ CreateStepFiberMesh(
 
 
   ///all points
-  TPZManVector<TPZVec<REAL>,33> pointsVec(nPoints,TPZVec<REAL>(2,0.));
-  TPZManVector<EdgeData,33> edgesVec(0,EdgeData());
+  TPZManVector<TPZVec<REAL>,maxNPts> pointsVec(nPoints,TPZVec<REAL>(2,0.));
   //hole 1
   pointsVec[0][0]= xc[0] + M_SQRT1_2 * std::cos(M_PI_4)*rCore; pointsVec[0][1]= xc[1] + M_SQRT1_2 * std::sin(M_PI_4)*rCore;
   pointsVec[1][0]= xc[0] - M_SQRT1_2 * std::cos(M_PI_4)*rCore; pointsVec[1][1]= xc[1] + M_SQRT1_2 * std::sin(M_PI_4)*rCore;
@@ -235,25 +408,25 @@ CreateStepFiberMesh(
   pointsVec[9][0] =  1 * bound; pointsVec[9][1] =  1 * bound;
   pointsVec[10][0] = -1 * bound; pointsVec[10][1] =  1 * bound;
   pointsVec[11][0] = -1 * bound; pointsVec[11][1] = -1 * bound;
-  //PML
-  pointsVec[12][0] =  1 * (bound+dPML); pointsVec[12][1] = -1 * bound;
-  pointsVec[13][0] =  1 * (bound+dPML); pointsVec[13][1] =  1 * bound;
+  if(usingPML){
+    pointsVec[12][0] =  1 * (bound+dPML); pointsVec[12][1] = -1 * bound;
+    pointsVec[13][0] =  1 * (bound+dPML); pointsVec[13][1] =  1 * bound;
 
-  pointsVec[14][0] =  1 * bound; pointsVec[14][1] =  1 * (bound+dPML);
-  pointsVec[15][0] = -1 * bound; pointsVec[15][1] =  1 * (bound+dPML);
+    pointsVec[14][0] =  1 * bound; pointsVec[14][1] =  1 * (bound+dPML);
+    pointsVec[15][0] = -1 * bound; pointsVec[15][1] =  1 * (bound+dPML);
 
-  pointsVec[16][0] = -1 * (bound+dPML); pointsVec[16][1] =  1 * bound;
-  pointsVec[17][0] = -1 * (bound+dPML); pointsVec[17][1] = -1 * bound;
+    pointsVec[16][0] = -1 * (bound+dPML); pointsVec[16][1] =  1 * bound;
+    pointsVec[17][0] = -1 * (bound+dPML); pointsVec[17][1] = -1 * bound;
 
-  pointsVec[18][0] = -1 * bound; pointsVec[18][1] = -1 * (bound+dPML);
-  pointsVec[19][0] = 1 * bound; pointsVec[19][1] = -1 * (bound+dPML);
+    pointsVec[18][0] = -1 * bound; pointsVec[18][1] = -1 * (bound+dPML);
+    pointsVec[19][0] = 1 * bound; pointsVec[19][1] = -1 * (bound+dPML);
 
-  pointsVec[20][0] =  1 * (bound+dPML); pointsVec[20][1] = -1 * (bound+dPML);
-  pointsVec[21][0] =  1 * (bound+dPML); pointsVec[21][1] =  1 * (bound+dPML);
-  pointsVec[22][0] = -1 * (bound+dPML); pointsVec[22][1] =  1 * (bound+dPML);
-  pointsVec[23][0] = -1 * (bound+dPML); pointsVec[23][1] = -1 * (bound+dPML);
-
-  TPZFMatrix<int> quadPointsVec(nQuads,4);
+    pointsVec[20][0] =  1 * (bound+dPML); pointsVec[20][1] = -1 * (bound+dPML);
+    pointsVec[21][0] =  1 * (bound+dPML); pointsVec[21][1] =  1 * (bound+dPML);
+    pointsVec[22][0] = -1 * (bound+dPML); pointsVec[22][1] =  1 * (bound+dPML);
+    pointsVec[23][0] = -1 * (bound+dPML); pointsVec[23][1] = -1 * (bound+dPML);
+  }
+  TPZFNMatrix<maxNQuads*3,int> quadPointsVec(nQuads,4);
   quadPointsVec(0,0) = 0; quadPointsVec(0,1) = 1; quadPointsVec(0,2) = 2; quadPointsVec(0,3) = 3;
   quadPointsVec(1,0) = 4; quadPointsVec(1,1) = 0; quadPointsVec(1,2) = 3; quadPointsVec(1,3) = 7;
   quadPointsVec(2,0) = 4; quadPointsVec(2,1) = 5; quadPointsVec(2,2) = 1; quadPointsVec(2,3) = 0;
@@ -264,31 +437,34 @@ CreateStepFiberMesh(
   quadPointsVec(6,0) = 9; quadPointsVec(6,1) = 10; quadPointsVec(6,2) = 5; quadPointsVec(6,3) = 4;
   quadPointsVec(7,0) = 5; quadPointsVec(7,1) = 10; quadPointsVec(7,2) = 11; quadPointsVec(7,3) = 6;
   quadPointsVec(8,0) = 7; quadPointsVec(8,1) = 6; quadPointsVec(8,2) = 11; quadPointsVec(8,3) = 8;
+  if(usingPML){
+    quadPointsVec(9,0) = 13; quadPointsVec(9,1) = 9; quadPointsVec(9,2) = 8; quadPointsVec(9,3) = 12;
+    quadPointsVec(10,0) = 14; quadPointsVec(10,1) = 15; quadPointsVec(10,2) = 10; quadPointsVec(10,3) = 9;
+    quadPointsVec(11,0) = 10; quadPointsVec(11,1) = 16; quadPointsVec(11,2) = 17; quadPointsVec(11,3) = 11;
+    quadPointsVec(12,0) = 8; quadPointsVec(12,1) = 11; quadPointsVec(12,2) = 18; quadPointsVec(12,3) = 19;
 
-  quadPointsVec(9,0) = 13; quadPointsVec(9,1) = 9; quadPointsVec(9,2) = 8; quadPointsVec(9,3) = 12;
-  quadPointsVec(10,0) = 14; quadPointsVec(10,1) = 15; quadPointsVec(10,2) = 10; quadPointsVec(10,3) = 9;
-  quadPointsVec(11,0) = 10; quadPointsVec(11,1) = 16; quadPointsVec(11,2) = 17; quadPointsVec(11,3) = 11;
-  quadPointsVec(12,0) = 8; quadPointsVec(12,1) = 11; quadPointsVec(12,2) = 18; quadPointsVec(12,3) = 19;
-
-  quadPointsVec(13,0) = 21; quadPointsVec(13,1) = 14; quadPointsVec(13,2) =  9; quadPointsVec(13,3) = 13;
-  quadPointsVec(14,0) = 15; quadPointsVec(14,1) = 22; quadPointsVec(14,2) = 16; quadPointsVec(14,3) = 10;
-  quadPointsVec(15,0) = 11; quadPointsVec(15,1) = 17; quadPointsVec(15,2) = 23; quadPointsVec(15,3) = 18;
-  quadPointsVec(16,0) = 12; quadPointsVec(16,1) =  8; quadPointsVec(16,2) = 19; quadPointsVec(16,3) = 20;
-
-  TPZManVector<int,nQuads> matIdsQuads(nQuads,-1);
+    quadPointsVec(13,0) = 21; quadPointsVec(13,1) = 14; quadPointsVec(13,2) =  9; quadPointsVec(13,3) = 13;
+    quadPointsVec(14,0) = 15; quadPointsVec(14,1) = 22; quadPointsVec(14,2) = 16; quadPointsVec(14,3) = 10;
+    quadPointsVec(15,0) = 11; quadPointsVec(15,1) = 17; quadPointsVec(15,2) = 23; quadPointsVec(15,3) = 18;
+    quadPointsVec(16,0) = 12; quadPointsVec(16,1) =  8; quadPointsVec(16,2) = 19; quadPointsVec(16,3) = 20;
+  }
+  TPZManVector<int,maxNQuads> matIdsQuads(nQuads,-1);
   matIdsQuads[0] = matIdCore;
   matIdsQuads[1] = matIdCore;    matIdsQuads[2] = matIdCore;
   matIdsQuads[3] = matIdCore;    matIdsQuads[4] = matIdCore;
 
   matIdsQuads[5] = matIdCladding;    matIdsQuads[6] = matIdCladding;
   matIdsQuads[7] = matIdCladding;    matIdsQuads[8] = matIdCladding;
-  matIdsQuads[9] = matIdPMLxp;    matIdsQuads[10] = matIdPMLyp;
-  matIdsQuads[11] = matIdPMLxm;    matIdsQuads[12] = matIdPMLym;
-  matIdsQuads[13] = matIdPMLxpyp;    matIdsQuads[14] = matIdPMLxmyp;
-  matIdsQuads[15] = matIdPMLxmym;    matIdsQuads[16] = matIdPMLxpym;
 
-  TPZManVector<int,nQuads> nDivQsi(nQuads,-1);
-  TPZManVector<int,nQuads> nDivEta(nQuads,-1);
+  if(usingPML){
+    matIdsQuads[9] = matIdPMLxp;    matIdsQuads[10] = matIdPMLyp;
+    matIdsQuads[11] = matIdPMLxm;    matIdsQuads[12] = matIdPMLym;
+    matIdsQuads[13] = matIdPMLxpyp;    matIdsQuads[14] = matIdPMLxmyp;
+    matIdsQuads[15] = matIdPMLxmym;    matIdsQuads[16] = matIdPMLxpym;
+  }
+  
+  TPZManVector<int,maxNQuads> nDivQsi(nQuads,-1);
+  TPZManVector<int,maxNQuads> nDivEta(nQuads,-1);
   //first hole
   nDivQsi[0]=nPtsCoreT;nDivEta[0]=nPtsCoreT;
   nDivQsi[1]=nPtsCoreR; nDivEta[1]=nPtsCoreT;
@@ -300,21 +476,21 @@ CreateStepFiberMesh(
   nDivQsi[6]=nPtsCoreT;     nDivEta[6]=nPtsCladdingR;
   nDivQsi[7]=nPtsCladdingR; nDivEta[7]=nPtsCoreT;
   nDivQsi[8]=nPtsCoreT;     nDivEta[8]=nPtsCladdingR;
+  if(usingPML){
+    nDivQsi[9]=nDivPml; nDivEta[9]=nPtsCoreT;
+    nDivQsi[10]=nPtsCoreT;    nDivEta[10]=nDivPml;
+    nDivQsi[11]=nDivPml; nDivEta[11]=nPtsCoreT;
+    nDivQsi[12]=nPtsCoreT;     nDivEta[12]=nDivPml;
 
-  nDivQsi[9]=nDivPml; nDivEta[9]=nPtsCoreT;
-  nDivQsi[10]=nPtsCoreT;    nDivEta[10]=nDivPml;
-  nDivQsi[11]=nDivPml; nDivEta[11]=nPtsCoreT;
-  nDivQsi[12]=nPtsCoreT;     nDivEta[12]=nDivPml;
-
-  nDivQsi[13]=nDivPml; nDivEta[13]=nDivPml;
-  nDivQsi[14]=nDivPml;     nDivEta[14]=nDivPml;
-  nDivQsi[15]=nDivPml; nDivEta[15]=nDivPml;
-  nDivQsi[16]=nDivPml;     nDivEta[16]=nDivPml;
-
-  TPZManVector<bool,nQuads> side1NonLinearVec(nQuads,false);
-  TPZManVector<bool,nQuads> side2NonLinearVec(nQuads,false);
-  TPZManVector<bool,nQuads> side3NonLinearVec(nQuads,false);
-  TPZManVector<bool,nQuads> side4NonLinearVec(nQuads,false);
+    nDivQsi[13]=nDivPml; nDivEta[13]=nDivPml;
+    nDivQsi[14]=nDivPml;     nDivEta[14]=nDivPml;
+    nDivQsi[15]=nDivPml; nDivEta[15]=nDivPml;
+    nDivQsi[16]=nDivPml;     nDivEta[16]=nDivPml;
+  }
+  TPZManVector<bool,maxNQuads> side1NonLinearVec(nQuads,false);
+  TPZManVector<bool,maxNQuads> side2NonLinearVec(nQuads,false);
+  TPZManVector<bool,maxNQuads> side3NonLinearVec(nQuads,false);
+  TPZManVector<bool,maxNQuads> side4NonLinearVec(nQuads,false);
 
   side4NonLinearVec[1] = true;
   side1NonLinearVec[2] = true;
@@ -340,7 +516,7 @@ CreateStepFiberMesh(
   thetaVec[7][0] = 7 * M_PI/4;thetaVec[7][1] = 5 * M_PI/4;//quad8
 
 
-  TPZManVector<TPZVec<REAL>*,8> xcRef(8,&xc);
+  TPZManVector<TPZVec<REAL>,8> xcRef(8,xc);
 
   TPZManVector<int,5> matIdBoundVec(4,-1);
   matIdBoundVec[0] = matIdBC;//low
@@ -350,43 +526,45 @@ CreateStepFiberMesh(
 
   TPZManVector<REAL,4> boundDistVec(4,-1);
   boundDistVec[0] = 0.;//low
-  boundDistVec[1] = bound+dPML;//down
-  boundDistVec[2] = bound+dPML;//up
+  boundDistVec[1] = usingPML ? bound+dPML : bound;//right
+  boundDistVec[2] = usingPML ? bound+dPML : bound;//up
   boundDistVec[3] = 0.;//left
 
   TPZManVector<REAL,14> rVec(14,rCore);
 
   auto gmesh = wgma::gmeshtools::CreateStructuredMesh(
-    pointsVec, edgesVec, quadPointsVec, matIdsQuads, nDivQsi,nDivEta,
+    pointsVec, quadPointsVec, matIdsQuads, nDivQsi,nDivEta,
     side1NonLinearVec, side2NonLinearVec, side3NonLinearVec, side4NonLinearVec,
-    thetaVec, xcRef, matIdBoundVec, boundDistVec, rVec);
-  matIdVec.Resize(11);
+    thetaVec, xcRef, rVec, matIdBoundVec, boundDistVec);
+
+  //the materials are: core, cladding, pml regions (8) and bc
+  const int nMats = usingPML ? 11 : 3;
+  matIdVec.Resize(nMats);
   matIdVec[0]=matIdCore;
   matIdVec[1]=matIdCladding;
-  pmlTypeVec.Resize(8);
-  pmlTypeVec[0]=wgma::pml::type::xp;
-  matIdVec[2]=matIdPMLxp;
-  pmlTypeVec[1]=wgma::pml::type::yp;
-  matIdVec[3]=matIdPMLyp;
-  pmlTypeVec[2]=wgma::pml::type::xm;
-  matIdVec[4]=matIdPMLxm;
-  pmlTypeVec[3]=wgma::pml::type::ym;
-  matIdVec[5]=matIdPMLym;
-  pmlTypeVec[4]=wgma::pml::type::xpym;
-  matIdVec[6]=matIdPMLxpym;
-  pmlTypeVec[5]=wgma::pml::type::xpyp;
-  matIdVec[7]=matIdPMLxpyp;
-  pmlTypeVec[6]=wgma::pml::type::xmyp;
-  matIdVec[8]=matIdPMLxmyp;
-  pmlTypeVec[7]=wgma::pml::type::xmym;
-  matIdVec[9]=matIdPMLxmym;
+  if(usingPML){
+    pmlTypeVec.Resize(8);
+    pmlTypeVec[0]=wgma::pml::type::xp;
+    matIdVec[2]=matIdPMLxp;
+    pmlTypeVec[1]=wgma::pml::type::yp;
+    matIdVec[3]=matIdPMLyp;
+    pmlTypeVec[2]=wgma::pml::type::xm;
+    matIdVec[4]=matIdPMLxm;
+    pmlTypeVec[3]=wgma::pml::type::ym;
+    matIdVec[5]=matIdPMLym;
+    pmlTypeVec[4]=wgma::pml::type::xpym;
+    matIdVec[6]=matIdPMLxpym;
+    pmlTypeVec[5]=wgma::pml::type::xpyp;
+    matIdVec[7]=matIdPMLxpyp;
+    pmlTypeVec[6]=wgma::pml::type::xmyp;
+    matIdVec[8]=matIdPMLxmyp;
+    pmlTypeVec[7]=wgma::pml::type::xmym;
+    matIdVec[9]=matIdPMLxmym;
+  }
   
-  matIdVec[10]=matIdBC;
+  matIdVec[nMats-1]=matIdBC;
 
   gmesh->BuildConnectivity();
-
-  //refpatquadtri.rpt
-  long nel = gmesh->NElements();
 
   if(refine){
     const REAL margin = 0.1 * rCore;

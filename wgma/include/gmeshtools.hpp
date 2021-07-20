@@ -11,17 +11,37 @@ namespace wgma::gmeshtools{
   struct EdgeData;
   struct QuadrilateralData;
 
-
+  /**
+     @brief Creates a structured geometrical mesh. 
+     The parameters describe (possibly curved) quadrilaterals that will be then meshed.
+     The parameters related to non-linear sides refer to the parametric representation
+     of a circunference arc.
+     @param[in] pointsVec array with nodes coordinates of quadrilaterals.
+     @param[in] quadPointsVec matrix position (i,j) representing the j-th node of the i-th quadrilateral.
+     @param[in] matIdsQuads material identifier for each quadrilateral
+     @param[in] nDivQsi number of vertical divisions for each quadrilateral
+     @param[in] nDivEta number of vertical divisions for each quadrilateral
+     @param[in] side1NonLinearVec if the side 1 of the i-th quadrilateral is curved, position i is true
+     @param[in] side2NonLinearVec if the side 2 of the i-th quadrilateral is curved, position i is true
+     @param[in] side3NonLinearVec if the side 3 of the i-th quadrilateral is curved, position i is true
+     @param[in] side4NonLinearVec if the side 4 of the i-th quadrilateral is curved, position i is true
+     @param[in] thetaVec the i-th position is a `TPZVec<REAL>` of size two representing the range of theta describing the parametric representation of the circunference arc of the i-th non linear side
+     @param[in] xcRef the i-th position is a `TPZVec<REAL>` of size two representing the center of the circunference from which the i-th non linear side is an arc
+     @param[in] rVec the i-th position is the radius of the circunference from which the i-th non linear side is an arc
+     @param[in] matIdBoundVec material identifiers for BC regions
+     @param[in] boundDistVec (y-coord of lower boundary, x-coord of right bound., y-coord of upper boundary, x-coord of left boundary)
+     @param[in] nonLinearMapping whether to actually generate curved elements
+   */
   TPZAutoPointer<TPZGeoMesh>
   CreateStructuredMesh(
-    const TPZVec<TPZVec<REAL>> &pointsVec, TPZVec<EdgeData> &edgesVec,
-    const TPZFMatrix<int> &quadPointsVec, const TPZVec<int> &matIdsQuads,
+    const TPZVec<TPZVec<REAL>> &pointsVec, const TPZFMatrix<int> &quadPointsVec,
+    const TPZVec<int> &matIdsQuads,
     const TPZVec<int> &nDivQsi, const TPZVec<int> &nDivEta,
     const TPZVec<bool> &side1NonLinearVec, const TPZVec<bool> &side2NonLinearVec,
     const TPZVec<bool> &side3NonLinearVec, const TPZVec<bool> &side4NonLinearVec,
-    const TPZVec<TPZVec<REAL>> &thetaVec, const TPZVec<TPZVec<REAL> *> &xcRef,
-    const TPZVec<int> &matIdBoundVec, const TPZVec<REAL> &boundDistVec,
-    const TPZVec<REAL> &rVec, const bool nonLinearMapping = true);
+    const TPZVec<TPZVec<REAL>> &thetaVec, const TPZVec<TPZVec<REAL>> &xcRef,
+    const TPZVec<REAL> &rVec, const TPZVec<int> &matIdBoundVec,
+    const TPZVec<REAL> &boundDistVec, const bool nonLinearMapping = true);
 
   /**
      @brief Splits a mesh formed of quadrilaterals into triangles*/
