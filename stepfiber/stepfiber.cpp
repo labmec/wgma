@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
   //magnetic permeability of the cladding
   constexpr STATE claddingUr{1};
   //radius of the core
-  constexpr REAL rCore{0.000008};
+  constexpr REAL rCore{8.0e-6};
   // operational wavelength
   constexpr STATE lambda{1.55e-6};
   /*both distances from the core and pml width are measured
@@ -106,7 +106,7 @@ int main(int argc, char *argv[]) {
   //number of threads to use
   constexpr int nThreads{8};
   //number of genvalues to be computed
-  constexpr int nEigenpairs{1};
+  constexpr int nEigenpairs{4};
   //whether to compute eigenvectors (instead of just eigenvalues)
   constexpr bool computeVectors{true};
   //how to sort the computed eigenvalues
@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
   //whether to export the solution as a .vtk file
   constexpr bool exportVtk{true};
   //resolution of the .vtk file in which the solution will be exported
-  constexpr int vtkRes{1};
+  constexpr int vtkRes{0};
   //if true, the real part of the electric fields is exported. otherwise, the magnitude
   constexpr bool printRealPart{true};
 
@@ -254,7 +254,7 @@ int main(int argc, char *argv[]) {
     /**this is to ensure that the eigenvector subspace is orthogonal to
        the spurious solutions associated with et = 0 ez != 0*/
     TPZFMatrix<CSTATE> initVec(neq, 1, 0.);
-    constexpr auto firstHCurl = TPZWaveguideModalAnalysis::HCurlIndex();
+    const auto firstHCurl = neqH1 * TPZWaveguideModalAnalysis::HCurlIndex();
     for (int i = 0; i < neqHCurl; i++) {
       initVec(firstHCurl + i, 0) = 1;
     }
