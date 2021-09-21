@@ -18,7 +18,14 @@ set(sources
   src/gmeshtools.cpp
   )
 
-
+if(USING_SLEPC)
+  list(APPEND headers
+    include/slepcepshandler.hpp
+    )
+  list(APPEND sources
+    src/slepcepshandler.cpp
+    )
+endif()
 target_sources(wgma PUBLIC ${headers})
 target_sources(wgma PRIVATE ${sources})
 
