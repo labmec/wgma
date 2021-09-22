@@ -6,10 +6,11 @@
 #include "pzysmp.h"
 #include "TPZSimpleTimer.h"
 
+#ifdef WGMA_USING_SLEPC
 #include <slepceps.h>
 #include <petsctime.h>
 #include <petscksp.h>
-
+#endif
 
 
 /*******************
@@ -17,6 +18,9 @@
  *******************/
 namespace wgma::slepc{
 
+  std::string SolverName(EPSType);
+  
+#ifdef WGMA_USING_SLEPC
   ::EPSProblemType ConvertProblemType(EPSProblemType);
   EPSProblemType ConvertProblemType(::EPSProblemType);
 
@@ -37,52 +41,39 @@ namespace wgma::slepc{
   
   ::PCType ConvertPrecond(Precond in);
   
-  class EPSWrapper{
-  public:
-    EPS eps;
-  };
-  
-  
-  
-  EPSHandler::EPSHandler() : fVerbose(true){
-    static bool amItheFirst{true};
-    if(amItheFirst){
-      SlepcInitialize((int *)0, (char ***)0, (const char*)0,(const char*)0 );
-      amItheFirst = false;
-    }else{
-      PZError<<"ERROR:\nOnly one instance of\n"
-             <<"wgma::slepc::EPSHandler\n"
-             <<"is allowed. Aborting...\n";
-      DebugStop();
-    }
-    fEps = std::unique_ptr<EPSWrapper>(new EPSWrapper);
-    EPSCreate( PETSC_COMM_WORLD, &(fEps->eps) );
+#endif
+  template<class TVar>
+  EPSHandler<TVar>::EPSHandler(){
+#ifdef WGMA_USING_SLEPC    
+    static_assert(std::is_same_v<TVar,PetscScalar>,
+                  "Cannot create EPSHandler<T> for T!=PetscScalar\n"
+                  "Check your configuration");
+#else
+    std::cerr <<"WARNING:The EPSHandler module is only available if the wgma"
+              <<"was configured with SLEPc library. Aborting..."<<std::endl;
+    exit(-1); 
+#endif
   }
   
-  EPSHandler::~EPSHandler() {
-    EPSDestroy(&(fEps->eps));
-    SlepcFinalize();
-  }
-
-  
-  EPSHandler* EPSHandler::Clone() const {
+  template<class TVar>
+  EPSHandler<TVar>* EPSHandler<TVar>::Clone() const {
     return (EPSHandler*)this;
   }
 
-  
-  void EPSHandler::SetNEigenpairs(int n) {
+  template<class TVar>
+  void EPSHandler<TVar>::SetNEigenpairs(int n) {
     std::cout<<__PRETTY_FUNCTION__
              <<"\nNote: setting ncv = 0 and mpd = 0.\n"
              <<"Call instead EPSHandler<T>::SetEPSDimensions";
     SetEPSDimensions(n, 0, 0);
   }
   
-  
-  bool EPSHandler::CheckMatrixTypes(){
+  template<class TVar>
+  bool EPSHandler<TVar>::CheckMatrixTypes(){
     auto sparseA =
-      TPZAutoPointerDynamicCast<TPZFYsmpMatrix<CSTATE>>(this->MatrixA());
+      TPZAutoPointerDynamicCast<TPZFYsmpMatrix<TVar>>(this->MatrixA());
     auto sparseB =
-      TPZAutoPointerDynamicCast<TPZFYsmpMatrix<CSTATE>>(this->MatrixB());
+      TPZAutoPointerDynamicCast<TPZFYsmpMatrix<TVar>>(this->MatrixB());
 
     if(!sparseA ||
        (this->fIsGeneralised && !sparseB)){
@@ -97,36 +88,40 @@ namespace wgma::slepc{
     return true;
   }
   
-  
-  int EPSHandler::SolveEigenProblem(TPZVec<CSTATE> &w, TPZFMatrix<CSTATE> &ev){
+  template<class TVar>
+  int EPSHandler<TVar>::SolveEigenProblem(TPZVec<CTVar> &w, TPZFMatrix<CTVar> &ev){
     return SolveImpl(w, ev, true);
   }
-  
-  int EPSHandler::SolveEigenProblem(TPZVec<CSTATE> &w){
-    TPZFMatrix<CSTATE> ev;
+  template<class TVar>
+  int EPSHandler<TVar>::SolveEigenProblem(TPZVec<CTVar> &w){
+    TPZFMatrix<CTVar> ev;
     return SolveImpl(w, ev, false);
   }
 
-  
-  int EPSHandler::SolveGeneralisedEigenProblem(TPZVec<CSTATE> &w,
-                                               TPZFMatrix<CSTATE> &ev){
+  template<class TVar>
+  int EPSHandler<TVar>::SolveGeneralisedEigenProblem(TPZVec<CTVar> &w,
+                                               TPZFMatrix<CTVar> &ev){
     return SolveImpl(w, ev, false);
   }
 
-  
-  int EPSHandler::SolveGeneralisedEigenProblem(TPZVec<CSTATE> &w){
-    TPZFMatrix<CSTATE> ev;
+  template<class TVar>
+  int EPSHandler<TVar>::SolveGeneralisedEigenProblem(TPZVec<CTVar> &w){
+    TPZFMatrix<CTVar> ev;
     return SolveImpl(w, ev, false);
   }
   
-  
-  int EPSHandler::SolveImpl(TPZVec <CSTATE> &w, TPZFMatrix <CSTATE>& eigenVectors,
+  template<class TVar>
+  int EPSHandler<TVar>::SolveImpl(TPZVec <CTVar> &w, TPZFMatrix <CTVar>& eigenVectors,
                                   bool calcVectors){
+#ifdef WGMA_USING_SLEPC
     CheckMatrixTypes();
-    auto &pzA = dynamic_cast<TPZFYsmpMatrix<CSTATE>&>(this->MatrixA().operator*());
-    auto &pzB = dynamic_cast<TPZFYsmpMatrix<CSTATE>&>(this->MatrixB().operator*());
-    
-    auto CreatePetscMat = [](TPZFYsmpMatrix<CSTATE> &pzmat,
+    auto &pzA = dynamic_cast<TPZFYsmpMatrix<TVar>&>(this->MatrixA().operator*());
+    auto &pzB = dynamic_cast<TPZFYsmpMatrix<TVar>&>(this->MatrixB().operator*());
+
+    //initialize SLEPc
+    SlepcInitialize((int *)0, (char ***)0, (const char*)0,(const char*)0 );
+
+    auto CreatePetscMat = [](TPZFYsmpMatrix<TVar> &pzmat,
                              Mat &mat,
                              PetscInt *&ia,
                              PetscInt *&ja,
@@ -134,7 +129,7 @@ namespace wgma::slepc{
       const int nRows = pzmat.Rows();
       const int nCols = pzmat.Cols();
       TPZVec<int64_t> I, J;
-      TPZVec<CSTATE> A;
+      TPZVec<TVar> A;
       pzmat.GetData(I,J,A);
       
       PetscErrorCode ierr;
@@ -169,20 +164,97 @@ namespace wgma::slepc{
         std::cout<<"Created!"<<std::endl;
       }
     }
-    
+    /**
+       SET UP PC, KSP, ST and EPS based on user options
+     **/
     PetscErrorCode ierr;
-    EPSSetOperators(fEps->eps, petscA, petscB);
+    ::PC pc;
+    ::KSP ksp;
+    ::ST st;
+    ::EPS eps;
+    //PC settings
+    {
+      ierr = PCCreate(PETSC_COMM_WORLD, &pc);
+
+      const PCType pc_type = ConvertPrecond(fPc);
+      ierr = PCSetType(pc, pc_type);
+
+      const STATE pc_zero = fPcZero > 0 ? fPcZero : PETSC_DECIDE;
+      ierr = PCFactorSetZeroPivot(pc,pc_zero);
+#ifdef PETSC_HAVE_MUMPS
+      if(!strcmp(pc_type,"lu")||!strcmp(pc_type,"cholesky")){
+        ierr = PCFactorSetMatSolverType(pc,MATSOLVERMUMPS);
+      }
+#endif
+      CHKERRQ(ierr);
+      //KSP settings
+    
+      ierr = KSPCreate(PETSC_COMM_WORLD, &ksp);
+      ierr = KSPSetPC(ksp, pc);
+      const ::KSPType ksp_type = ConvertKSP(fKsp);
+      ierr = KSPSetType(ksp,ksp_type);
+      const STATE ksp_rtol = fKspRtol > 0 ? fKspRtol : PETSC_DEFAULT;
+      const STATE ksp_atol = fKspAtol > 0 ? fKspAtol : PETSC_DEFAULT;
+      const STATE ksp_dtol = fKspDtol > 0 ? fKspDtol : PETSC_DEFAULT;
+      const int ksp_max_ints = fKspMaxIts > 0 ? fKspMaxIts : PETSC_DEFAULT;
+      ierr = KSPSetTolerances(ksp, ksp_rtol, ksp_atol, ksp_dtol, ksp_max_ints);
+      CHKERRQ(ierr);
+      //ST settings
+      
+      STCreate(PETSC_COMM_WORLD, &st);
+      STSetKSP(st, ksp);
+      const ::STType st_type = STSINVERT;
+      ierr = STSetType(st, st_type);
+      CHKERRQ(ierr);
+      
+      //EPS settings
+      ierr = EPSCreate(PETSC_COMM_WORLD, &eps);
+      ierr = EPSSetST(eps, st);
+      const ::EPSType eps_type = ConvertType(fEpsType);
+      ierr = EPSSetType(eps, eps_type);
+      const ::EPSProblemType eps_prob_type = ConvertProblemType(fProbType);
+      ierr = EPSSetProblemType(eps, eps_prob_type);
+      const STATE eps_tol = fEpsTol > 0 ? fEpsTol : PETSC_DEFAULT;
+      const STATE eps_max_its = fEpsMaxIts > 0 ? fEpsMaxIts : PETSC_DEFAULT;
+      ierr = EPSSetTolerances(eps, eps_tol, eps_max_its);
+      const ::EPSConv eps_conv = ConvertConv(fConvTest);
+      ierr = EPSSetConvergenceTest(eps, eps_conv);
+      const ::EPSWhich eps_which = ConvertWhich(fWhich);
+      ierr = EPSSetWhichEigenpairs(eps, eps_which);
+      const auto eps_target = this->fTarget;
+      ierr = EPSSetTarget(eps, eps_target);
+      const PetscBool eps_true_res = fTrueResidual ? PETSC_TRUE : PETSC_FALSE;
+      ierr = EPSSetTrueResidual(eps, eps_true_res);
+      const PetscInt nev = this->fNEigenpairs;
+      const PetscInt ncv = fNcv > 0 ? fNcv : PETSC_DEFAULT;
+      const PetscInt mpd = fMpd > 0 ? fMpd : PETSC_DEFAULT;
+      ierr = EPSSetDimensions(eps, nev, ncv, mpd);
+      if(!strcmp(eps_type,EPSKRYLOVSCHUR)){
+        const PetscBool locking = fLocking ? PETSC_TRUE : PETSC_FALSE;
+        const PetscReal restart = fRestart > 0 ? fRestart : PETSC_DEFAULT;
+        ierr = EPSKrylovSchurSetLocking(eps, locking);
+        ierr = EPSKrylovSchurSetRestart(eps, restart);
+      }
+      CHKERRQ(ierr);
+    }
+    
+
+    /**
+       BEGINNING OF THE OPERATIONS
+     */
+    
+    EPSSetOperators(eps, petscA, petscB);
 
     {
       TPZSimpleTimer setup("EPSSetUp");
-      EPSSetUp(fEps->eps);
+      EPSSetUp(eps);
     }
 
     if(fVerbose){
-      EPSView(fEps->eps,PETSC_VIEWER_STDOUT_WORLD);
+      EPSView(eps,PETSC_VIEWER_STDOUT_WORLD);
       PetscViewerAndFormat *vf;
       PetscViewerAndFormatCreate(PETSC_VIEWER_STDOUT_WORLD, PETSC_VIEWER_DEFAULT, &vf);
-      EPSMonitorSet(fEps->eps,
+      EPSMonitorSet(eps,
                     (PetscErrorCode (*)(EPS,PetscInt,PetscInt,PetscScalar*,PetscScalar*,
                                         PetscReal*,PetscInt,void*))EPSMonitorFirst,vf,
                     (PetscErrorCode (*)(void**))PetscViewerAndFormatDestroy);
@@ -194,7 +266,7 @@ namespace wgma::slepc{
       TPZSimpleTimer solver("EPSSolve");
       PetscLogDouble t1,t2;
       ierr = PetscTime(&t1);CHKERRQ(ierr);
-      ierr = EPSSolve(fEps->eps);CHKERRQ(ierr);
+      ierr = EPSSolve(eps);CHKERRQ(ierr);
       ierr = PetscTime(&t2);CHKERRQ(ierr);
       ierr = PetscPrintf(PETSC_COMM_WORLD," Elapsed Time in EPSSolve: %f\n",t2-t1);CHKERRQ(ierr);
       
@@ -202,24 +274,25 @@ namespace wgma::slepc{
     /*
       Optional: Get some information from the solver and display it
     */
-    PetscInt its,lits,maxit,nev;
-    PetscReal tol;
-    ::EPSType type;
-    ::KSP ksp;
-    ::ST st;
-    ierr = EPSGetIterationNumber(fEps->eps, &its);CHKERRQ(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD," Number of iterations of the method: %D\n",its);CHKERRQ(ierr);
-    ierr = EPSGetST(fEps->eps,&st);CHKERRQ(ierr);
-    ierr = STGetKSP(st,&ksp);CHKERRQ(ierr);
-    ierr = KSPGetTotalIterations(ksp, &lits);CHKERRQ(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD," Number of linear iterations of the method: %D\n",lits);CHKERRQ(ierr);
-    ierr = EPSGetType(fEps->eps, &type);CHKERRQ(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n\n",type);CHKERRQ(ierr);
-    ierr = EPSGetDimensions(fEps->eps,&nev,NULL,NULL);CHKERRQ(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD, " Number of requested eigenvalues: %D\n", nev);CHKERRQ(ierr);
-    ierr = EPSGetTolerances(fEps->eps,&tol,&maxit);CHKERRQ(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD," Stopping condition: tol=%.4g, maxit=%D\n",(double)tol,maxit);CHKERRQ(ierr);
-
+    {
+      PetscInt its,lits,maxit,nev;
+      PetscReal tol;
+      ::EPSType type;
+      ::KSP ksp;
+      ::ST st;
+      ierr = EPSGetIterationNumber(eps, &its);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD," Number of iterations of the method: %D\n",its);CHKERRQ(ierr);
+      ierr = EPSGetST(eps,&st);CHKERRQ(ierr);
+      ierr = STGetKSP(st,&ksp);CHKERRQ(ierr);
+      ierr = KSPGetTotalIterations(ksp, &lits);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD," Number of linear iterations of the method: %D\n",lits);CHKERRQ(ierr);
+      ierr = EPSGetType(eps, &type);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n\n",type);CHKERRQ(ierr);
+      ierr = EPSGetDimensions(eps,&nev,NULL,NULL);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD, " Number of requested eigenvalues: %D\n", nev);CHKERRQ(ierr);
+      ierr = EPSGetTolerances(eps,&tol,&maxit);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD," Stopping condition: tol=%.4g, maxit=%D\n",(double)tol,maxit);CHKERRQ(ierr);
+    }
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
        Display solution and clean up
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -229,7 +302,7 @@ namespace wgma::slepc{
     */
     ::EPSConv eps_conv_test;
     EPSErrorType eps_error_type = EPS_ERROR_RELATIVE;
-    EPSGetConvergenceTest(fEps->eps, &eps_conv_test);
+    EPSGetConvergenceTest(eps, &eps_conv_test);
     switch(eps_conv_test){
     case EPS_CONV_ABS:
       eps_error_type = EPS_ERROR_ABSOLUTE;
@@ -247,15 +320,15 @@ namespace wgma::slepc{
     }
     if (fVerbose) {
       ierr = PetscViewerPushFormat(PETSC_VIEWER_STDOUT_WORLD,PETSC_VIEWER_ASCII_INFO_DETAIL);CHKERRQ(ierr);
-      ierr = EPSConvergedReasonView(fEps->eps,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-      ierr = EPSErrorView(fEps->eps,eps_error_type,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+      ierr = EPSConvergedReasonView(eps,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+      ierr = EPSErrorView(eps,eps_error_type,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
       ierr = PetscViewerPopFormat(PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
     } else {
-      ierr = EPSErrorView(fEps->eps,eps_error_type,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+      ierr = EPSErrorView(eps,eps_error_type,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
     }
     PetscInt nconv;
-    EPSGetConverged(fEps->eps, &nconv);
-    const PetscInt nEigen = nev > nconv ? nconv : nev;
+    EPSGetConverged(eps, &nconv);
+    const PetscInt nEigen = this->fNEigenpairs > nconv ? nconv : this->fNEigenpairs;
     w.Resize(nEigen);
 
     //let us sort the eigenvalues
@@ -263,27 +336,47 @@ namespace wgma::slepc{
     {
       PetscScalar eigr{0}, eigi{0};
       for(int i = 0; i < nEigen; i++){
-        EPSGetEigenvalue(fEps->eps,i, &eigr, &eigi);
-        //TODO: fix complex
-        w[i] = eigr;
+        EPSGetEigenvalue(eps,i, &eigr, &eigi);
+        if constexpr(std::is_same_v<PetscScalar,STATE>){
+          w[i] = eigr + 1i * eigi;
+        }else{
+          w[i] = eigr;
+        }
+        
       }
       this->SortEigenvalues(w,indices);
     }
 
+    if(!calcVectors) return 0;
     
     eigenVectors.Resize(pzA.Rows(),nEigen);
     for (int i = 0; i < nEigen; ++i) {
       auto il = indices[i];
-      //TODO: fix complex
-      Vec eigVec;
-      PetscScalar  *eigVecArray;
-      MatCreateVecs(petscA,&eigVec,nullptr);
-      EPSGetEigenvector(fEps->eps,il,eigVec,nullptr);
-      VecGetArray(eigVec,&eigVecArray);
-      for (int j = 0; j < pzA.Rows(); ++j) {
-        eigenVectors(j,i) = eigVecArray[j];
+      if constexpr(std::is_same_v<PetscScalar,STATE>){
+        Vec eigVecRe, eigVecIm;
+        PetscScalar *eigVecReArray, *eigVecImArray;
+        
+        MatCreateVecs(petscA,&eigVecRe,nullptr);
+        MatCreateVecs(petscA,&eigVecIm,nullptr);
+        EPSGetEigenvector(eps,il,eigVecRe,eigVecIm);
+        VecGetArray(eigVecRe,&eigVecReArray);
+        VecGetArray(eigVecIm,&eigVecImArray);
+        for (int j = 0; j < pzA.Rows(); ++j) {
+          eigenVectors(j,i) = eigVecReArray[j] + 1i * eigVecImArray[j];
+        }
+        VecRestoreArray(eigVecRe,&eigVecReArray);
+        VecRestoreArray(eigVecIm,&eigVecImArray);
+      }else{
+        Vec eigVec;
+        PetscScalar  *eigVecArray;
+        MatCreateVecs(petscA,&eigVec,nullptr);
+        EPSGetEigenvector(eps,il,eigVec,nullptr);
+        VecGetArray(eigVec,&eigVecArray);
+        for (int j = 0; j < pzA.Rows(); ++j) {
+          eigenVectors(j,i) = eigVecArray[j];
+        }
+        VecRestoreArray(eigVec,&eigVecArray);
       }
-      VecRestoreArray(eigVec,&eigVecArray);
     }
     if(iaP) PetscFree(iaP);
     if(jaP) PetscFree(jaP);
@@ -291,280 +384,175 @@ namespace wgma::slepc{
     if(ibP) PetscFree(ibP);
     if(jbP) PetscFree(jbP);
     if(abP) PetscFree(abP);
-    return 1;
+    
+    EPSDestroy(&eps);
+    SlepcFinalize();
+    return 0;
+#endif
+    return -1;
   }
 
-  
-  void EPSHandler::SetProblemType(const EPSProblemType eps_problem)
+  template<class TVar>
+  void EPSHandler<TVar>::SetProblemType(const EPSProblemType eps_problem)
   {
-    ::EPSProblemType prob = ConvertProblemType(eps_problem);
-    const PetscErrorCode ierr = EPSSetProblemType (fEps->eps, prob);
-    if(ierr!=0){
-      PZError<<"Invalid problem type.\n";
-      PZError<<"Valid problems are:\n";
-      PZError<<"EPS_HEP, EPS_GHEP, EPS_NHEP, EPS_GNHEP, EPS_PGNHEP or EPS_GHIEP\n";
-      DebugStop();
-    }
-    this->SetAsGeneralised(!(prob == EPS_HEP || prob == EPS_NHEP));
+    fProbType = eps_problem;
+    this->SetAsGeneralised(!(eps_problem == EPSProblemType::EPS_HEP ||
+                             eps_problem == EPSProblemType::EPS_NHEP));
   }
-
   
-  EPSProblemType EPSHandler::GetProblemType() const
+  template<class TVar>
+  EPSProblemType EPSHandler<TVar>::GetProblemType() const
   {
-    ::EPSProblemType eps_problem;
-    const PetscErrorCode ierr = EPSGetProblemType (fEps->eps, &eps_problem);
-    if(ierr!=0) DebugStop();
-    EPSProblemType prob = ConvertProblemType(eps_problem);
-    return prob;
+    return fProbType;
   }
-
   
-  void EPSHandler::SetTarget(const CSTATE target){
-    this->fTarget = target;
-    PetscErrorCode ierr = 1;
-    ierr = EPSSetTarget (fEps->eps, target );
-    ST st;
-    ierr = EPSGetST(fEps->eps,&st);
-    ierr = STSetType(st, STSINVERT);
-    ierr = STSetShift(st, target);
-    ierr = EPSSetST (fEps->eps, st);
-    if(ierr!=0) DebugStop();
-  }
-
-  
-  PetscScalar EPSHandler::Target() const {
-    PetscScalar target;
-    const PetscErrorCode ierr = EPSGetTarget (fEps->eps, &target );
-    if(ierr!=0) DebugStop();
-    return target;
-  }
-
-  
-  void EPSHandler::SetWhichEigenpairs (const EPSWhich which){
-    ::EPSWhich w = ConvertWhich(which);
-    // set which portion of the eigenspectrum to solve for
-    const PetscErrorCode ierr = EPSSetWhichEigenpairs (fEps->eps, w);
-    if(ierr!=0) DebugStop();
-  }
-
-  
-  EPSWhich EPSHandler::GetWhichEigenpairs () const {
-    // set which portion of the eigenspectrum to solve for
-    ::EPSWhich which;
-    const PetscErrorCode ierr = EPSGetWhichEigenpairs (fEps->eps, &which);
-    if(ierr!=0) DebugStop();
-    EPSWhich w = ConvertWhich(which);
-    return w;
-  }
-
-  
-  void EPSHandler::SetKrylovOptions (const bool pLocking, const STATE restart){
-    ::EPSType currentType;
-    EPSGetType(fEps->eps, &currentType);
-    if(strcmp(currentType,EPSKRYLOVSCHUR)){
-      PZError<<"EPSType is not EPSKRYLOVSCHUR: Krylov settings will be ignored\n";
-      return;
+  template<class TVar>
+  void EPSHandler<TVar>::SetAsGeneralised(bool isGeneralised){
+    TPZEigenSolver<TVar>::SetAsGeneralised(isGeneralised);
+    if(fProbType == EPSProblemType::EPS_NOTSET){
+      std::cout<<__PRETTY_FUNCTION__
+               <<"\nWARNING: call SetProblemType instead"
+               <<std::endl;
+      if(isGeneralised) fProbType = EPSProblemType::EPS_GNHEP;
+      else fProbType = EPSProblemType::EPS_NHEP;
     }
-
-    PetscBool locking = pLocking ? PETSC_TRUE : PETSC_FALSE;
-
-    PetscErrorCode ierr = EPSKrylovSchurSetLocking (fEps->eps, locking);
-    if(ierr!=0) DebugStop();
-    ierr = EPSKrylovSchurSetRestart(fEps->eps, restart);
-    if(ierr!=0) DebugStop();
   }
 
-  
-  void EPSHandler::GetKrylovOptions (bool &pLocking, STATE &restart) const{
-    ::EPSType currentType;
-    EPSGetType(fEps->eps, &currentType);
-    if(strcmp(currentType,EPSKRYLOVSCHUR)){
-      PZError<<"EPSType is not EPSKRYLOVSCHUR\n";
-      DebugStop();
+  template<class TVar>
+  void EPSHandler<TVar>::SetWhichEigenpairs (const EPSWhich which){
+    fWhich = which;
+  }
+
+  template<class TVar>
+  EPSWhich EPSHandler<TVar>::GetWhichEigenpairs () const {
+    return fWhich;
+  }
+
+  template<class TVar>
+  void EPSHandler<TVar>::SetKrylovOptions (const bool pLocking, const RTVar restart){
+    if(fEpsType != EPSType::KRYLOVSCHUR){
+      std::cout<<__PRETTY_FUNCTION__
+               <<"\n Solver is not KRYLOVSCHUR"
+               <<"\teps_type = "<<SolverName(fEpsType)
+               <<"\nThese options may be meaningless.\n"; 
     }
-
-    PetscBool locking;
-
-
-    PetscErrorCode ierr = EPSKrylovSchurGetLocking(fEps->eps, &locking);
-    if(ierr!=0) DebugStop();
-    pLocking = locking;
-    ierr = EPSKrylovSchurGetRestart(fEps->eps, &restart);
-    if(ierr!=0) DebugStop();
+    fLocking = pLocking;
+    fRestart = restart;
   }
 
-  
-  void EPSHandler::SetTolerances(const STATE t, const int m_its) {
-    auto tol = t;
-    auto max_its = m_its;
-    if(tol < 0) tol = PETSC_DEFAULT;
-    if(max_its < 0) max_its = PETSC_DEFAULT;
-    const PetscErrorCode ierr = EPSSetTolerances(fEps->eps,tol,max_its);
-    if(ierr != 0) DebugStop();
-  }
-
-  
-  void EPSHandler::GetTolerances(STATE &tol, int &max_its) const {
-    const PetscErrorCode ierr = EPSGetTolerances(fEps->eps,&tol,&max_its);
-    if(ierr != 0) DebugStop();
-  }
-
-  
-  void EPSHandler::SetConvergenceTest(const EPSConv test) {
-    ::EPSConv t = ConvertConv(test);
-    const PetscErrorCode ierr = EPSSetConvergenceTest(fEps->eps,t);
-    if(ierr != 0) DebugStop();
-  }
-
-  
-  EPSConv EPSHandler::GetConvergenceTest() const {
-    ::EPSConv test;
-    const PetscErrorCode ierr = EPSGetConvergenceTest(fEps->eps,&test);
-    if(ierr != 0) DebugStop();
-    EPSConv t = ConvertConv(test);
-    return t;
-  }
-
-  
-  void EPSHandler::SetTrueResidual(const bool pOpt) {
-    ST st;
-    EPSGetST(fEps->eps, &st);
-    STType type;
-    STGetType(st, &type);
-
-    if(strcmp(type,STSINVERT) && pOpt){
-      PZError<<__PRETTY_FUNCTION__<<"is only available if STTYpe is STSINVERT\n";
-      DebugStop();
+  template<class TVar>
+  void EPSHandler<TVar>::GetKrylovOptions (bool &pLocking, RTVar &restart) const{
+    if(fEpsType != EPSType::KRYLOVSCHUR){
+      std::cout<<__PRETTY_FUNCTION__
+               <<"\n Solver is not KRYLOVSCHUR"
+               <<"\teps_type = "<<SolverName(fEpsType)
+               <<"\nThese options may be meaningless.\n"; 
     }
-    const PetscBool opt= pOpt ? PETSC_TRUE : PETSC_FALSE;
-    const PetscErrorCode ierr = EPSSetTrueResidual(fEps->eps,opt);
-    if(ierr != 0) DebugStop();
+    pLocking = fLocking;
+    restart = fRestart;
   }
 
-  
-  void EPSHandler::SetType(const EPSType type) {
-    ::EPSType t = ConvertType(type);
-    const PetscErrorCode ierr = EPSSetType(fEps->eps,t);
-    if(ierr != 0) DebugStop();
+  template<class TVar>
+  void EPSHandler<TVar>::SetTolerances(const RTVar t, const int m_its) {
+    fEpsTol = t;
+    fEpsMaxIts = m_its;
   }
 
-  
-  EPSType EPSHandler::GetType() const {
-    ::EPSType type;
-    const PetscErrorCode ierr = EPSGetType(fEps->eps,&type);
-    if(ierr != 0) DebugStop();
-    EPSType t = ConvertType(type);
-    return t;
+  template<class TVar>
+  void EPSHandler<TVar>::GetTolerances(RTVar &tol, int &max_its) const {
+    tol = fEpsTol;
+    max_its = fEpsMaxIts;
   }
 
-  
-  void EPSHandler::SetEPSDimensions(const int nev,
+  template<class TVar>
+  void EPSHandler<TVar>::SetConvergenceTest(const EPSConv test) {
+    fConvTest = test;
+  }
+
+  template<class TVar>
+  EPSConv EPSHandler<TVar>::GetConvergenceTest() const {
+    return fConvTest;
+  }
+
+  template<class TVar>
+  void EPSHandler<TVar>::SetTrueResidual(const bool pOpt) {
+    fTrueResidual = pOpt;
+  }
+
+  template<class TVar>
+  void EPSHandler<TVar>::SetType(const EPSType type) {
+    fEpsType = type;
+  }
+  template<class TVar>
+  EPSType EPSHandler<TVar>::GetType() const {
+    return fEpsType;
+  }
+
+  template<class TVar>
+  void EPSHandler<TVar>::SetEPSDimensions(const int nev,
                                           const int nc,
                                           const int mp) {    
     this->fNEigenpairs = nev;
-
-    const auto ncv = nc > 0 ? nc : PETSC_DEFAULT;
-    const auto mpd = mp > 0 ? mp : PETSC_DEFAULT;
-    const PetscErrorCode ierr = EPSSetDimensions(fEps->eps,nev,ncv,mpd);
-    if(ierr != 0) DebugStop();
+    fNcv = nc;
+    fMpd = mp;
   }
 
-  
-  void EPSHandler::GetEPSDimensions(int &nev,
+  template<class TVar>
+  void EPSHandler<TVar>::GetEPSDimensions(int &nev,
                                           int &ncv,
                                           int &mpd) const {
-    const PetscErrorCode ierr = EPSGetDimensions(fEps->eps,&nev,&ncv,&mpd);
-    if(ierr != 0) DebugStop();
+    nev = this->fNEigenpairs;
+    ncv = fNcv;
+    mpd = fMpd;
   }
 
-  
-  void EPSHandler::SetVerbose(bool fVerbose) {
+  template<class TVar>
+  void EPSHandler<TVar>::SetVerbose(bool fVerbose) {
     EPSHandler::fVerbose = fVerbose;
   }
 
-  
-  void EPSHandler::SetLinearSolver(const KSPSolver solver){
-    ::KSPType type = ConvertKSP(solver);
-    
-    PetscErrorCode ierr = 1;
-    ::ST st;
-    EPSGetST(fEps->eps, &st);
-    ::KSP ksp;
-    ierr = STGetKSP(st,&ksp);
-    ierr = KSPSetType(ksp, type);
-    if(ierr != 0){
-      PZError<<__PRETTY_FUNCTION__
-             <<"\nERROR.Aborting...\n";
-      DebugStop();
-    }
-    STSetKSP(st,ksp);
-    EPSSetST(fEps->eps,st);
+  template<class TVar>
+  void EPSHandler<TVar>::SetLinearSolver(const KSPSolver solver){
+    fKsp = solver;
   }
 
-  
-  void EPSHandler::SetLinearSolverTol(const STATE r, const STATE a,
-                                      const STATE d, const int m){
-    const auto rtol = r > 0 ? r : PETSC_DEFAULT;
-    const auto atol = a > 0 ? a : PETSC_DEFAULT;
-    const auto dtol = d > 0 ? d : PETSC_DEFAULT;
-    const auto max_its = m > 0 ? m : PETSC_DEFAULT;
-    
-    PetscErrorCode ierr = 1;
-    ::ST st;
-    EPSGetST(fEps->eps, &st);
-    ::KSP ksp;
-    ierr = STGetKSP(st,&ksp);
-    KSPSetTolerances(ksp , rtol , atol , dtol , max_its);
-    if(ierr != 0){
-      PZError<<__PRETTY_FUNCTION__
-             <<"\nERROR.Aborting...\n";
-      DebugStop();
-    }
-    STSetKSP(st,ksp);
-    EPSSetST(fEps->eps,st);
+  template<class TVar>
+  void EPSHandler<TVar>::SetLinearSolverTol(const RTVar r, const RTVar a,
+                                            const RTVar d, const int m){
+    fKspRtol = r;
+    fKspAtol = a;
+    fKspDtol = d;
+    fKspMaxIts = m;
   }
 
-  
-  void EPSHandler::GetLinearSolverTol(STATE &rtol, STATE &atol,
-                                      STATE &dtol, int &max_its){
-    PetscErrorCode ierr = 1;
-    ::ST st;
-    EPSGetST(fEps->eps, &st);
-    ::KSP ksp;
-    ierr = STGetKSP(st,&ksp);
-    KSPGetTolerances(ksp , &rtol , &atol , &dtol , &max_its);
-    if(ierr != 0){
-      PZError<<__PRETTY_FUNCTION__
-             <<"\nERROR.Aborting...\n";
-      DebugStop();
-    }
-    STSetKSP(st,ksp);
-    EPSSetST(fEps->eps,st);
+  template<class TVar>
+  void EPSHandler<TVar>::GetLinearSolverTol(RTVar &rtol, RTVar &atol,
+                                            RTVar &dtol, int &max_its){
+    rtol = fKspRtol;
+    atol = fKspAtol;
+    dtol = fKspDtol;
+    max_its = fKspMaxIts;
   }
   
-  
-  void EPSHandler::SetPrecond(const Precond pre, STATE zero){
-    PCType precond = ConvertPrecond(pre);
-    PetscErrorCode ierr = 1;
-    ::ST st;
-    EPSGetST(fEps->eps, &st);
-    ::KSP ksp;
-    ierr = STGetKSP(st,&ksp);
-    ::PC pc;
-    ierr = KSPGetPC(ksp, &pc);
-    ierr = PCSetType(pc, precond);
-    ierr = PCFactorSetZeroPivot(pc,zero);
-#ifdef PETSC_HAVE_MUMPS
-    if(!strcmp(precond,"lu")||!strcmp(precond,"cholesky")){
-      ierr = PCFactorSetMatSolverPackage(pc,MATSOLVERMUMPS);
-    }
-#endif
-    ierr = KSPSetPC(ksp,pc);
-    ierr = STSetKSP(st,ksp);
-    ierr = EPSSetST(fEps->eps,st);
-    if(ierr != 0) DebugStop();
+  template<class TVar>
+  void EPSHandler<TVar>::SetPrecond(const Precond pre, RTVar zero){
+    fPc = pre;
+    fPcZero = zero;
   }
 
+  std::string SolverName(EPSType type){
+    switch(type){
+    case EPSType::POWER: return "POWER";
+    case EPSType::SUBSPACE: return "SUBSPACE";
+    case EPSType::ARNOLDI: return "ARNOLDI";
+    case EPSType::LANCZOS: return "LANCZOS";
+    case EPSType::KRYLOVSCHUR: return "KRYLOVSCHUR";
+    case EPSType::GD: return "GD";
+    case EPSType::JD: return "JD";
+    }
+  };
+  
+#ifdef WGMA_USING_SLEPC
   ::EPSProblemType ConvertProblemType(EPSProblemType in)
   {
     switch(in){
@@ -574,7 +562,10 @@ namespace wgma::slepc{
     case EPSProblemType::EPS_GNHEP: return EPS_GNHEP;
     case EPSProblemType::EPS_PGNHEP: return EPS_PGNHEP;
     case EPSProblemType::EPS_GHIEP: return EPS_GHIEP;
+    default:
+      unreachable();
     }
+    DebugStop();
   }
   
   EPSProblemType ConvertProblemType(::EPSProblemType in)
@@ -849,5 +840,15 @@ namespace wgma::slepc{
     case Precond::DEFLATION: return PCDEFLATION;
     }
   }
-  
+
+#ifdef WGMA_PETSC_CPLX
+  template class EPSHandler<CSTATE>;
+#else
+  template class EPSHandler<STATE>;
+#endif
+
+#else
+  template class EPSHandler<CSTATE>;
+  template class EPSHandler<STATE>;
+#endif
 }

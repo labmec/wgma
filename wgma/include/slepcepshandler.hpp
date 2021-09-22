@@ -11,7 +11,6 @@ namespace wgma::slepc{
   /*
     The following are simple wrappers for avoiding exposing SLEPc types
   */
-  class EPSWrapper;
   /**
      @brief Eigenvalue problem type (generalised, hermitian, etc)
   */
@@ -21,7 +20,8 @@ namespace wgma::slepc{
     EPS_NHEP,///< Non-Hermitian eigenvalue problem
     EPS_GNHEP,///< Generalized non-Hermitian eigenvalue problem
     EPS_PGNHEP,///< Generalized non-Hermitian eigenvalue problem with positive semi-definite B
-    EPS_GHIEP///< Generalized Hermitian-indefinite eigenvalue problem 
+    EPS_GHIEP,///< Generalized Hermitian-indefinite eigenvalue problem
+    EPS_NOTSET///<Default value
   };
   
   /**
@@ -43,7 +43,7 @@ namespace wgma::slepc{
     LANCZOS,///< Lanczos
     KRYLOVSCHUR,///< Krylov-Schur
     GD,///< Generalised Davidson
-    JD///< Jacobi0Davidson
+    JD///< Jacobi-Davidson
   };
   /**
      @brief Which eigenvalues are to be sought
@@ -154,28 +154,32 @@ namespace wgma::slepc{
      This class is mainly designed thinking about solving a generalised
      eigenvalue problem using the shift and invert spectral transform.
      Consult SLEPc manual for advanced usage. 
-     WARNING: Currently it only supports NeoPZ TPZSpStructMatrix<CSTATE> type.
-     @note All operations must be made before associating the EPSHandler instance
+     WARNING: Currently it only supports NeoPZ TPZSpStructMatrix<T> type,
+     where std::is_same_v<PetscScalar,T> == true.
+     @note All configurations must be made before associating the EPSHandler instance
      with the TPZEigenAnalysis instance.
   */
-  class EPSHandler : public TPZEigenSolver<CSTATE> {
+  template<class TVar>
+  class EPSHandler : public TPZEigenSolver<TVar> {
   public:
+    //! If TVar!=PetscScalar, it will not compile
     EPSHandler();
-    EPSHandler(const EPSHandler &) = delete;
-    EPSHandler(EPSHandler &&) = delete;
-    EPSHandler& operator=(const EPSHandler &) = delete;
-    EPSHandler& operator=(EPSHandler &&) = delete;
-    ~EPSHandler();
+      
+    EPSHandler(const EPSHandler &) = default;
+    EPSHandler(EPSHandler &&) = default;
+    EPSHandler& operator=(const EPSHandler &) = default;
+    EPSHandler& operator=(EPSHandler &&) = default;
+    ~EPSHandler() = default;
     //! This function does NOT clone the instance. It merely passes a pointer to it.
     EPSHandler * Clone() const override;
     
-    int SolveEigenProblem(TPZVec<CSTATE> &w,TPZFMatrix<CSTATE> &eigenVectors) override;
-    int SolveEigenProblem(TPZVec<CSTATE> &w) override;
+    int SolveEigenProblem(TPZVec<CTVar> &w,TPZFMatrix<CTVar> &eigenVectors) override;
+    int SolveEigenProblem(TPZVec<CTVar> &w) override;
 
-    int SolveGeneralisedEigenProblem(TPZVec<CSTATE> &w,
-                                     TPZFMatrix<CSTATE> &eigenVectors) override;
+    int SolveGeneralisedEigenProblem(TPZVec<CTVar> &w,
+                                     TPZFMatrix<CTVar> &eigenVectors) override;
 
-    int SolveGeneralisedEigenProblem(TPZVec<CSTATE> &w) override;
+    int SolveGeneralisedEigenProblem(TPZVec<CTVar> &w) override;
 
     void SetNEigenpairs(int n) override;
 
@@ -183,7 +187,8 @@ namespace wgma::slepc{
     void SetProblemType(const EPSProblemType epsProblem);
     //! Get details about the problem type
     EPSProblemType GetProblemType() const;
-
+    //! It is recommend to call SetProblemType instead
+    void SetAsGeneralised(bool isGeneralised) override;
     //! Sets the portion of the spectrum in which evs are to be sought
     void SetWhichEigenpairs(const EPSWhich eps_which);
     //! Gets the portion of the spectrum in which evs are to be sought
@@ -194,27 +199,27 @@ namespace wgma::slepc{
        @param restart Percentage of evs kept after restart. negative value for PETSC_DECIDE
        @note ignored if other algorithms are in use.
      */
-    void SetKrylovOptions(const bool lock, const STATE restart);
+    void SetKrylovOptions(const bool lock, const RTVar restart);
     /**
        @brief Set options related to Krylov-schur algorithm
        @param lock Whether the locking variant is used
        @param restart Percentage of evs kept after restart
        @note ignored if other algorithms are in use.
      */
-    void GetKrylovOptions(bool &lock , STATE &restart) const;
+    void GetKrylovOptions(bool &lock , RTVar &restart) const;
     /**
        @brief Sets tolerances for the eigenvalue solver
        @param tol tolerance of the eigensolver
        @param max_its Maximum iterations of the eigensolver
        @note Negative values for PETSC_DECIDE
     */
-    void SetTolerances(const STATE tol, const int max_its);
+    void SetTolerances(const RTVar tol, const int max_its);
     /**
        @brief Gets tolerances for the eigenvalue solver
        @param tol tolerance of the eigensolver
        @param max_its Maximum iterations of the eigensolver
     */
-    void GetTolerances(STATE &tol, int &max_its) const;
+    void GetTolerances(RTVar &tol, int &max_its) const;
     //! Sets convergence test for the eigensolver
     void SetConvergenceTest(const EPSConv test);
     //! Gets convergence test for the eigensolver
@@ -253,23 +258,57 @@ namespace wgma::slepc{
        @param max_its Maximum iterations of the linear solver
        @note Set negative values for PETSC_DECIDE
     */
-    void SetLinearSolverTol(const STATE rtol, const STATE atol, const STATE dtol, const int max_its);
+    void SetLinearSolverTol(const RTVar rtol, const RTVar atol, const RTVar dtol, const int max_its);
     //!Gets tolerances regarding the linear solver
-    void GetLinearSolverTol(STATE &rtol, STATE &atol, STATE &dtol, int &max_its);
+    void GetLinearSolverTol(RTVar &rtol, RTVar &atol, RTVar &dtol, int &max_its);
     //!Sets preconditioner to be used and tolerance for zero pivot
     void SetPrecond(const Precond precond,
-                    STATE zero = std::numeric_limits<STATE>::epsilon());
+                    RTVar zero = std::numeric_limits<RTVar>::epsilon());
 
   private:
     //! Actual solver implementation with SLEPc calls
-    int SolveImpl(TPZVec<CSTATE> &w,TPZFMatrix<CSTATE> &eigenVectors,
+    int SolveImpl(TPZVec<CTVar> &w,TPZFMatrix<CTVar> &eigenVectors,
                   bool calcVectors);
     //! Checks whether the matrices are in a correct format for SLEPc
     bool CheckMatrixTypes();
     //! Controls verbosity level
     bool fVerbose = true;
-    //! Pointer for actual EPS context
-    std::unique_ptr<EPSWrapper> fEps;
+    //! Problem Type
+    EPSProblemType fProbType{EPSProblemType::EPS_NOTSET};
+    //! Which part of the spectrum to solve for
+    EPSWhich fWhich{EPSWhich::EPS_LARGEST_MAGNITUDE};
+    //! Whether to use the locking variant if using Krylov algorithm
+    bool fLocking{false};
+    //! Percentage of eigenvectors kept after restart if using Krylov algorithm
+    RTVar fRestart{0.5};
+    //! Tolerance of the eigensolver
+    RTVar fEpsTol{-1};
+    //! Maximum iterations of the eigensolver
+    RTVar fEpsMaxIts{-1};
+    //! Convergence test for the eigensolver
+    EPSConv fConvTest{EPSConv::EPS_CONV_REL};
+    //! Whether to compute true residual explicitly
+    bool fTrueResidual{false};
+    //! Eigensolver algorithm
+    EPSType fEpsType{EPSType::KRYLOVSCHUR};
+    //! the maximum dimension of the subspace to be used by the subsolve 
+    int fNcv{-1};
+    //! the maximum dimension allowed for the projected problem
+    int fMpd{-1};
+    //! Linear solver to be used
+    KSPSolver fKsp{KSPSolver::PREONLY};
+    //! Relative tolerance for the linear solver
+    RTVar fKspRtol{-1};
+    //! Absolute tolerance for the linear solver
+    RTVar fKspAtol{-1};
+    //! Divergence condition for the linear solver
+    RTVar fKspDtol{-1};
+    //! Maximum iterations of the linear solver
+    RTVar fKspMaxIts{-1};
+    //! Preconditioner for the linear solver
+    Precond fPc{Precond::LU};
+    //! Zero pivot tolerance for the preconditioner
+    RTVar fPcZero{std::numeric_limits<RTVar>::epsilon()};
   };
 }
 #endif //WGMASLEPCHANDLER_H

@@ -11,21 +11,15 @@ set(headers
   include/pmltypes.hpp
   include/gmeshtools.hpp
   include/cmeshtools.hpp
+  include/slepcepshandler.hpp
   )
 
 set(sources
   src/cmeshtools.cpp
   src/gmeshtools.cpp
+  src/slepcepshandler.cpp
   )
 
-if(USING_SLEPC)
-  list(APPEND headers
-    include/slepcepshandler.hpp
-    )
-  list(APPEND sources
-    src/slepcepshandler.cpp
-    )
-endif()
 target_sources(wgma PUBLIC ${headers})
 target_sources(wgma PRIVATE ${sources})
 
