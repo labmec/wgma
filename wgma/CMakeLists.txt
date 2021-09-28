@@ -11,12 +11,14 @@ set(headers
   include/pmltypes.hpp
   include/gmeshtools.hpp
   include/cmeshtools.hpp
+  include/wganalysis.hpp
   include/slepcepshandler.hpp
   )
 
 set(sources
   src/cmeshtools.cpp
   src/gmeshtools.cpp
+  src/wganalysis.cpp
   src/slepcepshandler.cpp
   )
 
