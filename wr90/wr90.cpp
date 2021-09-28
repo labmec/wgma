@@ -9,7 +9,9 @@ a H1-conforming approximation space for the axial component.
 ***/
 
 //wgma includes
+#include "gmeshtools.hpp"
 #include "cmeshtools.hpp"
+#include "wganalysis.hpp"
 //pz includes
 #include <MMeshType.h>                   //for MMeshType
 #include <pzcmesh.h>                     //for TPZCompMesh
@@ -17,13 +19,8 @@ a H1-conforming approximation space for the axial component.
 #include <TPZGeoMeshTools.h>             //for TPZGeoMeshTools::CreateGeoMeshOnGrid
 #include <pzlog.h>                       //for TPZLogger
 #include <TPZElectromagneticConstants.h> //for pzelectromag::cZero
-#include <TPZEigenAnalysis.h>            //for TPZEigenAnalysis 
 #include <TPZKrylovEigenSolver.h>        //for TPZKrylovEigenSolver
-#include <TPZVTKGeoMesh.h>               //for exporting geomesh to vtk
-#include <TPZSkylineNSymStructMatrix.h>  //non-symmetric skyline matrix storage
-#include <TPZSpStructMatrix.h>           //non-symmetric sparse matrix storage
-#include <pzbuildmultiphysicsmesh.h>     //for TPZBuildMultiphysicsMesh 
-#include <Electromagnetics/TPZWaveguideModalAnalysis.h> //for TPZMatWaveguideModalAnalysis
+
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
 /**
    @brief Creates the geometrical mesh associated with a rectangular metallic waveguide. 
@@ -55,16 +52,16 @@ int main(int argc, char *argv[]) {
   //which BC to apply if symmetry is used
   constexpr wgma::bc::type sym{wgma::bc::type::PEC};
   // n divisions in x direction
-  constexpr int nDivX{32};
+  constexpr int nDivX{7};
   // n divisions in y direction
-  constexpr int nDivY{16};
+  constexpr int nDivY{7};
   // type of elements
   constexpr MMeshType meshType{MMeshType::ETriangular};
   // TPZManVector<Type,N> is a vector container with static + dynamic storage.
   // one can also use TPZVec<Type> for dynamic storage
   TPZManVector<int, 2> nDivs = {nDivX, nDivY};
   // polynomial order to be used in the approximation
-  constexpr int pOrder{2};
+  constexpr int pOrder{3};
   // magnetic permeability
   constexpr CSTATE ur{1};
   // electric permittivity
@@ -98,9 +95,9 @@ int main(int argc, char *argv[]) {
    The target variable should be close to the desired eigenvalue (in this case,
    the effective index neff). We are looking for neff=1, i.e., the modes with
   lowest cutoff frequency*/
-  constexpr CSTATE target = -1;
+  constexpr CSTATE target = -1.01;
   // Dimension of the krylov space to be used. Suggested to be at least nev * 10
-  constexpr int krylovDim{100};
+  constexpr int krylovDim{-1};
 
 
   /*********************
@@ -146,19 +143,16 @@ int main(int argc, char *argv[]) {
                                                meshType,usingSymmetry);
 
   
-  //print gmesh to vtk
+  //print gmesh to .txt and .vtk format
   if(printGMesh)
   {
-    const std::string gmeshFileNameTxt{"gmesh_" +
-    std::to_string(nDivX) + " _" + std::to_string(nDivY) + ".vtk"};
-    std::ofstream gmeshFileTxt(gmeshFileNameTxt);
-    gmesh->Print(gmeshFileTxt);
-    const std::string gmeshFileNameVtk{"gmesh_" +
-    std::to_string(nDivX) + " _" + std::to_string(nDivY) + ".vtk"};
-    std::ofstream gmeshFileVtk(gmeshFileNameVtk);
-    TPZVTKGeoMesh::PrintGMeshVTK(gmesh, gmeshFileVtk, true);
+    const auto filename = "wr90_gmesh_"+
+      std::to_string(nDivX) + " _" + std::to_string(nDivY);
+    wgma::gmeshtools::PrintGeoMesh(gmesh,filename);
   }
 
+
+  //seting BC information
   TPZVec<int> volMatIdVec({1});
   TPZVec<wgma::bc::data> bcDataVec(4);
   for(int i = 0; i < 4; i++){
@@ -174,134 +168,34 @@ int main(int argc, char *argv[]) {
   // computational meshes are generated. One for each space and a multiphysics mesh*/
   auto meshVec = wgma::cmeshtools::CreateCMesh(gmesh,pOrder,volMatIdVec,{ur},{er},{},
                                                bcDataVec, lambda,scale);
-  //gets the multiphysics mesh (main mesh)
-  auto cmesh = meshVec[0];
 
-  
-  TPZEigenAnalysis an(cmesh, optimizeBandwidth);
-  an.SetComputeEigenvectors(computeVectors);
+  //WGAnalysis class is responsible for managing the modal analysis
+  wgma::WGAnalysis analysis(meshVec,nThreads,optimizeBandwidth,filterBoundaryEqs);
 
-  /**
-     When using NeoPZ with MKL, an sparse matrix should be used for better
-     performance. Otherwise, the skyline matrix has available inhouse solvers.
-  */
-  TPZAutoPointer<TPZStructMatrix> strmtrx{nullptr};
-#ifdef PZ_USING_MKL
-  strmtrx = new TPZSpStructMatrix<CSTATE>(cmesh);
-#else
-  strmtrx = new TPZSkylineNSymStructMatrix<CSTATE>(cmesh);
-#endif
-  
-  strmtrx->SetNumThreads(nThreads);
-  
-  TPZVec<int64_t> activeEquations;
-  //this value is the total number of dofs including dirichlet bcs
-  int neq, neqOriginal, neqH1, neqHCurl;
-  
-  
-  if(filterBoundaryEqs){
-      wgma::cmeshtools::FilterBoundaryEquations(meshVec, activeEquations,
-                                                neq, neqOriginal,
-                                                neqH1, neqHCurl);
-    std::cout<<"neq(before): "<<neqOriginal
-             <<"\tneq(after): "<<neq<<std::endl;
-    strmtrx->EquationFilter().SetActiveEquations(activeEquations);
-  }else{
-    std::set<int64_t> boundConnects;
-    wgma::cmeshtools::CountActiveEquations(meshVec,boundConnects,neqOriginal,
-                                           neqH1,neqHCurl);
-  }
-  
-  an.SetStructuralMatrix(strmtrx);
+  TPZAutoPointer<TPZEigenSolver<CSTATE>>solver{nullptr};
 
-  
-  
-  TPZKrylovEigenSolver<CSTATE> solver;
+  auto krylov_solver = new TPZKrylovEigenSolver<CSTATE>;
   TPZSTShiftAndInvert<CSTATE> st;
-  solver.SetSpectralTransform(st);
-  solver.SetKrylovDim(krylovDim);
+  krylov_solver->SetSpectralTransform(st);
+  krylov_solver->SetKrylovDim(krylovDim);
 
-  {
-    /**this is to ensure that the eigenvector subspace is orthogonal to
-       the spurious solutions associated with et = 0 ez != 0*/
-    TPZFMatrix<CSTATE> initVec(neq, 1, 0.);
-    constexpr auto firstHCurl = TPZWaveguideModalAnalysis::HCurlIndex();
-    for (int i = 0; i < neqHCurl; i++) {
-      initVec(firstHCurl + i, 0) = 1;
-    }
-    solver.SetKrylovInitialVector(initVec);
-  }
+  krylov_solver->SetTarget(target);
+  krylov_solver->SetNEigenpairs(nEigenpairs);
+  krylov_solver->SetAsGeneralised(true);
+  krylov_solver->SetEigenSorting(sortingRule);
 
-  solver.SetTarget(target);
-  solver.SetNEigenpairs(nEigenpairs);
-  solver.SetAsGeneralised(true);
-  solver.SetEigenSorting(sortingRule);
+  analysis.SetSolver(krylov_solver);
 
-  an.SetSolver(solver);
-  {
-    std::cout<<"Assembling..."<<std::flush;
-    TPZSimpleTimer assemble("Assemble");
-    an.Assemble();
-    std::cout<<"\rAssembled!"<<std::endl;
-  }
-  {
-    TPZSimpleTimer solv("Solve");
-    std::cout<<"Solving..."<<std::flush;
-    an.Solve();
-    std::cout<<"\rSolved!"<<std::endl;
-  }
-  auto ev = an.GetEigenvalues();
 
-  for(auto &w : ev){
-    std::cout<<w<<std::endl;
-  }
+  analysis.Run(computeVectors);
   
   if (!computeVectors && !exportVtk) return 0;
-  
-  TPZStack<std::string> scalnames, vecnames;
-  scalnames.Push("Ez");
-  vecnames.Push("Et");
-  const std::string plotfile = "fieldPlot.vtk";
-  constexpr int dim{2};
-  an.DefineGraphMesh(dim, scalnames, vecnames,plotfile);
 
-  auto eigenvectors = an.GetEigenvectors();
+  const std::string plotfile = "wr90_field_";
 
-  TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
-  const auto nev = ev.size();
-
-  TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshVecPost(2);
-  meshVecPost[0] = meshVec[1];
-  meshVecPost[1] = meshVec[2];
+  TPZSimpleTimer postProc("Post processing");
   
-  std::cout<<"Post processing..."<<std::endl;
-  
-  for (int iSol = 0; iSol < ev.size(); iSol++) {
-    const CSTATE currentKz = [&ev,iSol](){
-      auto tmp = std::sqrt(-1.0*ev[iSol]);
-      constexpr auto epsilon = std::numeric_limits<STATE>::epsilon()/
-      (10*std::numeric_limits<STATE>::digits10);
-      //let us discard extremely small imag parts
-      if (tmp.imag() < epsilon)
-        {tmp = tmp.real();}
-      return tmp;
-    }();
-    eigenvectors.GetSub(0, iSol, neqOriginal, 1, evector);
-    for(auto id : matIdVec){
-      auto matPtr =
-        dynamic_cast<TPZWaveguideModalAnalysis *>(cmesh->FindMaterial(id));
-      if(!matPtr) continue;
-      matPtr->SetKz(currentKz);
-      matPtr->SetPrintFieldRealPart(printRealPart);
-    }
-    std::cout<<"\rPost processing step "<<iSol+1<<" out of "<<ev.size()
-             <<"(kz = "<<currentKz<<")"<<std::flush;
-    an.LoadSolution(evector);
-    TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshVecPost, cmesh);
-    an.PostProcess(vtkRes);
-  }
-  std::cout<<"\rFinished post processing"<<std::endl;
-  std::cout<<std::endl;
+  analysis.PostProcess(plotfile, vtkRes, printRealPart);
   return 0;
 }
 
