@@ -5,7 +5,20 @@
 #include <TPZRefPatternDataBase.h>
 #include <tpzarc3d.h>
 #include <tpzgeoblend.h>
+#include <TPZVTKGeoMesh.h>
 
+#include <fstream>
+
+void wgma::gmeshtools::PrintGeoMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
+                                    std::string filename)
+{
+  const std::string gmeshFileNameTxt{filename+".txt"};
+  std::ofstream gmeshFileTxt(gmeshFileNameTxt);
+  gmesh->Print(gmeshFileTxt);
+  const std::string gmeshFileNameVtk{filename+".vtk"};
+  std::ofstream gmeshFileVtk(gmeshFileNameVtk);
+  TPZVTKGeoMesh::PrintGMeshVTK(gmesh, gmeshFileVtk, true);
+}
 
 TPZAutoPointer<TPZGeoMesh>
 wgma::gmeshtools::CreateStructuredMesh(

@@ -11,6 +11,9 @@ namespace wgma::gmeshtools{
   struct EdgeData;
   struct QuadrilateralData;
 
+  //! Prints a geometric mesh in .txt and .vtk format
+  void PrintGeoMesh(TPZAutoPointer<TPZGeoMesh> gmesh, std::string filename);
+
   /**
      @brief Creates a structured geometrical mesh. 
      The parameters describe (possibly curved) quadrilaterals that will be then meshed.
