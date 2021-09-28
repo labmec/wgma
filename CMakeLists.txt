@@ -14,13 +14,13 @@ if(NOT CMAKE_IS_PZ_BUILDTREE)
   find_package(NeoPZ REQUIRED)
 endif()
 
-check_pz_opt(PZ_USING_LAPACK _PZ_HAS_LAPACK)
+check_pz_opt(PZ_USING_MKL _PZ_HAS_MKL)
 #enabling SLEPc library (enables PETSc, BLAS, LAPACK, ARPACK, SUPERLU and METIS)
 option(USING_SLEPC "Whether the SLEPc library will be linked in" OFF)
 
-if(NOT _PZ_HAS_LAPACK AND NOT USING_SLEPC)
+if(NOT _PZ_HAS_MKL AND NOT USING_SLEPC)
   message(FATAL_ERROR "This project requires NeoPZ to "
-    "have been configured using LAPACK or USING_SLEPC should be on")
+    "have been configured using MKL or USING_SLEPC should be on")
 endif()
 
 
