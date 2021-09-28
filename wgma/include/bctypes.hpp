@@ -10,21 +10,21 @@ namespace wgma{
       PMC//!< Perfect magnetic conductor (neumann)
     };
 
-    int to_int(type t){
+    inline int to_int(type t){
       switch(t){
       case type::PEC: return 0;
       case type::PMC: return 1;
       }
     }
 
-    std::string to_string(type t){
+    inline std::string to_string(type t){
       switch(t){
       case type::PEC: return "PEC";
       case type::PMC: return "PMC";
       }
     }
 
-    std::ostream& operator<<( std::ostream& out, const type& t ){
+    inline std::ostream& operator<<( std::ostream& out, const type& t ){
       return out << to_string(t);
     }
 

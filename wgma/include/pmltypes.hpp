@@ -17,7 +17,7 @@ namespace wgma{
       xpym//!< attenuates with increasing x and decreasing y
     };
 
-    std::string to_string(type t){
+    inline std::string to_string(type t){
       switch(t){
       case type::xp: return "xp";
       case type::yp: return "yp";
@@ -30,12 +30,12 @@ namespace wgma{
       }
     }
 
-    std::ostream& operator<<( std::ostream& out, const type& t ){
+    inline std::ostream& operator<<( std::ostream& out, const type& t ){
       return out << to_string(t);
     }
 
     //!Queries for pml attenuation in the x-direction.
-    bool attx(type t){
+    inline bool attx(type t){
       if( t == type::yp || t == type::ym) return false;
       else return true;
     }
@@ -43,13 +43,13 @@ namespace wgma{
         @return A positive (negative)  value means that it attenuates with
     increasing (decreasing) x. 
     Zero means that it does not attenuate in the x direction.*/
-    int xinfo(type t){
+    inline int xinfo(type t){
       if( t == type::yp || t == type::ym) return 0;
       else if(t == type::xp || t == type:: xpyp || t == type::xpym) return 1;
       else return -1;
     }
     //!Queries for pml attenuation in the y-direction.
-    bool atty(type t){
+    inline bool atty(type t){
       if( t == type::xp || t == type::xm) return false;
       else return true;
     }
@@ -57,7 +57,7 @@ namespace wgma{
         @return A positive (negative)  value means that it attenuates with
     increasing (decreasing) x. 
     Zero means that it does not attenuate in the x direction.*/
-    int yinfo(type t){
+    inline int yinfo(type t){
       if( t == type::xp || t == type::xm) return 0;
       else if(t == type::yp || t == type:: xpyp || t == type::xmyp) return 1;
       else return -1;
