@@ -125,7 +125,7 @@ int main(int argc, char *argv[]) {
    *********************/
 
   //whether to print the geometric mesh in .txt and .vtk formats
-  constexpr bool printGMesh{false};
+  constexpr bool printGMesh{true};
   //whether to export the solution as a .vtk file
   constexpr bool exportVtk{true};
   //resolution of the .vtk file in which the solution will be exported
@@ -178,7 +178,7 @@ int main(int argc, char *argv[]) {
       std::to_string(factor) + " _" + prefix + suffix;
     wgma::gmeshtools::PrintGeoMesh(gmesh,filename);
   }
-  
+
   //setting up cmesh data
   TPZVec<int> volMatIdVec(2,-1);
   TPZVec<wgma::pml::data> pmlDataVec(usingPML ? 8 : 0);
@@ -243,14 +243,17 @@ CreateStepFiberMesh(
   )
 {
 
+  
   using wgma::gmeshtools::EdgeData;
-  using wgma::gmeshtools::QuadrilateralData;
-  const int nPtsCoreR = factor * 2,//number of points in core (radial direction)
-    nPtsCoreT = factor * 5,//number of points in core (tangential direction)
-    nPtsCladdingR = factor * 4,
-    nDivPml = factor * nLayersPML + 1;
+  using wgma::gmeshtools::QuadData;
+  using wgma::gmeshtools::CircArcMap;
+  
+  const int nElsCoreR = factor * 2,//number of points in core (radial direction)
+    nElsCoreT = factor * 5,//number of points in core (tangential direction)
+    nElsCladdingR = factor * 4,
+    nElsPml = factor * nLayersPML + 1;
 
-  if(std::min<int>({nPtsCoreR,nPtsCoreT,nPtsCladdingR,nDivPml}) < 2 ) {
+  if(std::min<int>({nElsCoreR,nElsCoreT,nElsCladdingR,nElsPml}) < 2 ) {
     std::cout<<"Mesh has not sufficient divisions."<<std::endl;
     std::cout<<"Minimum is 2."<<std::endl;
     DebugStop();
@@ -282,159 +285,183 @@ CreateStepFiberMesh(
   const REAL rCore = realRCore * scale;
   const REAL bound = rCore + boundDist * scale;
   const REAL dPML = realDPML * scale;
-  TPZManVector<REAL,2> xc(2, 0.);
+  TPZManVector<REAL,2> xc(3, 0.);
   xc[0] = 0.;
   xc[1] = 0.;
 
 
 
   ///all points
-  TPZManVector<TPZVec<REAL>,maxNPts> pointsVec(nPoints,TPZVec<REAL>(2,0.));
-  //hole 1
-  pointsVec[0][0]= xc[0] + M_SQRT1_2 * std::cos(M_PI_4)*rCore; pointsVec[0][1]= xc[1] + M_SQRT1_2 * std::sin(M_PI_4)*rCore;
-  pointsVec[1][0]= xc[0] - M_SQRT1_2 * std::cos(M_PI_4)*rCore; pointsVec[1][1]= xc[1] + M_SQRT1_2 * std::sin(M_PI_4)*rCore;
-  pointsVec[2][0]= xc[0] - M_SQRT1_2 * std::cos(M_PI_4)*rCore; pointsVec[2][1]= xc[1] - M_SQRT1_2 * std::sin(M_PI_4)*rCore;
-  pointsVec[3][0]= xc[0] + M_SQRT1_2 * std::cos(M_PI_4)*rCore; pointsVec[3][1]= xc[1] - M_SQRT1_2 * std::sin(M_PI_4)*rCore;
+  TPZManVector<TPZVec<REAL>,maxNPts> pointsVec(nPoints,TPZVec<REAL>(3,0.));
+  //inner part of the core (lower right, upper right, upper left, lower left)
+  pointsVec[0][0]= xc[0] + M_SQRT1_2 * std::cos(M_PI_4)*rCore; pointsVec[0][1]= xc[1] - M_SQRT1_2 * std::sin(M_PI_4)*rCore;
+  pointsVec[1][0]= xc[0] + M_SQRT1_2 * std::cos(M_PI_4)*rCore; pointsVec[1][1]= xc[1] + M_SQRT1_2 * std::sin(M_PI_4)*rCore;
+  pointsVec[2][0]= xc[0] - M_SQRT1_2 * std::cos(M_PI_4)*rCore; pointsVec[2][1]= xc[1] + M_SQRT1_2 * std::sin(M_PI_4)*rCore;
+  pointsVec[3][0]= xc[0] - M_SQRT1_2 * std::cos(M_PI_4)*rCore; pointsVec[3][1]= xc[1] - M_SQRT1_2 * std::sin(M_PI_4)*rCore;
+  //ok
+  //outer part of the core (lower right, upper right, upper left, lower left)
+  pointsVec[4][0]= xc[0] + std::cos(M_PI_4)*rCore; pointsVec[4][1]= xc[1] - std::sin(M_PI_4)*rCore;
+  pointsVec[5][0]= xc[0] + std::cos(M_PI_4)*rCore; pointsVec[5][1]= xc[1] + std::sin(M_PI_4)*rCore;
+  pointsVec[6][0]= xc[0] - std::cos(M_PI_4)*rCore; pointsVec[6][1]= xc[1] + std::sin(M_PI_4)*rCore;
+  pointsVec[7][0]= xc[0] - std::cos(M_PI_4)*rCore; pointsVec[7][1]= xc[1] - std::sin(M_PI_4)*rCore;
+  //ok
 
-  pointsVec[4][0]= xc[0] + std::cos(M_PI_4)*rCore; pointsVec[4][1]= xc[1] + std::sin(M_PI_4)*rCore;
-  pointsVec[5][0]= xc[0] - std::cos(M_PI_4)*rCore; pointsVec[5][1]= xc[1] + std::sin(M_PI_4)*rCore;
-  pointsVec[6][0]= xc[0] - std::cos(M_PI_4)*rCore; pointsVec[6][1]= xc[1] - std::sin(M_PI_4)*rCore;
-  pointsVec[7][0]= xc[0] + std::cos(M_PI_4)*rCore; pointsVec[7][1]= xc[1] - std::sin(M_PI_4)*rCore;
-
-
-  //cladding
+  //cladding (lower right, upper right, upper left, lower left)
   pointsVec[8][0] =  1 * bound; pointsVec[8][1] = -1 * bound;
   pointsVec[9][0] =  1 * bound; pointsVec[9][1] =  1 * bound;
   pointsVec[10][0] = -1 * bound; pointsVec[10][1] =  1 * bound;
   pointsVec[11][0] = -1 * bound; pointsVec[11][1] = -1 * bound;
+  //ok
   if(usingPML){
+    //xp
     pointsVec[12][0] =  1 * (bound+dPML); pointsVec[12][1] = -1 * bound;
     pointsVec[13][0] =  1 * (bound+dPML); pointsVec[13][1] =  1 * bound;
-
+    //yp
     pointsVec[14][0] =  1 * bound; pointsVec[14][1] =  1 * (bound+dPML);
     pointsVec[15][0] = -1 * bound; pointsVec[15][1] =  1 * (bound+dPML);
-
+    //xm
     pointsVec[16][0] = -1 * (bound+dPML); pointsVec[16][1] =  1 * bound;
     pointsVec[17][0] = -1 * (bound+dPML); pointsVec[17][1] = -1 * bound;
-
+    //ym
     pointsVec[18][0] = -1 * bound; pointsVec[18][1] = -1 * (bound+dPML);
     pointsVec[19][0] = 1 * bound; pointsVec[19][1] = -1 * (bound+dPML);
-
+    //xpym
     pointsVec[20][0] =  1 * (bound+dPML); pointsVec[20][1] = -1 * (bound+dPML);
+    //xpyp
     pointsVec[21][0] =  1 * (bound+dPML); pointsVec[21][1] =  1 * (bound+dPML);
+    //xmyp
     pointsVec[22][0] = -1 * (bound+dPML); pointsVec[22][1] =  1 * (bound+dPML);
+    //xmym
     pointsVec[23][0] = -1 * (bound+dPML); pointsVec[23][1] = -1 * (bound+dPML);
   }
-  TPZFNMatrix<maxNQuads*3,int> quadPointsVec(nQuads,4);
-  quadPointsVec(0,0) = 0; quadPointsVec(0,1) = 1; quadPointsVec(0,2) = 2; quadPointsVec(0,3) = 3;
-  quadPointsVec(1,0) = 4; quadPointsVec(1,1) = 0; quadPointsVec(1,2) = 3; quadPointsVec(1,3) = 7;
-  quadPointsVec(2,0) = 4; quadPointsVec(2,1) = 5; quadPointsVec(2,2) = 1; quadPointsVec(2,3) = 0;
-  quadPointsVec(3,0) = 1; quadPointsVec(3,1) = 5; quadPointsVec(3,2) = 6; quadPointsVec(3,3) = 2;
-  quadPointsVec(4,0) = 3; quadPointsVec(4,1) = 2; quadPointsVec(4,2) = 6; quadPointsVec(4,3) = 7;
 
-  quadPointsVec(5,0) = 9; quadPointsVec(5,1) = 4; quadPointsVec(5,2) = 7; quadPointsVec(5,3) = 8;
-  quadPointsVec(6,0) = 9; quadPointsVec(6,1) = 10; quadPointsVec(6,2) = 5; quadPointsVec(6,3) = 4;
-  quadPointsVec(7,0) = 5; quadPointsVec(7,1) = 10; quadPointsVec(7,2) = 11; quadPointsVec(7,3) = 6;
-  quadPointsVec(8,0) = 7; quadPointsVec(8,1) = 6; quadPointsVec(8,2) = 11; quadPointsVec(8,3) = 8;
-  if(usingPML){
-    quadPointsVec(9,0) = 13; quadPointsVec(9,1) = 9; quadPointsVec(9,2) = 8; quadPointsVec(9,3) = 12;
-    quadPointsVec(10,0) = 14; quadPointsVec(10,1) = 15; quadPointsVec(10,2) = 10; quadPointsVec(10,3) = 9;
-    quadPointsVec(11,0) = 10; quadPointsVec(11,1) = 16; quadPointsVec(11,2) = 17; quadPointsVec(11,3) = 11;
-    quadPointsVec(12,0) = 8; quadPointsVec(12,1) = 11; quadPointsVec(12,2) = 18; quadPointsVec(12,3) = 19;
-
-    quadPointsVec(13,0) = 21; quadPointsVec(13,1) = 14; quadPointsVec(13,2) =  9; quadPointsVec(13,3) = 13;
-    quadPointsVec(14,0) = 15; quadPointsVec(14,1) = 22; quadPointsVec(14,2) = 16; quadPointsVec(14,3) = 10;
-    quadPointsVec(15,0) = 11; quadPointsVec(15,1) = 17; quadPointsVec(15,2) = 23; quadPointsVec(15,3) = 18;
-    quadPointsVec(16,0) = 12; quadPointsVec(16,1) =  8; quadPointsVec(16,2) = 19; quadPointsVec(16,3) = 20;
+  //CREATING QUADS
+  TPZManVector<QuadData,maxNQuads> quadVec(nQuads);
+  //core
+  quadVec[0].m_nodes ={ 0, 1, 2, 3};
+  quadVec[1].m_nodes ={ 0, 4, 5, 1};
+  quadVec[2].m_nodes ={ 2, 1, 5, 6};
+  quadVec[3].m_nodes ={ 7, 3, 2, 6};
+  quadVec[4].m_nodes ={ 7, 4, 0, 3};
+  for(int i = 0; i < nQuadsCore; i++){
+    quadVec[i].m_matid = matIdCore;
   }
-  TPZManVector<int,maxNQuads> matIdsQuads(nQuads,-1);
-  matIdsQuads[0] = matIdCore;
-  matIdsQuads[1] = matIdCore;    matIdsQuads[2] = matIdCore;
-  matIdsQuads[3] = matIdCore;    matIdsQuads[4] = matIdCore;
-
-  matIdsQuads[5] = matIdCladding;    matIdsQuads[6] = matIdCladding;
-  matIdsQuads[7] = matIdCladding;    matIdsQuads[8] = matIdCladding;
-
+  //cladding
+  quadVec[5].m_nodes ={ 4, 8, 9, 5};
+  quadVec[6].m_nodes ={ 6, 5, 9, 10};
+  quadVec[7].m_nodes ={ 11, 7, 6, 10};
+  quadVec[8].m_nodes ={ 11, 8, 4, 7};
+  for(int i = 0; i < nQuadsCladding; i++){
+    quadVec[5+i].m_matid = matIdCladding;
+  }
+  //pml
   if(usingPML){
-    matIdsQuads[9] = matIdPMLxp;    matIdsQuads[10] = matIdPMLyp;
-    matIdsQuads[11] = matIdPMLxm;    matIdsQuads[12] = matIdPMLym;
-    matIdsQuads[13] = matIdPMLxpyp;    matIdsQuads[14] = matIdPMLxmyp;
-    matIdsQuads[15] = matIdPMLxmym;    matIdsQuads[16] = matIdPMLxpym;
+    quadVec[9].m_nodes ={ 13, 9, 8, 12};
+    quadVec[9].m_matid = matIdPMLxp;
+    quadVec[10].m_nodes ={ 14, 15, 10, 9};
+    quadVec[10].m_matid = matIdPMLyp;
+    quadVec[11].m_nodes ={ 10, 16, 17, 11};
+    quadVec[11].m_matid = matIdPMLxm;
+    quadVec[12].m_nodes ={ 8, 11, 18, 19};
+    quadVec[12].m_matid = matIdPMLym;
+    quadVec[13].m_nodes ={ 21, 14,  9, 13};
+    quadVec[13].m_matid = matIdPMLxpyp;
+    quadVec[14].m_nodes ={ 15, 22, 16, 10};
+    quadVec[14].m_matid = matIdPMLxmyp;
+    quadVec[15].m_nodes ={ 11, 17, 23, 18};
+    quadVec[15].m_matid = matIdPMLxmym;
+    quadVec[16].m_nodes ={ 12,  8, 19, 20};
+    quadVec[16].m_matid = matIdPMLxpym;
+  }
+
+  for(int i = 0; i < nQuads; i++){
+    quadVec[i].m_type = wgma::gmeshtools::ElType::Tri;
   }
   
-  TPZManVector<int,maxNQuads> nDivQsi(nQuads,-1);
-  TPZManVector<int,maxNQuads> nDivEta(nQuads,-1);
-  //first hole
-  nDivQsi[0]=nPtsCoreT;nDivEta[0]=nPtsCoreT;
-  nDivQsi[1]=nPtsCoreR; nDivEta[1]=nPtsCoreT;
-  nDivQsi[2]=nPtsCoreT; nDivEta[2]=nPtsCoreR;
-  nDivQsi[3]=nPtsCoreR; nDivEta[3]=nPtsCoreT;
-  nDivQsi[4]=nPtsCoreT; nDivEta[4]=nPtsCoreR;
-  //cladding
-  nDivQsi[5]=nPtsCladdingR; nDivEta[5]=nPtsCoreT;
-  nDivQsi[6]=nPtsCoreT;     nDivEta[6]=nPtsCladdingR;
-  nDivQsi[7]=nPtsCladdingR; nDivEta[7]=nPtsCoreT;
-  nDivQsi[8]=nPtsCoreT;     nDivEta[8]=nPtsCladdingR;
-  if(usingPML){
-    nDivQsi[9]=nDivPml; nDivEta[9]=nPtsCoreT;
-    nDivQsi[10]=nPtsCoreT;    nDivEta[10]=nDivPml;
-    nDivQsi[11]=nDivPml; nDivEta[11]=nPtsCoreT;
-    nDivQsi[12]=nPtsCoreT;     nDivEta[12]=nDivPml;
+  //CREATING EDGES
+  constexpr int nEdgesCore = 12;
+  constexpr int nEdgesCladding = 8;
+  const int nEdgesPml = usingPML ? 20 : 0;
+  const int nEdges = nEdgesCore + nEdgesCladding + nEdgesPml;
+  constexpr int maxNEdges = 40;
+  
+  TPZManVector<EdgeData,maxNEdges> edgeVec(nEdges);
 
-    nDivQsi[13]=nDivPml; nDivEta[13]=nDivPml;
-    nDivQsi[14]=nDivPml;     nDivEta[14]=nDivPml;
-    nDivQsi[15]=nDivPml; nDivEta[15]=nDivPml;
-    nDivQsi[16]=nDivPml;     nDivEta[16]=nDivPml;
+  //inner edges of the core
+  int iedge = 0;
+  for(int i = 0; i < 4; i++){
+    edgeVec[iedge].m_nel = nElsCoreT;
+    edgeVec[iedge].m_create_el = false;
+    edgeVec[iedge].m_map = nullptr;
+    edgeVec[iedge].m_nodes = {i, (i+1)%4};
+    iedge++;
   }
-  TPZManVector<bool,maxNQuads> side1NonLinearVec(nQuads,false);
-  TPZManVector<bool,maxNQuads> side2NonLinearVec(nQuads,false);
-  TPZManVector<bool,maxNQuads> side3NonLinearVec(nQuads,false);
-  TPZManVector<bool,maxNQuads> side4NonLinearVec(nQuads,false);
+  //radial edges of the core
+  for(int i = 0; i < 4; i++){
+    edgeVec[iedge].m_nel = nElsCoreT;
+    edgeVec[iedge].m_create_el = false;
+    edgeVec[iedge].m_map = nullptr;
+    edgeVec[iedge].m_nodes = {i, i+4};
+    iedge++;
+  }
+  //outer edges of the core, curved edges
+  for(int i = 0; i<4;i++){
+    const auto theta_i = -M_PI/4 + i * M_PI/2;
+    const auto theta_f = M_PI/4 + i * M_PI/2;
+    edgeVec[iedge].m_matid = -15;//arbitrary
+    edgeVec[iedge].m_nel = nElsCoreT;
+    edgeVec[iedge].m_create_el = true;
+    edgeVec[iedge].m_nodes = {4+i,4+(i+1)%4};//({7,4},{4,5},{5,6},{6,7})
+    edgeVec[iedge].m_map = [rCore, xc,theta_i,theta_f](const REAL s){
+      return CircArcMap({theta_i,theta_f},xc,rCore,s);};
+    iedge++;
+  }
+  //edges connecting the core to the boundary
+  for(int i = 0; i < 4; i++){
+    edgeVec[iedge].m_nel = nElsCladdingR;
+    edgeVec[iedge].m_nodes = {4+i, 8+i};
+    iedge++;
+  }
 
-  side4NonLinearVec[1] = true;
-  side1NonLinearVec[2] = true;
-  side2NonLinearVec[3] = true;
-  side3NonLinearVec[4] = true;
+  //interface cladding-pml(or cladding-boundary)
+  for(int i = 0; i < 4; i++){
+    edgeVec[iedge].m_nel = nElsCoreT;
+    edgeVec[iedge].m_create_el = usingPML ? false : true;
+    edgeVec[iedge].m_matid = matIdBC;//ignored if usingPML==true
+    edgeVec[iedge].m_nodes = {8+i, 8+(i+1)%4};
+    iedge++;
+  }
 
-  side2NonLinearVec[5] = true;
-  side3NonLinearVec[6] = true;
-  side4NonLinearVec[7] = true;
-  side1NonLinearVec[8] = true;
-
-
-  TPZManVector<TPZVec<REAL>,14> thetaVec(8,TPZVec<REAL>(2,0.));
-
-  thetaVec[0][0] =-1 * M_PI/4;thetaVec[0][1] = 1 * M_PI/4;//quad1
-  thetaVec[1][0] = 1 * M_PI/4;thetaVec[1][1] = 3 * M_PI/4;//quad2
-  thetaVec[2][0] = 3 * M_PI/4;thetaVec[2][1] = 5 * M_PI/4;//quad3
-  thetaVec[3][0] = 5 * M_PI/4;thetaVec[3][1] = 7 * M_PI/4;//quad4
-
-  thetaVec[4][0] = 1 * M_PI/4;thetaVec[4][1] =-1 * M_PI/4;//quad5
-  thetaVec[5][0] = 3 * M_PI/4;thetaVec[5][1] = 1 * M_PI/4;//quad6
-  thetaVec[6][0] = 5 * M_PI/4;thetaVec[6][1] = 3 * M_PI/4;//quad7
-  thetaVec[7][0] = 7 * M_PI/4;thetaVec[7][1] = 5 * M_PI/4;//quad8
-
-
-  TPZManVector<TPZVec<REAL>,8> xcRef(8,xc);
-
-  TPZManVector<int,5> matIdBoundVec(4,-1);
-  matIdBoundVec[0] = matIdBC;//low
-  matIdBoundVec[1] = matIdBC;//down
-  matIdBoundVec[2] = matIdBC;//up
-  matIdBoundVec[3] = matIdBC;//left
-
-  TPZManVector<REAL,4> boundDistVec(4,-1);
-  boundDistVec[0] = 0.;//low
-  boundDistVec[1] = usingPML ? bound+dPML : bound;//right
-  boundDistVec[2] = usingPML ? bound+dPML : bound;//up
-  boundDistVec[3] = 0.;//left
-
-  TPZManVector<REAL,14> rVec(14,rCore);
-
+  if(usingPML){
+    //pml xp,yp,xm,ym
+    for(int i = 0; i < 4; i++){
+      edgeVec[iedge].m_nel = nElsPml;
+      edgeVec[iedge].m_nodes = {8+i, 12+2*i};//ok
+      iedge++;
+      edgeVec[iedge].m_nel = nElsPml;
+      edgeVec[iedge].m_nodes = {8+(i+1)%4,13+2*i};//ok
+      iedge++;
+      edgeVec[iedge].m_nel = nElsCoreT;
+      edgeVec[iedge].m_nodes = {12+2*i,13+2*i};//ok
+      iedge++;
+    }
+    //pml xpym, xpyp, xmyp, xmym
+    for(int i = 0; i < 4; i++){
+      edgeVec[iedge].m_nel = nElsPml;
+      //({19,20},{13,21},{15,22},{17,23})
+      edgeVec[iedge].m_nodes = {13+2*((i+3)%4), 20+i};
+      iedge++;
+      edgeVec[iedge].m_nel = nElsPml;
+      //({20,12},{21,14},{22,16},{23,18})
+      edgeVec[iedge].m_nodes = {20+i,12+2*i};
+      iedge++;
+    }
+  }
+  
+  
+  const bool nonLinearMapping{true};
   auto gmesh = wgma::gmeshtools::CreateStructuredMesh(
-    pointsVec, quadPointsVec, matIdsQuads, nDivQsi,nDivEta,
-    side1NonLinearVec, side2NonLinearVec, side3NonLinearVec, side4NonLinearVec,
-    thetaVec, xcRef, rVec, matIdBoundVec, boundDistVec);
+    pointsVec, quadVec, edgeVec, nonLinearMapping);
 
   //the materials are: core, cladding, pml regions (8) and bc
   const int nMats = usingPML ? 11 : 3;
@@ -485,8 +512,6 @@ CreateStepFiberMesh(
     }
   }
   gmesh->BuildConnectivity();
-  //let us split the quadrilaterals into triangles
-  wgma::gmeshtools::SplitQuadMeshIntoTriangles(gmesh);
 
   return gmesh;
 }
