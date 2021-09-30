@@ -101,7 +101,7 @@ namespace wgma::slepc{
   template<class TVar>
   int EPSHandler<TVar>::SolveGeneralisedEigenProblem(TPZVec<CTVar> &w,
                                                TPZFMatrix<CTVar> &ev){
-    return SolveImpl(w, ev, false);
+    return SolveImpl(w, ev, true);
   }
 
   template<class TVar>
