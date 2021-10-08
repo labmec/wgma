@@ -81,13 +81,13 @@ int main(int argc, char *argv[]) {
   //whether to surround the domain by a PML
   constexpr bool usingPML{true};
   //distance from the core from which the PML begins
-  constexpr REAL boundDist{1*lambdaCladding};
+  constexpr REAL boundDist{2*lambdaCladding};
   //pml width
   constexpr REAL dPML{4*lambdaCladding};
   //number of layers in the pml
   constexpr int nLayersPML{2};
   //PML attenuation constant
-  constexpr STATE alphaPML{0.5};
+  constexpr STATE alphaPML{1};
   /*Given the small dimensions of the domain, scaling it can help in 
     achieving good precision. Uing k0 as a scale factor results in 
     the eigenvalues -(propagationConstant/k0)^2 = -effectiveIndex^2*/
@@ -248,9 +248,9 @@ CreateStepFiberMesh(
   using wgma::gmeshtools::QuadData;
   using wgma::gmeshtools::CircArcMap;
   
-  const int nElsCoreR = factor * 2,//number of points in core (radial direction)
-    nElsCoreT = factor * 5,//number of points in core (tangential direction)
-    nElsCladdingR = factor * 4,
+  const int nElsCoreR = factor * 3,//number of points in core (radial direction)
+    nElsCoreT = factor * 4,//number of points in core (tangential direction)
+    nElsCladdingR = factor * 2,
     nElsPml = factor * nLayersPML + 1;
 
   if(std::min<int>({nElsCoreR,nElsCoreT,nElsCladdingR,nElsPml}) < 2 ) {
@@ -384,7 +384,8 @@ CreateStepFiberMesh(
   const int nEdgesPml = usingPML ? 20 : 0;
   const int nEdges = nEdgesCore + nEdgesCladding + nEdgesPml;
   constexpr int maxNEdges = 40;
-  
+
+  constexpr int matIdInterface{-15};
   TPZManVector<EdgeData,maxNEdges> edgeVec(nEdges);
 
   //inner edges of the core
@@ -398,7 +399,7 @@ CreateStepFiberMesh(
   }
   //radial edges of the core
   for(int i = 0; i < 4; i++){
-    edgeVec[iedge].m_nel = nElsCoreT;
+    edgeVec[iedge].m_nel = nElsCoreR;
     edgeVec[iedge].m_create_el = false;
     edgeVec[iedge].m_map = nullptr;
     edgeVec[iedge].m_nodes = {i, i+4};
@@ -408,7 +409,7 @@ CreateStepFiberMesh(
   for(int i = 0; i<4;i++){
     const auto theta_i = -M_PI/4 + i * M_PI/2;
     const auto theta_f = M_PI/4 + i * M_PI/2;
-    edgeVec[iedge].m_matid = -15;//arbitrary
+    edgeVec[iedge].m_matid = matIdInterface;//arbitrary
     edgeVec[iedge].m_nel = nElsCoreT;
     edgeVec[iedge].m_create_el = true;
     edgeVec[iedge].m_nodes = {4+i,4+(i+1)%4};//({7,4},{4,5},{5,6},{6,7})
