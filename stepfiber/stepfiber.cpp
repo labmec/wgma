@@ -494,21 +494,29 @@ CreateStepFiberMesh(
   gmesh->BuildConnectivity();
 
   if(refine){
-    const REAL margin = 0.1 * rCore;
-    TPZManVector<REAL,3> qsiPos(2,0);
-    TPZManVector<REAL,3> xPos(3,0);
-    TPZManVector<TPZGeoEl *,10>sons;
-    int nel = gmesh->NElements();
-    for(int iel =0 ; iel< nel; iel++){
-      auto geo = gmesh->Element(iel);
-      if(geo->Type() != EQuadrilateral) continue;
-      
-      geo->X(qsiPos,xPos);
-      const REAL dist = sqrt((xPos[0]-xc[0])*(xPos[0]-xc[0])+(xPos[1]-xc[1])*(xPos[1]-xc[1]));
-      if(std::abs(rCore - dist) < margin){
-        if(geo->HasSubElement() == 0){
-          geo->Divide(sons);
+    std::set<int> elsToRefine;
+    for(const auto gel : gmesh->ElementVec()){
+      if(gel->MaterialId() == matIdInterface){
+        elsToRefine.insert(gel->Id());
+        for(int iv = 0; iv < 2; iv++){
+          TPZGeoElSide gelside(gel,iv);
+          TPZGeoElSide neighbour = gelside.Neighbour();
+          while (neighbour != gelside) {
+            const auto neighgel = neighbour.Element();
+            if(neighgel->Dimension() == 2){
+              elsToRefine.insert(neighgel->Id());
+            }
+            neighbour = neighbour.Neighbour();
+          }
         }
+      }
+    }
+    TPZManVector<TPZGeoEl *,4>sons;
+    for(const auto id : elsToRefine){
+      auto gel = gmesh->Element(id);
+      //just to be on the safe side
+      if(!gel->HasSubElement()){
+        gel->Divide(sons);
       }
     }
   }
