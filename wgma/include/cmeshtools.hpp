@@ -6,6 +6,7 @@
 #include <pzreal.h>
 
 #include <set>
+#include <map>
 
 template<class T>
 class TPZVec;
@@ -18,6 +19,41 @@ class TPZGeoMesh;
 //! Contains a set of routines for creating and manipulating computational meshes.
 namespace wgma::cmeshtools{
 
+  /**
+   @brief This function associates materials (regions) read from .msh file
+   with the materials to be created in the computational mesh.
+   The output of this function is in the expected format for wgma::cmeshtools::CreateCMesh.
+   alphaPML is ignored if no PML regions are detected. PML regions' name are mandatory 
+   to contain pml and the appropriate pml type (both are case insensitive).
+   See pmltypes.hpp for naming conventions.
+   e.g. 
+   pmlxp    -- ok
+   pml_ym   -- ok
+   PMLXPYP  -- ok
+   PLMX     -- not ok
+   
+   @param [in] gmshmats vector returned from ReadGmshMesh
+   @param [in] matmap for a given region name, contains the pairs (er,ur) for non pml regions
+   @param [in] bcmap for a given boundary name, contains the bc type
+   @param [in] alphaPML PML attenuation constant
+   @param [out] volmatids material identifiers of non-pml regions
+   @param [out] ervec electric permittivity of non-pml regions
+   @param [out] urvec magnetic permeability of non-pml regions
+   @param [out] pmlvec data of pml regions
+   @param [out] bcvec data of bc regins
+
+   @note The .msh file can be read with wgma::gmeshtools::ReadGmshMesh.
+*/
+void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
+                       const std::map<std::string,std::pair<CSTATE,CSTATE>> &matmap,
+                       const std::map<std::string,wgma::bc::type> &bcmap,
+                       const STATE alphaPML,
+                       TPZVec<int> &volmatids,
+                       TPZVec<CSTATE> &ervec,
+                       TPZVec<CSTATE> &urvec,
+                       TPZVec<wgma::pml::data> &pmlvec,
+                       TPZVec<wgma::bc::data> &bcvec);
+  
   /**
      @brief Creates the computational meshes used for approximating the waveguide EVP.
      Three meshes will be created: one for the H1 approximation space, one for the

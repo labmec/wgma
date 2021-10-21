@@ -9,7 +9,108 @@
 #include <pzbuildmultiphysicsmesh.h>
 #include <TPZSimpleTimer.h>
 
+
+#include <regex>//for string search
+
 using namespace wgma;
+
+
+void
+cmeshtools::SetupGmshMaterialData(
+  const TPZVec<std::map<std::string,int>> &gmshmats,
+  const std::map<std::string,std::pair<CSTATE,CSTATE>> &matmap,
+  const std::map<std::string,wgma::bc::type> &bcmap,
+  const STATE alphaPML,
+  TPZVec<int> &volmatids,
+  TPZVec<CSTATE> &ervec,
+  TPZVec<CSTATE> &urvec,
+  TPZVec<wgma::pml::data> &pmlvec,
+  TPZVec<wgma::bc::data> &bcvec)
+{
+  volmatids.Resize(0);
+  urvec.Resize(0);
+  ervec.Resize(0);
+  pmlvec.Resize(0);
+    
+  for(auto mat : gmshmats[2]){
+    const auto name = mat.first;
+    const auto id = mat.second;
+    constexpr auto pmlname{"pml"};
+
+    //std::regex_constants::icase - ignores case
+    const auto rx = std::regex{ pmlname ,std::regex_constants::icase };
+    const bool ispml = std::regex_search(name, rx);
+      
+    if(ispml){
+      const auto pos = pmlvec.size();
+      bool found{false};
+      TPZVec<std::string> testnames =
+        {"xpyp", "xmyp", "xmym", "xpym", "xp", "yp", "xm", "ym"};
+      for(auto pmlname : testnames){
+        const auto rx = std::regex{ pmlname, std::regex_constants::icase };
+        const bool test = std::regex_search(name, rx);
+        if(test){
+          const auto pos = pmlvec.size();
+          pmlvec.Resize(pos+1);
+          pmlvec[pos].id = id;
+          pmlvec[pos].alpha = alphaPML;
+          pmlvec[pos].t = [pmlname](){
+            if(pmlname.compare("xp") == 0) return wgma::pml::type::xp;
+            else if(pmlname.compare("yp") == 0) return wgma::pml::type::yp;
+            else if(pmlname.compare("xm") == 0) return wgma::pml::type::xm;
+            else if(pmlname.compare("ym") == 0) return wgma::pml::type::ym;
+            else if(pmlname.compare("xpyp") == 0) return wgma::pml::type::xpyp;
+            else if(pmlname.compare("xmyp") == 0) return wgma::pml::type::xmyp;
+            else if(pmlname.compare("xmym") == 0) return wgma::pml::type::xmym;
+            else if(pmlname.compare("xpym") == 0) return wgma::pml::type::xpym;
+            unreachable();
+          }();
+          found = true;
+        }
+      }
+      //pml was not identified
+      if(!found){
+        std::cout<<"error: mat "<<name<<" id "<<id<<" not found"
+                 <<"\nAborting..."<<std::endl;
+      }
+    }else{
+      if(matmap.find(name) == matmap.end()){//material not found
+        std::cout<<"error: mat "<<name<<" id "<<id<<" not found"
+                 <<"\nAborting..."<<std::endl;
+        DebugStop();
+      }else{
+        const auto pos = volmatids.size();
+        volmatids.Resize(pos+1);
+        urvec.Resize(pos+1);
+        ervec.Resize(pos+1);
+        volmatids[pos] = id;
+        ervec[pos] = matmap.at(name).first;
+        urvec[pos] = matmap.at(name).second;
+      }
+    }
+  }
+  //bc materials
+  const int nbcs = gmshmats[1].size();
+  bcvec.Resize(nbcs);
+
+  {
+    int ibc = 0;
+    for(auto bc : gmshmats[1]){
+      const auto name = bc.first;
+      const auto id = bc.second;
+      if(bcmap.find(name) == bcmap.end()){//material not found
+        std::cout<<"error: bc "<<name<<" id "<<id<<" not found"
+                 <<"\nAborting..."<<std::endl;
+        DebugStop();
+      }else{
+        bcvec[ibc].id = id;
+        bcvec[ibc].t = bcmap.at(name);
+        ibc++;
+      }
+    }
+  }
+    
+}
 
 
 TPZVec<TPZAutoPointer<TPZCompMesh>>
