@@ -76,6 +76,20 @@ namespace wgma::gmeshtools{
     const TPZVec<QuadData> &quadsVec,
     const TPZVec<EdgeData> &edgesVec,
     const bool nonLinearMapping);
+
+  /**
+     @brief Reads a .msh mesh file, creates a TPZGeoMesh and
+     stores the material identifiers (named physical regions) that were found.
+     @param[in] filename name of the .msh file to be read
+     @param[in] scale factor (characteristic length) to be applied in the mesh
+     @param[out] matids on exit, it stores the pairs (name, matid) indexed by dimension
+
+     @note position [x] of matids will contain the materials of dimension x.
+   */
+  TPZAutoPointer<TPZGeoMesh>
+  ReadGmshMesh(const std::string filename,
+               const REAL scale,
+               TPZVec<std::map<std::string,int>> & matids);
 };
 
 #endif /* _GMESHTOOLS_HPP_ */

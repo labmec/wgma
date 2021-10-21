@@ -22,6 +22,7 @@ The wgma library is currently organised in the following namespaces
 - A NeoPZ install configured with MKL support
 ### optional
 - [SLEPc](https://slepc.upv.es) (tested with 3.15.2)
+- [gmsh](https://gmsh.info) (formats msh3 and msh4 are supported)
 
 If the SLEPc solver is used, NeoPZ need not have been configured with MKL.
 In order to use this package with SLEPc, one must configure both PETSc and SLEPc 

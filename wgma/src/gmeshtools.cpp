@@ -6,6 +6,7 @@
 #include <tpzarc3d.h>
 #include <tpzgeoblend.h>
 #include <TPZVTKGeoMesh.h>
+#include <TPZGmshReader.h>
 
 #include <fstream>
 
@@ -576,4 +577,26 @@ void CreateQuadPts(const TPZVec<wgma::gmeshtools::QuadData> &quadsVec,
       DebugStop();
     }
   }
+}
+
+
+TPZAutoPointer<TPZGeoMesh>
+wgma::gmeshtools::ReadGmshMesh(const std::string filename,
+                               const REAL scale,
+                               TPZVec<std::map<std::string,int>> & matids)
+{
+  TPZGmshReader meshReader;
+  meshReader.SetCharacteristiclength(scale);
+  TPZAutoPointer<TPZGeoMesh> gmesh =
+    meshReader.GeometricGmshMesh(filename);
+
+  matids = meshReader.GetDimNamePhysical();
+  for(int i = 0; i < 3; i++){
+    std::cout<<"materials with dim "<<i<<std::endl;
+    for(auto &mat : matids[i]){
+      std::cout<<"\t name: "<<mat.first <<" id: "<<mat.second<<std::endl;
+    }
+  }
+  
+  return gmesh;
 }
