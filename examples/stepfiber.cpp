@@ -3,8 +3,8 @@ stepfiber.cpp
 
 This target performs the modal analysis of a step-index optical fiber.
 
-A HCurl-conforming approximation space is used for the transverse field components and
-a H1-conforming approximation space for the axial component.
+It also illustrates the usage of the SLEPc solver and how to create
+complex curved structured meshes in NeoPZ.
 ***/
 
 //wgma includes

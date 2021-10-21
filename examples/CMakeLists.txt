@@ -1,0 +1,9 @@
+add_pz_target(
+  NAME wr90
+  SOURCES wr90.cpp)
+target_link_libraries(wr90 PUBLIC wgma)
+
+add_pz_target(
+  NAME stepfiber
+  SOURCES stepfiber.cpp)
+target_link_libraries(stepfiber PUBLIC wgma)

@@ -3,9 +3,6 @@ wr90.cpp
 
 This target is the simples example on how to use NeoPZ for the modal analysis
 of a metal-backed electromagnetic waveguide using the WR90 waveguide as a model.
-
-A HCurl-conforming approximation space is used for the transverse field components and
-a H1-conforming approximation space for the axial component.
 ***/
 
 //wgma includes
