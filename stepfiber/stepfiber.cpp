@@ -86,8 +86,22 @@ int main(int argc, char *argv[]) {
   constexpr REAL dPML{4*lambdaCladding};
   //number of layers in the pml
   constexpr int nLayersPML{2};
-  //PML attenuation constant
-  constexpr STATE alphaPML{1};
+  /**PML attenuation constant
+     for a quadratic PML, one suggestion is to calculate it as:
+     \frac{-3 \ln (R)}{4 \omega d n}
+     where
+     R = desired theoretical reflection coefficient
+     \omega = operational frequency
+     d = pml thickness
+     n = reffraction index of region next to pml.
+
+     for this value:
+     R = 10^{-25}
+     \omega = 2 \pi c_0 / \lambda
+     d = \lambda * 4
+     n = 1.4378
+   */
+  constexpr STATE alphaPML{2.7e-9};
   /*Given the small dimensions of the domain, scaling it can help in 
     achieving good precision. Uing k0 as a scale factor results in 
     the eigenvalues -(propagationConstant/k0)^2 = -effectiveIndex^2*/
