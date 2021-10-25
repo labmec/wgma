@@ -67,10 +67,14 @@ int main(int argc, char *argv[]) {
   constexpr STATE freq = 25e9;
   // wavelength
   constexpr STATE lambda{pzeletromag::cZero/freq};
-  /*Given the small dimensions of the domain, scaling it can help in 
-    achieving good precision. Uing k0 as a scale factor results in 
-    the eigenvalues -(propagationConstant/k0)^2 = -effectiveIndex^2*/
-  constexpr REAL scale{2*M_PI/lambda};
+  /*
+    Given the small dimensions of the domain, scaling it can help in 
+    achieving good precision. Using 1./k0 as a scale factor results in 
+    the eigenvalues -(propagationConstant/k0)^2 = -effectiveIndex^2.
+    This scale factor is often referred to as characteristic length
+    of the domain.
+  */
+  constexpr REAL scale{lambda/2*M_PI};
 
 
   /******************
@@ -214,8 +218,8 @@ TPZAutoPointer<TPZGeoMesh> CreateGMeshRectangularWaveguide(
   
   // upper right corner of the domain
   TPZManVector<REAL, 3> maxX = {
-    usingSymmetry ? wDomain * scale / 2 : wDomain * scale,
-    hDomain * scale,
+    usingSymmetry ? wDomain /( scale * 2) : wDomain / scale,
+    hDomain / scale,
     0};
   
   // whether to create boundary elements

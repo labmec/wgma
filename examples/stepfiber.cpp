@@ -102,10 +102,14 @@ int main(int argc, char *argv[]) {
      n = 1.4378
    */
   constexpr STATE alphaPML{2.7e-9};
-  /*Given the small dimensions of the domain, scaling it can help in 
-    achieving good precision. Uing k0 as a scale factor results in 
-    the eigenvalues -(propagationConstant/k0)^2 = -effectiveIndex^2*/
-  constexpr REAL scale{2*M_PI/lambda};
+  /*
+    Given the small dimensions of the domain, scaling it can help in 
+    achieving good precision. Using 1./k0 as a scale factor results in 
+    the eigenvalues -(propagationConstant/k0)^2 = -effectiveIndex^2.
+    This scale factor is often referred to as characteristic length
+    of the domain.
+  */
+  constexpr REAL scale{lambda/(2*M_PI)};
 
   /******************
    *  fem options   *
@@ -296,9 +300,9 @@ CreateStepFiberMesh(
     matIdPMLxmyp = 16,
     matIdPMLxmym = 17;
 
-  const REAL rCore = realRCore * scale;
-  const REAL bound = rCore + boundDist * scale;
-  const REAL dPML = realDPML * scale;
+  const REAL rCore = realRCore / scale;
+  const REAL bound = rCore + boundDist / scale;
+  const REAL dPML = realDPML / scale;
   TPZManVector<REAL,2> xc(3, 0.);
   xc[0] = 0.;
   xc[1] = 0.;

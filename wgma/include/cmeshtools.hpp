@@ -68,7 +68,7 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
      @param[in] pmlDataVec array with PML data
      @param[in] bcDataVec array with BC data
      @param[in] lambda operational wavelength
-     @param[in] scale geometric scaling for better floating point precision
+     @param[in] scale geometric scaling (characteristic length) for better floating point precision
   */
   TPZVec<TPZAutoPointer<TPZCompMesh>>
   CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,

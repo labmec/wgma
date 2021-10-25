@@ -196,7 +196,7 @@ cmeshtools::CreateCMesh(
   TPZWaveguideModalAnalysis *matWG = nullptr;
   for(auto i = 0; i < nVolMats; i++){
     matWG = new TPZWaveguideModalAnalysis(
-      volMatIdVec[i], urVec[i], erVec[i], lambda, 1. / scale);
+      volMatIdVec[i], urVec[i], erVec[i], lambda, scale);
     cmeshMF->InsertMaterialObject(matWG);
   }
   
