@@ -67,3 +67,11 @@ Illustrates
 - usage of PML
 - usage of the `wgma::slepc::EPSHandler` for using SLEPc solvers
 - creation of more complex geometries in NeoPZ
+
+### rib wg
+
+Analysis of a rib waveguide.
+
+Illustrates
+- reading a `.msh` file from gmsh
+- directional refinement (useful for singularities)
