@@ -33,7 +33,7 @@ cmeshtools::SetupGmshMaterialData(
   pmlvec.Resize(0);
     
   for(auto mat : gmshmats[2]){
-    const auto name = mat.first;
+    const std::string name = mat.first;
     const auto id = mat.second;
     constexpr auto pmlname{"pml"};
 
@@ -42,30 +42,28 @@ cmeshtools::SetupGmshMaterialData(
     const bool ispml = std::regex_search(name, rx);
       
     if(ispml){
+      
       const auto pos = pmlvec.size();
       bool found{false};
-      TPZVec<std::string> testnames =
+      const TPZVec<std::string> pmlnames =
         {"xpyp", "xmyp", "xmym", "xpym", "xp", "yp", "xm", "ym"};
-      for(auto pmlname : testnames){
+      const TPZVec<wgma::pml::type> pmltypes =
+        {wgma::pml::type::xpyp,wgma::pml::type::xmyp,
+         wgma::pml::type::xmym,wgma::pml::type::xpym,
+         wgma::pml::type::xp,wgma::pml::type::yp,
+         wgma::pml::type::xm,wgma::pml::type::ym};
+      
+      for(int ipml = 0; ipml < pmlnames.size(); ipml++){
+        const std::string pmlname = pmlnames[ipml];
         const auto rx = std::regex{ pmlname, std::regex_constants::icase };
         const bool test = std::regex_search(name, rx);
         if(test){
-          const auto pos = pmlvec.size();
           pmlvec.Resize(pos+1);
           pmlvec[pos].id = id;
           pmlvec[pos].alpha = alphaPML;
-          pmlvec[pos].t = [pmlname](){
-            if(pmlname.compare("xp") == 0) return wgma::pml::type::xp;
-            else if(pmlname.compare("yp") == 0) return wgma::pml::type::yp;
-            else if(pmlname.compare("xm") == 0) return wgma::pml::type::xm;
-            else if(pmlname.compare("ym") == 0) return wgma::pml::type::ym;
-            else if(pmlname.compare("xpyp") == 0) return wgma::pml::type::xpyp;
-            else if(pmlname.compare("xmyp") == 0) return wgma::pml::type::xmyp;
-            else if(pmlname.compare("xmym") == 0) return wgma::pml::type::xmym;
-            else if(pmlname.compare("xpym") == 0) return wgma::pml::type::xpym;
-            unreachable();
-          }();
+          pmlvec[pos].t = pmltypes[ipml];
           found = true;
+          break;
         }
       }
       //pml was not identified
