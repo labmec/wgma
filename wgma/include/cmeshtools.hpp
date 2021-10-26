@@ -83,12 +83,14 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
      @param[in] matId pml material identifier.
      @param[in] alpha attenuation constant.
      @param[in] type pml type.
+     @param[in] volmats identifiers of valid mesh regions for pml neighbours
      @param[in] cmesh the computational mesh.
      @return This method calls FindPMLNeighbourMaterial internally.
   */
   void
   AddRectangularPMLRegion(const int matId, const int alpha,
                           const wgma::pml::type type,
+                          const std::set<int> &volmats,
                           TPZAutoPointer<TPZCompMesh> cmesh);
 
   /**
@@ -100,6 +102,7 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
   */
   int
   FindPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,const int pmlId,
+                           const std::set<int> &volmats,
                            const REAL boundPosX, const REAL boundPosY);
   
   /** @brief Counts active equations per approximation space*/

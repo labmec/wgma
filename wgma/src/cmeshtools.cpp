@@ -201,11 +201,15 @@ cmeshtools::CreateCMesh(
   }
   
   //insert PML regions
+  std::set<int> volmats;
+  for(auto mat : volMatIdVec){
+    volmats.insert(mat);
+  }
   for(auto pml : pmlDataVec){
     const auto id = pml.id;
     const auto alpha = pml.alpha;
     const auto type = pml.t;
-    AddRectangularPMLRegion(id, alpha, type, cmeshMF);
+    AddRectangularPMLRegion(id, alpha, type, volmats, cmeshMF);
   }
   
   TPZBndCond *bcMat = nullptr;
@@ -247,6 +251,7 @@ cmeshtools::CreateCMesh(
 int
 cmeshtools::FindPMLNeighbourMaterial(
   TPZAutoPointer<TPZGeoMesh> gmesh,const int pmlId,
+  const std::set<int> &volmats,
   const REAL boundPosX, const REAL boundPosY)
 {
   TPZGeoEl * closestEl = nullptr;
@@ -255,7 +260,7 @@ cmeshtools::FindPMLNeighbourMaterial(
     if ( !currentEl ||
          currentEl->NSubElements() > 0  ||
          currentEl->Dimension() != 2 ||
-         currentEl->MaterialId() == pmlId) continue;
+         volmats.count(currentEl->MaterialId()) == 0) continue;
     TPZVec<REAL> qsi(2,-1);
     const int largerSize = currentEl->NSides() - 1;
     currentEl->CenterPoint(largerSize, qsi);
@@ -279,6 +284,7 @@ cmeshtools::FindPMLNeighbourMaterial(
 void
 cmeshtools::AddRectangularPMLRegion(const int matId, const int alpha,
                                     const wgma::pml::type type,
+                                    const std::set<int> &volmats,
                                     TPZAutoPointer<TPZCompMesh> cmesh)
 {
 
@@ -337,7 +343,7 @@ cmeshtools::AddRectangularPMLRegion(const int matId, const int alpha,
   }
   //find the neighbouring material
   const auto neighMatId =
-    FindPMLNeighbourMaterial(gmesh, matId, boundPosX, boundPosY);
+    FindPMLNeighbourMaterial(gmesh, matId, volmats, boundPosX, boundPosY);
 
   auto neighMat = dynamic_cast<TPZWaveguideModalAnalysis*>(
     cmesh->FindMaterial(neighMatId));
