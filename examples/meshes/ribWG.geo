@@ -1,16 +1,25 @@
 SetFactory("OpenCASCADE");
 
-DefineConstant[H = 0.5e-6];
-DefineConstant[s_t = 1.2e-6];//substrate thickness
-DefineConstant[W = 3e-6];
-DefineConstant[S = 0.5e-6];
+DefineConstant[H = 0.5e-6];//rib height
+DefineConstant[s_t = 1.5e-6];//substrate thickness
+DefineConstant[W = 3e-6];//rib width
+DefineConstant[S = 0.5e-6];//board height (not substrate)
 DefineConstant[bound_y = 2e-6];
-DefineConstant[bound_x = 2.5e-6];
+DefineConstant[bound_x = 3.5e-6];
 DefineConstant[d_pml = 1.15e-6];
 
 
-DefineConstant[elsize_rib = 0.1e-6];
-DefineConstant[elsize = 0.5e-6];
+
+/*
+For better comprehension of the nomenclature used here, check
+Modal analysis of rib waveguide through finite element and
+mode matching methods
+
+Stefano Selleri and Jiri Petracek
+*/
+
+DefineConstant[elsize_rib = 0.08e-6];
+DefineConstant[elsize = 0.3e-6];
 
 /*
 OpenCASCADE has a fixed tolerance of 1e-7
@@ -57,15 +66,23 @@ p_basis_0 = newp; Point(p_basis_0) = { -bound_x ,  0 , 0 , elsize};
 p_basis_1 = newp; Point(p_basis_1) = {  bound_x ,  0 , 0 , elsize};
 p_basis_2 = newp; Point(p_basis_2) = {  bound_x , -S , 0 , elsize};
 p_basis_3 = newp; Point(p_basis_3) = { -bound_x , -S , 0 , elsize};
+//just for getting more points where the fields are more concentrated
+p_ref_0 = newp; Point(p_ref_0) = { -W/2 ,  -S , 0 , elsize};
+p_ref_1 = newp; Point(p_ref_1) = {  W/2 ,  -S , 0 , elsize};
+
 
 a_basis_0 = newl; Line(a_basis_0) = {p_basis_0 , p_rib_2};
 a_basis_1 = newl; Line(a_basis_1) = {p_rib_2 , p_rib_3};
 a_basis_2 = newl; Line(a_basis_2) = {p_rib_3 , p_basis_1};
 a_basis_3 = newl; Line(a_basis_3) = {p_basis_1 , p_basis_2};
-a_basis_4 = newl; Line(a_basis_4) = {p_basis_2 , p_basis_3};
-a_basis_5 = newl; Line(a_basis_5) = {p_basis_3 , p_basis_0};
+a_basis_4 = newl; Line(a_basis_4) = {p_basis_2 , p_ref_1};
+a_basis_5 = newl; Line(a_basis_5) = {p_ref_1 , p_ref_0};
+a_basis_6 = newl; Line(a_basis_6) = {p_ref_0 , p_basis_3};
+a_basis_7 = newl; Line(a_basis_7) = {p_basis_3 , p_basis_0};
 
-edges_list_basis[] = {a_basis_0,a_basis_1,a_basis_2,a_basis_3,a_basis_4,a_basis_5};
+
+
+edges_list_basis[] = {a_basis_0,a_basis_1,a_basis_2,a_basis_3,a_basis_4,a_basis_5, a_basis_6, a_basis_7};
 ll_basis = newll; Line Loop(ll_basis) = edges_list_basis[];
 s_basis = news; Plane Surface(s_basis) = {ll_basis};
 
@@ -90,7 +107,7 @@ a_substrate_0 = newl; Line(a_substrate_0) = {p_basis_3 , p_bound_0};
 a_substrate_1 = newl; Line(a_substrate_1) = {p_bound_0 , p_bound_1};
 a_substrate_2 = newl; Line(a_substrate_2) = {p_bound_1 , p_basis_2};
 
-edges_list_substrate[] = {a_substrate_0,a_substrate_1,a_substrate_2,a_basis_4};
+edges_list_substrate[] = {a_substrate_0,a_substrate_1,a_substrate_2,a_basis_4,a_basis_5,a_basis_6};
 ll_substrate = newll; Line Loop(ll_substrate) = edges_list_substrate[];
 s_substrate = news; Plane Surface(s_substrate) = {ll_substrate};
 
@@ -144,8 +161,11 @@ allpoints[] = Point '*';
 allsurfaces[] = Surface '*';
 
 
+
+
+
 MeshSize { allpoints } = elsize;
-MeshSize { p_rib_0, p_rib_1, p_rib_2, p_rib_3 } = elsize_rib;
+MeshSize { p_rib_0, p_rib_1, p_rib_2, p_rib_3, p_ref_0, p_ref_1 } = elsize_rib;
 
 
 boundary[] = Abs[CombinedBoundary{ Surface{allsurfaces[]}; }] ;
