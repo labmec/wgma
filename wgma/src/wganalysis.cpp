@@ -97,9 +97,15 @@ namespace wgma{
 
     m_evalues = m_an->GetEigenvalues();
 
+    std::ios cout_state(nullptr);
+    cout_state.copyfmt(std::cout);
+    
+    std::cout << std::setprecision(std::numeric_limits<STATE>::max_digits10);
+
     for(auto &w : m_evalues){
       std::cout<<w<<std::endl;
     }
+    std::cout.copyfmt(cout_state);
     
     if(m_an->ComputeEigenvectors()){
       m_evectors = m_an->GetEigenvectors();
