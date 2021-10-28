@@ -90,6 +90,18 @@ namespace wgma::gmeshtools{
   ReadGmshMesh(const std::string filename,
                const REAL scale,
                TPZVec<std::map<std::string,int>> & matids);
+
+  /**
+     @brief Refines elements whose neighbours have materials in matids. 
+     This function will call
+     `TPZRefPatternTools::RefineDirectional(gel, matids);`
+     in all elements of the mesh.
+     @param gmesh geometrical mesh to be refined
+     @param matids elements will be refined towards materials with these identifiers
+     @param nrefs number of refinement stages
+  **/
+void DirectionalRefinement(TPZAutoPointer<TPZGeoMesh> gmesh,
+                           std::set<int> matids,const int nrefs);
 };
 
 #endif /* _GMESHTOOLS_HPP_ */

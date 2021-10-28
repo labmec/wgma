@@ -600,3 +600,26 @@ wgma::gmeshtools::ReadGmshMesh(const std::string filename,
   
   return gmesh;
 }
+
+void wgma::gmeshtools::DirectionalRefinement(TPZAutoPointer<TPZGeoMesh> gmesh,
+                           std::set<int> matids, const int nrefs)
+{
+  /*
+    We initialise now the database of refinement patterns
+  */
+
+  const auto dim = gmesh->Dimension();
+  for(auto ix = 1; ix <=dim; ix++){
+    gRefDBase.InitializeRefPatterns(ix);
+  }
+    
+  for(int iref = 0; iref < nrefs; iref++){
+    const int nels = gmesh->NElements();
+    for(int el = 0; el < nels; el++){
+      auto *gel = gmesh->Element(el);
+      if(gel && gel->NSubElements() == 0){
+        TPZRefPatternTools::RefineDirectional(gel, matids);
+      }
+    }
+  }
+}

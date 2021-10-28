@@ -136,33 +136,12 @@ int main(int argc, char *argv[]) {
     Since we know that there is a singularity at the metallic corner,
     we will directionally refine all the elements with a node in this corner.
    */
-  {
-    TPZSimpleTimer refinement("Refining mesh");
-    /*
-      We initialise now the database of refinement patterns of 1 and 2 dimensions
-      (lines, triangles and quadrilaterals)
-     */
-    gRefDBase.InitializeRefPatterns(1);
-    gRefDBase.InitializeRefPatterns(2);
-    //identifier of the corner where the singularity resides
-    const auto cornermatid = gmshmats[0].at("corner");
-    
-    constexpr int nrefsteps{5};
+  std::set<int> refids;
+  refids.insert(gmshmats[0].at("corner"));
+  constexpr int nrefdir{5};
+  wgma::gmeshtools::DirectionalRefinement(gmesh, refids, nrefdir);
 
-    std::cout << "Refining..."<<std::endl;
-    
-    for(int iref = 0; iref < nrefsteps; iref++){
-      std::set<int> matids = {cornermatid};
-      const int nels = gmesh->NElements();
-      for(int el = 0; el < nels; el++){
-        auto *gel = gmesh->Element(el);
-        if(gel && gel->NSubElements() == 0){
-          TPZRefPatternTools::RefineDirectional(gel, matids);
-        }
-      }
-    }
-    std::cout << "\nFinished refining!"<<std::endl;
-  }
+  
   //print gmesh to .txt and .vtk format
   if(printGMesh)
   {
