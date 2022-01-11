@@ -114,7 +114,13 @@ s_substrate = news; Plane Surface(s_substrate) = {ll_substrate};
 
 
 
+/*
+"Note that with the built-in geometry kernel Gmsh executes the Coherence command automatically after each geometrical transformation, unless Geometry.AutoCoherence is set to zero"
 
+The Coherence command "Remove all duplicate elementary entities (e.g., points having identical coordinates)"
+
+Therefore, Geometry.AutoCoherence = 0;
+*/
 Geometry.AutoCoherence = 0;
 //pml stuff
 
