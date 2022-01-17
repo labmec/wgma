@@ -13,3 +13,9 @@ add_pz_target(
   SOURCES ribwg.cpp
   FILES meshes/ribWG.msh)
 target_link_libraries(ribwg PUBLIC wgma)
+
+add_pz_target(
+  NAME ecf
+  SOURCES ecf.cpp
+  FILES meshes/ecf.msh)
+target_link_libraries(ecf PUBLIC wgma)
