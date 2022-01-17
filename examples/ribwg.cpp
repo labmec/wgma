@@ -20,11 +20,10 @@ directional mesh refinement.
 #include <pzlog.h>                       //for TPZLogger
 #include <TPZElectromagneticConstants.h> //for pzelectromag::cZero
 #include <TPZKrylovEigenSolver.h>        //for TPZKrylovEigenSolver
-#include <TPZRefPatternTools.h>          //for TPZRefPatternTools
-#include "TPZRefPatternDataBase.h"       //for TPZRefPatternDataBase
-
-
-
+#include <pzintel.h>
+#include <pzmultiphysicselement.h>
+#include <Electromagnetics/TPZWaveguideModalAnalysis.h>
+#include <pzbuildmultiphysicsmesh.h>
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
 
 
@@ -64,7 +63,7 @@ int main(int argc, char *argv[]) {
    *  fem options   *
    ******************/
   // polynomial order to be used in the approximation
-  constexpr int pOrder{2};
+  constexpr int pOrder{3};
 
   /******************
    * solver options *
@@ -100,7 +99,7 @@ int main(int argc, char *argv[]) {
   //prefix for exported files
   const std::string prefix{"ribwg"};
   //resolution of the .vtk file in which the solution will be exported
-  constexpr int vtkRes{0};
+  constexpr int vtkRes{3};
   //if true, the real part of the electric fields is exported. otherwise, the magnitude
   constexpr bool printRealPart{true};
 
@@ -171,6 +170,63 @@ int main(int argc, char *argv[]) {
                                                urVec, erVec, pmlDataVec,
                                                bcDataVec, lambda,scale);
 
+  /**
+     Increasing the polynomial order of an element can only improve
+     the quality of the FEM solution as long as the solution is regular
+     enough. Therefore, we lower the polynomial order of the elements
+     adjacent to the singularities.
+   */
+  [](TPZVec<TPZAutoPointer<TPZCompMesh>> &meshVec, std::set<int> singids){
+    auto mfmesh = meshVec[0];
+    TPZVec<TPZCompMesh*> atomicmeshes = {meshVec[1].operator->(),
+      meshVec[2].operator->()};
+
+    constexpr int h1index = TPZWaveguideModalAnalysis::H1Index();
+    constexpr int hcurlindex = TPZWaveguideModalAnalysis::HCurlIndex();
+    /*
+      In order to ensure De Rham compatibility, we need to have
+      h1 order = hcurl order +1.
+      given our choice of design in NeoPZ, minimum hcurl order is 1.
+    **/
+    constexpr int ordh1 = 2;
+    constexpr int ordhcurl = 1;
+
+
+    for(auto cel : mfmesh->ElementVec()){
+      auto gel = cel->Reference();//geometric element
+      /*
+        Lets check the neighbours for each vertex
+      */
+      bool shouldrefine = false;
+      for(int in=0; in<gel->NCornerNodes() && !shouldrefine; in++){
+        TPZGeoElSide gels(gel,in);
+        TPZGeoElSide neigh(gels.Neighbour());
+        while(gels != neigh && !shouldrefine){
+          if(singids.count(neigh.Element()->MaterialId())){
+            shouldrefine = true;
+          }
+          neigh = neigh.Neighbour();
+        }
+      }
+      if(shouldrefine){
+        auto celmf = dynamic_cast<TPZMultiphysicsElement*>(cel);
+        
+        auto intelh1 =
+            dynamic_cast<TPZInterpolatedElement*>(celmf->Element(h1index));
+        intelh1->PRefine(ordh1);
+
+        auto intelhcurl =
+            dynamic_cast<TPZInterpolatedElement*>(celmf->Element(hcurlindex));
+        intelhcurl->PRefine(ordhcurl);
+      }
+    }
+    for (auto mesh : atomicmeshes){
+      mesh->ExpandSolution();
+    }
+    TPZBuildMultiphysicsMesh::AddConnects(atomicmeshes, mfmesh.operator->());
+    TPZBuildMultiphysicsMesh::TransferFromMeshes(atomicmeshes, mfmesh.operator->());
+    mfmesh->ExpandSolution();
+  }(meshVec, refids);
   
   //WGAnalysis class is responsible for managing the modal analysis
   wgma::WGAnalysis analysis(meshVec,nThreads,optimizeBandwidth,filterBoundaryEqs);
