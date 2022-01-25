@@ -601,6 +601,153 @@ wgma::gmeshtools::ReadGmshMesh(const std::string filename,
   return gmesh;
 }
 
+
+void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
+                                                 const TPZVec<ArcData> &circles)
+{
+
+  //creates mid node for arc elements
+  auto CreateMidNode = [](const TPZVec<REAL> &x1, const TPZVec<REAL> &x2,
+                          const REAL r,
+                          const REAL xc, const REAL yc, const REAL zc){
+    TPZVec<REAL> x3(3,0);
+
+    //first we get its distance from xc
+    x3[0] = (x1[0] + x2[0])/2 - xc;
+    x3[1] = (x1[1] + x2[1])/2 - yc;
+    x3[2] = (x1[2] + x2[2])/2 - zc;
+
+    //norm of the vector
+    const auto vecnorm = sqrt(x3[0]*x3[0] + x3[1]*x3[1] + x3[2]*x3[2]);
+
+    //mid-arc coordinates
+    x3[0] = xc + r * x3[0]/vecnorm;
+    x3[1] = yc + r * x3[1]/vecnorm;
+    x3[2] = zc + r * x3[2]/vecnorm;
+    return x3;
+  };
+
+  
+  //stores the first neighbour for each side before deleting element
+  auto StoreNeighboursAndDeleteEl = [gmesh](TPZGeoEl *gel, bool skip_last_side){
+    //skip last side: for 1D elements in 2D meshes, we want ALL the neighbours
+    //for 2D elements in 2D meshes, we skip the last side
+    const int diff = skip_last_side ? 1 : 0;
+    auto nsides = gel->NSides() - diff;
+    TPZVec<TPZGeoElSide> neighs(nsides);
+    for(int i = 0; i < nsides; i++){
+      neighs[i] = gel->Neighbour(i);
+    }
+    //now we delete the element and its connectivities
+    gmesh->DeleteElement(gel);
+    gel = nullptr;//just to be on the safeside
+    return neighs;
+  };
+  
+  std::map<int,int> arc_ids;
+  for(auto i = 0; i < circles.size(); i++){
+    arc_ids[circles[i].m_matid] = i;
+  }
+  
+  for(auto el : gmesh->ElementVec()){
+    //this way we avoid processing recently inserted elements
+    if(!el || el->IsLinearMapping() == false) continue;
+    const int matid = el->MaterialId();
+    const bool is_arc = arc_ids.find(matid) != arc_ids.end();
+
+    if(is_arc){//found arc
+      const int arc_pos = arc_ids[matid];
+      const REAL r = circles[arc_pos].m_radius;
+      const REAL xc = circles[arc_pos].m_xc;
+      const REAL yc = circles[arc_pos].m_yc;
+      const REAL zc = circles[arc_pos].m_zc;
+      
+      
+      TPZManVector<REAL,3> x1(3,0), x2(3,0), x3(3,0);
+        
+      el->Node(0).GetCoordinates(x1);
+      el->Node(1).GetCoordinates(x2);
+
+      x3 = CreateMidNode(x1, x2, r, xc, yc, zc);
+        
+      const auto nodeid = gmesh->NodeVec().AllocateNewElement();
+      gmesh->NodeVec()[nodeid].Initialize(x3,*gmesh);
+      TPZManVector<int64_t,3> nodesIdVec{el->Node(0).Id(), el->Node(1).Id(), nodeid};
+
+      //we store the first neighbour of each side of the element to be deleted
+      constexpr bool skip_side_arc{false};
+      auto neighs = StoreNeighboursAndDeleteEl(el, skip_side_arc);
+        
+      //insert new element on the mesh
+      auto arc = new TPZGeoElRefPattern<pzgeom::TPZArc3D>(nodesIdVec, matid, *gmesh);
+      //insert connectivities
+      for(int i = 0; i< neighs.size();i++){
+        TPZGeoElSide gelside(arc,i);
+        neighs[i].SetConnectivity(gelside);
+      }
+        
+
+      /**now we need to replace each neighbour of a blend element,
+         so it can be deformed accordingly*/
+      TPZGeoElSide gelside(arc,arc->NSides()-1);
+      //now we iterate through all the neighbours of the linear side
+      TPZGeoElSide neighbour = gelside.Neighbour();
+      //let us store all the neighbours
+      std::set<TPZGeoElSide> all_neighs;
+      while(neighbour.Exists() && neighbour != gelside){
+        all_neighs.insert(neighbour);
+        neighbour = neighbour.Neighbour();
+      }
+      //let us replace all the neighbours
+      for(auto neighbour : all_neighs){ 
+        const auto neigh_side = neighbour.Side();
+        auto neigh_el = neighbour.Element();
+
+        /*let us take into account the possibility that
+          one triangle might be neighbour of two arcs
+         */
+        TPZGeoEl *new_neigh{nullptr};
+        if(!neigh_el->IsGeoBlendEl()){
+          const auto neigh_matid = neigh_el->MaterialId();
+          const auto neigh_nnodes = neigh_el->NNodes();
+          TPZManVector<int64_t,4> neigh_nodes(neigh_nnodes,-1);
+          //lets copy all the nodes
+          for(int in = 0; in < neigh_nnodes; in++){
+            neigh_nodes[in] = neigh_el->Node(in).Id();
+          }
+          
+          const auto neigh_type = neigh_el->Type();
+
+          constexpr bool skip_side_neigh{true};
+          auto neighs = StoreNeighboursAndDeleteEl(neigh_el, skip_side_neigh);
+          
+          //create new element
+          if(neigh_type == MElementType::ETriangle){
+            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
+              pzgeom::TPZGeoTriangle>>(neigh_nodes, neigh_matid,*gmesh);
+          }else if(neigh_type == MElementType::EQuadrilateral){
+            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
+              pzgeom::TPZGeoQuad>>(neigh_nodes, neigh_matid,*gmesh);
+          }
+          //insert connectivities
+          for(int i = 0; i<neighs.size();i++){
+            TPZGeoElSide mygelside(new_neigh,i);
+            neighs[i].SetConnectivity(mygelside);
+          }
+          //insert last remaining connectivity
+          {
+            TPZGeoElSide mygelside(new_neigh, new_neigh->NSides()-1);
+            mygelside.SetConnectivity(mygelside);
+          }
+        }else{
+          new_neigh = neigh_el;
+        }
+        new_neigh->SetNeighbourForBlending(neigh_side);
+      }
+    }
+  }
+}
+
 void wgma::gmeshtools::DirectionalRefinement(TPZAutoPointer<TPZGeoMesh> gmesh,
                            std::set<int> matids, const int nrefs)
 {

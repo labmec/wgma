@@ -91,6 +91,27 @@ namespace wgma::gmeshtools{
                const REAL scale,
                TPZVec<std::map<std::string,int>> & matids);
 
+  //! Stores data for allowing exact geometric representation of circumference arcs.
+  struct ArcData{
+    int m_matid{-10};//< material identifier
+    REAL m_radius{-1};//< radius
+    REAL m_xc{0};//< x-coordinate of circumference center
+    REAL m_yc{0};//< y-coordinate of circumference center
+    REAL m_zc{0};//< z-coordinate of circumference center
+  };
+
+  /**
+     @brief Converts linear line elements to TPZArc3D elements,
+     allowing for an exact geometric representation of curved geometries.
+     The neighbouring elements will be converted to TPZGeoBlend<T> so that
+     they take the curved sides into account.
+     @param [in] gmesh geometric mesh to be transformed.
+     @param [in] circles data of all circumference arcs.
+     @note TPZGeoMesh::BuildConnectivity should have been called beforehand.
+   */
+  void SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
+                                 const TPZVec<ArcData> &circles);
+
   /**
      @brief Refines elements whose neighbours have materials in matids. 
      This function will call
