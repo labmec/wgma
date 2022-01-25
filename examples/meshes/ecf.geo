@@ -6,12 +6,12 @@ DefineConstant[w_gold = 50e-9];
 DefineConstant[r_clad = 100e-6];
 DefineConstant[d_pml = 50e-6];
 DefineConstant[elsize_gold = 0.125e-7];
-DefineConstant[elsize_in = 2.25e-6];
-DefineConstant[elsize_out = 25e-6];
+DefineConstant[elsize_in = 3e-6];
+DefineConstant[elsize_out = 10e-6];
 DefineConstant[elsize_bound = 30e-6];
 
 DefineConstant[add_gold = 0];
-
+DefineConstant[factor = 1];
 
 /*
 For better comprehension of the nomenclature used here, check
@@ -39,6 +39,11 @@ elsize_bound *=scale;
 If (add_gold == 0)
   elsize_gold = elsize_in;
 EndIf
+
+elsize_gold /= factor;
+elsize_in /= factor;
+elsize_out /= factor;
+elsize_bound /= factor;
 
 
 d_bound = 1.5 * r_clad;
@@ -102,21 +107,23 @@ For i In {1:5}
     xc_circ~{i} = new_pt;
     xc = xc_circ~{i};
     Call MyCircle;
+    l_vec_circ~{i}[] = {l_circ_0,l_circ_1,l_circ_2,l_circ_3};
     ll_circ~{i} = ll_circ;
     s_circ~{i} = news; Plane Surface(s_circ~{i}) = {ll_circ~{i}};
 EndFor
 
 
 //core
-
+/*
 xc = xc_cladding;
 r = r_core;
 elsize = elsize_in;
 Call MyCircle;
 ll_core = ll_circ;
+l_vec_core[] = {l_circ_0,l_circ_1,l_circ_2,l_circ_3};
 s_core = news;
 Plane Surface(s_core) = {ll_core};
-
+*/
 Characteristic Length { p_circ_0 } = elsize_gold;
 
 
@@ -183,7 +190,7 @@ Circle(l_clad_6) = {p_line_3, xc_circ_0, p_line_0};
 
 ll_clad = newll;
 Line Loop(ll_clad) = {l_clad_0,l_clad_1,l_clad_2,l_clad_3,l_clad_4,l_clad_5, l_clad_6};
-s_clad = news; Plane Surface(s_clad) = {ll_clad, ll_core, -ll_circ_1,-ll_circ_2,-ll_circ_3,-ll_circ_4,-ll_circ_5};
+s_clad = news; Plane Surface(s_clad) = {ll_clad, -ll_circ_1,-ll_circ_2,-ll_circ_3,-ll_circ_4,-ll_circ_5};
 
 
 
@@ -291,7 +298,7 @@ Geometry.MatchMeshTolerance = 1e-18;
 Mesh.ScalingFactor = 1./scale;
 
 Physical Surface("air",1) = {s_air, s_circ_1, s_circ_2, s_circ_3, s_circ_4, s_circ_5};
-Physical Surface("core",2) = {s_core, s_clad};
+Physical Surface("core",2) = {s_clad};
 If (add_gold == 1)
    Physical Surface("gold",3) = {s_gold};
 EndIf
@@ -307,4 +314,21 @@ Physical Surface("pml_xmym", 15) = {pml_xmym};
 Physical Surface("pml_xpyp", 16) = {pml_xpyp};
 Physical Surface("pml_xpym", 17) = {pml_xpym};
 
-Physical Line("bound", 30) = boundary[] ;//dirichlet boundary condition
+/*
+now we set all the circumference arcs
+*/
+Physical Line("circ_clad_1", 21)=
+         {l_clad_6};
+Physical Line("circ_1", 22)= l_vec_circ_1[];
+Physical Line("circ_2", 23)= l_vec_circ_2[];
+Physical Line("circ_3", 24)= l_vec_circ_3[];
+Physical Line("circ_4", 25)= l_vec_circ_4[];
+Physical Line("circ_5", 26)= l_vec_circ_5[];
+Physical Line("circ_clad_2", 27)=
+         {l_clad_1,l_clad_2,l_clad_3,l_clad_4};
+If (add_gold == 1)
+   Physical Line("circ_gold", 28)=
+         {l_gold_0,l_gold_1,l_gold_2};
+EndIf
+
+Physical Line("bound", 50) = boundary[] ;//dirichlet boundary condition

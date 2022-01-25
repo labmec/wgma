@@ -24,11 +24,13 @@ This target performs the modal analysis of an Exposed Core Fiber (ECF).
 #include <pzbuildmultiphysicsmesh.h>
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
 #include <pzshapecube.h>
-#include <TPZShapeHCurl.h>
 
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const int neigenpairs, const CSTATE target,
             TPZEigenSort sorting, bool usingSLEPC);
+
+//Sets geometric info regarding all the circles in the mesh
+TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(const REAL scale);
 
 int main(int argc, char *argv[]) {
 
@@ -48,7 +50,7 @@ int main(int argc, char *argv[]) {
   std::map<std::string,wgma::bc::type> bcmap;
   bcmap["bound"] = wgma::bc::type::PEC;
   // operational wavelength
-  constexpr STATE lambda{1.5e-6};
+  constexpr STATE lambda{50e-6};
   /*
     Given the small dimensions of the domain, scaling it can help in 
     achieving good precision. Using 1./k0 as a scale factor results in 
@@ -71,11 +73,11 @@ int main(int argc, char *argv[]) {
   //number of threads to use
   constexpr int nThreads{8};
   //number of genvalues to be computed
-  constexpr int nEigenpairs{50};
+  constexpr int nEigenpairs{10};
   //whether to compute eigenvectors (instead of just eigenvalues)
   constexpr bool computeVectors{true};
   //how to sort the computed eigenvalues
-  constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
+  constexpr TPZEigenSort sortingRule {TPZEigenSort::RealAscending};
   /*
    The simulation uses a Krylov-based Arnoldi solver for solving the
    generalised EVP. A shift-and-inverse spectral transform is applied in 
@@ -130,7 +132,14 @@ int main(int argc, char *argv[]) {
   TPZVec<std::map<std::string,int>> gmshmats;
   auto gmesh = wgma::gmeshtools::ReadGmshMesh(filename, scale, gmshmats);
 
-  
+  /*
+    In order to represent curved geometries correctly, we need to use
+    TPZArc3D, which uses an exact mapping to represent circumference arcs.
+    The neighbouring elements are also modified to take this deformation into account.
+   */
+  auto arcdata = SetUpArcData(scale);
+
+  wgma::gmeshtools::SetExactArcRepresentation(gmesh, arcdata);
   //print gmesh to .txt and .vtk format
   if(printGMesh)
   {
@@ -139,7 +148,6 @@ int main(int argc, char *argv[]) {
     wgma::gmeshtools::PrintGeoMesh(gmesh,filename);
   }
 
-  
   //setting up cmesh data
   TPZVec<int> volMatIdVec;
   TPZVec<CSTATE> urVec;
@@ -196,7 +204,7 @@ SetupSolver(const int neigenpairs, const CSTATE target,
 
   TPZAutoPointer<TPZEigenSolver<CSTATE>> solver{nullptr};
 
-  constexpr int krylovDim{-1};
+  constexpr int krylovDim{50};
   if (usingSLEPC){
     using namespace wgma::slepc;
     /*
@@ -257,3 +265,39 @@ SetupSolver(const int neigenpairs, const CSTATE target,
   return solver;
 }
 
+TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(const REAL scale)
+{
+  TPZVec<wgma::gmeshtools::ArcData> arcdata(7);
+
+  constexpr REAL um = 1e-6;
+  const REAL r_core{14*um / scale};
+  const REAL r_clad{(12.5*um) / scale}, r_clad_out{(100*um) / scale};
+
+  //rotates a pt around the origin in the xy-plane
+  auto RotatePt = [] (const REAL theta, const REAL x, const REAL y){
+    const REAL xrot = cos(theta) * x - sin(theta) * y;
+    const REAL yrot = sin(theta) * x + cos(theta) * y;
+    return std::pair(xrot, yrot);
+  };
+
+  const REAL xini{1.05*r_clad+r_core}, yini{0};
+  constexpr int ncircs{6};
+  for(int ic = 0; ic < ncircs; ic++){
+    const REAL theta = ic * M_PI/3;
+    REAL xc, yc;
+    std::tie(xc, yc) = RotatePt(theta, xini,yini);
+    arcdata[ic].m_matid = 20 + ic+1;
+    arcdata[ic].m_radius = r_clad;
+    arcdata[ic].m_xc = xc;
+    arcdata[ic].m_yc = yc;
+    arcdata[ic].m_zc = 0;
+  }
+
+  arcdata[6].m_matid = 27;
+  arcdata[6].m_radius = r_clad_out;
+  arcdata[6].m_xc = 0;
+  arcdata[6].m_yc = 0;
+  arcdata[6].m_zc = 0;
+  
+  return arcdata;
+}
