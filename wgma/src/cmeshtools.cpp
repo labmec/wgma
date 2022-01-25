@@ -88,22 +88,17 @@ cmeshtools::SetupGmshMaterialData(
     }
   }
   //bc materials
-  const int nbcs = gmshmats[1].size();
-  bcvec.Resize(nbcs);
-
   {
-    int ibc = 0;
     for(auto bc : gmshmats[1]){
       const auto name = bc.first;
       const auto id = bc.second;
-      if(bcmap.find(name) == bcmap.end()){//material not found
-        std::cout<<"error: bc "<<name<<" id "<<id<<" not found"
-                 <<"\nAborting..."<<std::endl;
-        DebugStop();
-      }else{
+      /*sometimes we need 1d materials with a given id for other purposes,
+        such as circumference arcs. soo, not finding it is not a problem*/
+      if(bcmap.find(name) != bcmap.end()){
+        const int ibc = bcvec.size();
+        bcvec.Resize(ibc+1);
         bcvec[ibc].id = id;
         bcvec[ibc].t = bcmap.at(name);
-        ibc++;
       }
     }
   }
