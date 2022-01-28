@@ -97,6 +97,8 @@ int main(int argc, char *argv[]) {
   constexpr bool printGMesh{true};
   //whether to export the solution as a .vtk file
   constexpr bool exportVtk{true};
+  //whether to export the eigenvalues in .csv format
+  constexpr bool exportCsv{true};
   //prefix for exported files
   const std::string prefix{"ecf"};
   //resolution of the .vtk file in which the solution will be exported
@@ -176,6 +178,11 @@ int main(int argc, char *argv[]) {
 
   analysis.SetSolver(solver);
   analysis.Run(computeVectors);
+
+  if(exportCsv){
+    const std::string csvfile = prefix+"_eigenvalues.csv";
+    analysis.WriteToCsv(csvfile, lambda);
+  }
   
   if (!computeVectors && !exportVtk) return 0;
 
