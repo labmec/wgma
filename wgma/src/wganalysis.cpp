@@ -171,4 +171,45 @@ namespace wgma{
     std::cout<<"\nFinished post processing"<<std::endl;
     std::cout<<std::endl;
   }
+  
+  void WGAnalysis::WriteToCsv(std::string filename, STATE lambda){
+    const int nev = m_evalues.size();
+    if(nev < 1){
+      std::cout<<"There are no eigenvalues to write to .csv"<<std::endl;
+      return;
+    }
+    std::cout<<"Exporting eigen info..."<<std::endl;
+    std::ostringstream eigeninfo;
+    constexpr auto pres = std::numeric_limits<STATE>::max_digits10;
+    eigeninfo.precision(pres);
+    REAL hSize = -1e12;
+    TPZGeoMesh *gmesh = m_cmesh_mf->Reference();
+    for(auto *el : gmesh->ElementVec()){
+      if(el->HasSubElement()) continue;
+      const auto elRadius = el->ElementRadius();
+      hSize = elRadius > hSize ? elRadius : hSize;
+    }
+    const auto neq = m_cmesh_mf->NEquations();
+    const auto nel = m_cmesh_mf->NElements();
+    const auto porder = m_cmesh_mf->GetDefaultOrder();
+    
+    eigeninfo << std::fixed << neq << "," << nel << ",";
+    eigeninfo << std::fixed << hSize << "," << porder<<",";
+    eigeninfo << std::fixed << lambda<<",";
+    eigeninfo << nev<<",";
+    for(int i = 0; i < nev ; i++){
+      eigeninfo<<std::fixed<<std::real(m_evalues[i])<<",";
+      eigeninfo<<std::fixed<<std::imag(m_evalues[i]);
+      if(i != nev - 1 ) {
+        eigeninfo << ",";
+      }
+    }
+    eigeninfo << std::endl;
+
+    std::ofstream file(filename.c_str(),std::ios::app);
+    file << eigeninfo.str();
+    file.close();
+  }
+
+  
 };

@@ -47,6 +47,23 @@ namespace wgma{
        @param[in] print_real_part whether to print the real part (or magnitude) of the field
      */
     void PostProcess(std::string filename, const int vtk_res = 0, const bool print_real_part=true);
+
+    /**
+       @brief Export eigenvalues to in a csv format and append it to a file.
+       The following values are exported:
+       neq , nel , h , p , lambda , nev, real(w1), imag(w1) , ... , real(wnev) , imag(wnev)
+       where:
+       - neq    = number of equations
+       - nev    = number of elements
+       - h      = radius of the biggest element in the mesh
+       - p      = default polynomial order of the hcurl mesh
+       - lambda = operational wavelength
+       - nev    = number of eigenvalues
+       @param [in] filename name of the file 
+       @param [in] lambda operational wavelength
+     */
+    void WriteToCsv(std::string filename, STATE lambda);
+      
   protected:
     //! Combined computational mesh (hcurl and h1)
     TPZAutoPointer<TPZCompMesh> m_cmesh_mf{nullptr};
