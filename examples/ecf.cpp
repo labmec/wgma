@@ -1,7 +1,8 @@
 /**
 ecf.cpp
 
-This target performs the modal analysis of an Exposed Core Fiber (ECF).
+This target performs the modal analysis of an Exposed Core Fiber (ECF)
+and generates dispersion curves
 
 ***/
 
@@ -32,25 +33,65 @@ SetupSolver(const int neigenpairs, const CSTATE target,
 //Sets geometric info regarding all the circles in the mesh
 TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(const REAL scale);
 
-int main(int argc, char *argv[]) {
+void RunSimulation(const STATE lambda, const int nEigenpairs,
+                   const int pOrder, const std::string& prefix,
+                   const bool printGMesh, const bool exportVtk,
+                   const bool exportCsv, const bool usingSLEPC);
 
+int main(int argc, char *argv[]) {
+  
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
    * the log should be initialised as:*/
   TPZLogger::InitializePZLOG();
 #endif
+  
+  // polynomial order to be used in the approximation
+  constexpr int pOrder{1};
+  //number of genvalues to be computed
+  constexpr int nEigenpairs{10};
+  //whether to print the geometric mesh in .txt and .vtk formats
+  constexpr bool printGMesh{false};
+  //whether to export the solution as a .vtk file
+  constexpr bool exportVtk{false};
+  //whether to export the eigenvalues in .csv format
+  constexpr bool exportCsv{true};
+  //prefix for exported files
+  const std::string prefix{"ecf"};
+  //whether to use SLEPC
+  bool usingSLEPC{true};
 
-  /***********************
-   * setting the problem *
-   ***********************/
+  
+  constexpr int nlambdas{100};
+  constexpr STATE minlambda{5e-7};
+  constexpr STATE maxlambda{5e-6};
+  constexpr STATE deltalambda{(maxlambda-minlambda)/nlambdas};
+  TPZSimpleTimer total("Dispersion curve");
+  for(int il = 0; il < nlambdas; il++){
+    std::cout<<"Running round "<<il+1<<" out of "<<nlambdas<<std::endl;
+    const STATE lambda = minlambda + il * deltalambda;
+    RunSimulation(lambda, nEigenpairs, pOrder, prefix, printGMesh, exportVtk,
+                  exportCsv, usingSLEPC);
+  }
+  
+  if(usingSLEPC){
+    wgma::slepc::EPSHandler<CSTATE>::FinalizeSLEPc();
+  }
+  return 0;
+}
 
+void RunSimulation(const STATE lambda, const int nEigenpairs, const int pOrder, const std::string&prefix,
+                   const bool printGMesh, const bool exportVtk,
+                   const bool exportCsv, const bool usingSLEPC){
+
+  
   std::map<std::string,std::pair<CSTATE,CSTATE>> matmap;
   matmap["air"] = std::make_pair<CSTATE,CSTATE>(1.,1.);
   matmap["core"] = std::make_pair<CSTATE,CSTATE>(1.45*1.45,1.);
   std::map<std::string,wgma::bc::type> bcmap;
   bcmap["bound"] = wgma::bc::type::PEC;
   // operational wavelength
-  constexpr STATE lambda{50e-6};
+  
   /*
     Given the small dimensions of the domain, scaling it can help in 
     achieving good precision. Using 1./k0 as a scale factor results in 
@@ -58,13 +99,7 @@ int main(int argc, char *argv[]) {
     This scale factor is often referred to as characteristic length
     of the domain.
   */
-  constexpr REAL scale{lambda/(2*M_PI)};
-
-  /******************
-   *  fem options   *
-   ******************/
-  // polynomial order to be used in the approximation
-  constexpr int pOrder{2};
+  const REAL scale{lambda/(2*M_PI)};
 
   /******************
    * solver options *
@@ -72,8 +107,6 @@ int main(int argc, char *argv[]) {
   
   //number of threads to use
   constexpr int nThreads{8};
-  //number of genvalues to be computed
-  constexpr int nEigenpairs{10};
   //whether to compute eigenvectors (instead of just eigenvalues)
   constexpr bool computeVectors{true};
   //how to sort the computed eigenvalues
@@ -84,23 +117,10 @@ int main(int argc, char *argv[]) {
    the system for better convergence of the eigenvalues.
    The target variable should be close to the desired eigenvalue (in this case,
    the effective index neff).*/
-  constexpr CSTATE target = -2.12;
+  constexpr CSTATE target = -2.1025;
 
   //PML attenuation constant
   constexpr STATE alphaPML{0.02};
-
-  /*********************
-   * exporting options *
-   *********************/
-
-  //whether to print the geometric mesh in .txt and .vtk formats
-  constexpr bool printGMesh{true};
-  //whether to export the solution as a .vtk file
-  constexpr bool exportVtk{true};
-  //whether to export the eigenvalues in .csv format
-  constexpr bool exportCsv{true};
-  //prefix for exported files
-  const std::string prefix{"ecf"};
   //resolution of the .vtk file in which the solution will be exported
   constexpr int vtkRes{1};
   //if true, the real part of the electric fields is exported. otherwise, the magnitude
@@ -126,8 +146,6 @@ int main(int argc, char *argv[]) {
   //scoped-timer 
   TPZSimpleTimer total("Total");
   
-
-  bool usingSLEPC{true};
   //creates gmesh
   //filename
   const std::string filename{"meshes/ecf.msh"};
@@ -176,7 +194,7 @@ int main(int argc, char *argv[]) {
   
   auto solver = SetupSolver(nEigenpairs, target, sortingRule, usingSLEPC);
 
-  analysis.SetSolver(solver);
+  analysis.SetSolver(*solver);
   analysis.Run(computeVectors);
 
   if(exportCsv){
@@ -184,14 +202,14 @@ int main(int argc, char *argv[]) {
     analysis.WriteToCsv(csvfile, lambda);
   }
   
-  if (!computeVectors && !exportVtk) return 0;
+  if (!computeVectors || !exportVtk) return;
 
   const std::string plotfile = prefix+"_field_";
 
   TPZSimpleTimer postProc("Post processing");
   
   analysis.PostProcess(plotfile, vtkRes, printRealPart);
-  return 0;
+  return;
 }
 
 
@@ -236,7 +254,7 @@ SetupSolver(const int neigenpairs, const CSTATE target,
     constexpr bool eps_krylov_locking = true;
     constexpr STATE eps_krylov_restart = 0.7;
     constexpr STATE eps_mpd = -1;//PETSC_DECIDE
-    constexpr bool eps_verbosity = true;
+    constexpr bool eps_verbosity = false;
     
     
     auto eps_solver = new EPSHandler<CSTATE>;
