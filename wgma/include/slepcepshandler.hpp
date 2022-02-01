@@ -162,6 +162,10 @@ namespace wgma::slepc{
   template<class TVar>
   class EPSHandler : public TPZEigenSolver<TVar> {
   public:
+    //! Initializes SLEPc
+    static void InitSLEPc();
+    //! Should be called *once* before ending the execution of the program
+    static void FinalizeSLEPc();
     //! If TVar!=PetscScalar, it will not compile
     EPSHandler();
       
@@ -309,6 +313,8 @@ namespace wgma::slepc{
     Precond fPc{Precond::LU};
     //! Zero pivot tolerance for the preconditioner
     RTVar fPcZero{std::numeric_limits<RTVar>::epsilon()};
+    //! Whether SLEPc has been initialized
+    static bool fSlepcInit;
   };
 }
 #endif //WGMASLEPCHANDLER_H

@@ -42,6 +42,36 @@ namespace wgma::slepc{
   ::PCType ConvertPrecond(Precond in);
   
 #endif
+
+  template<class TVar>
+  bool EPSHandler<TVar>::fSlepcInit = false;
+  
+  template<class TVar>
+  void EPSHandler<TVar>::InitSLEPc(){
+    //initialize SLEPc
+#ifdef WGMA_USING_SLEPC    
+    SlepcInitialize((int *)0, (char ***)0, (const char*)0,(const char*)0 );
+    fSlepcInit = true;
+#else
+    std::cerr <<"WARNING:The EPSHandler module is only available if the wgma"
+              <<"was configured with SLEPc library. Aborting..."<<std::endl;
+    exit(-1); 
+#endif
+    
+  }
+
+  template<class TVar>
+  void EPSHandler<TVar>::FinalizeSLEPc(){
+#ifdef WGMA_USING_SLEPC    
+    SlepcFinalize();
+#else
+    std::cerr <<"WARNING:The EPSHandler module is only available if the wgma"
+              <<"was configured with SLEPc library. Aborting..."<<std::endl;
+    exit(-1); 
+#endif
+    
+  }
+  
   template<class TVar>
   EPSHandler<TVar>::EPSHandler(){
 #ifdef WGMA_USING_SLEPC    
@@ -118,9 +148,8 @@ namespace wgma::slepc{
     auto &pzA = dynamic_cast<TPZFYsmpMatrix<TVar>&>(this->MatrixA().operator*());
     auto &pzB = dynamic_cast<TPZFYsmpMatrix<TVar>&>(this->MatrixB().operator*());
 
-    //initialize SLEPc
-    SlepcInitialize((int *)0, (char ***)0, (const char*)0,(const char*)0 );
-
+    if(! fSlepcInit) {InitSLEPc();}
+    
     auto CreatePetscMat = [](TPZFYsmpMatrix<TVar> &pzmat,
                              Mat &mat,
                              PetscInt *&ia,
@@ -384,9 +413,10 @@ namespace wgma::slepc{
     if(ibP) PetscFree(ibP);
     if(jbP) PetscFree(jbP);
     if(abP) PetscFree(abP);
+    if(petscA) PetscFree(petscA);
+    if(petscB) PetscFree(petscB);
     
     EPSDestroy(&eps);
-    SlepcFinalize();
     return 0;
 #endif
     return -1;
