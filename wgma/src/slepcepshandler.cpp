@@ -57,7 +57,7 @@ namespace wgma::slepc{
   
   template<class TVar>
   EPSHandler<TVar>* EPSHandler<TVar>::Clone() const {
-    return (EPSHandler*)this;
+    return (EPSHandler*) new EPSHandler(*this);
   }
 
   template<class TVar>

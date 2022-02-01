@@ -23,13 +23,13 @@ namespace wgma{
     WGAnalysis(const TPZVec<TPZAutoPointer<TPZCompMesh>> &meshvec,
                const int n_threads, const bool reorder_eqs=true,
                const bool filter_bound=true);
-    //! Sets a custom eigensolver
-    void SetSolver(TPZAutoPointer<TPZEigenSolver<CSTATE>> solv);
+    //! Sets a custom eigensolver to be copied to underlying TPZAnalysis
+    void SetSolver(const TPZEigenSolver<CSTATE> &solv);
     /**
-       @brief Gets a pointer to the eigensolver for easier configuration
+       @brief Gets a copy of the eigensolver for easier configuration
        @note A call to WGAnalysis::SetSolver must be made afterwards.
     */
-    TPZAutoPointer<TPZEigenSolver<CSTATE>> GetSolver() const;
+    TPZEigenSolver<CSTATE> & GetSolver() const;
     /**
        @brief Run the analysis
        @param [in] compute_eigenvectors whether to compute eigenvectors (or just eigenvalues)
@@ -71,10 +71,8 @@ namespace wgma{
     TPZAutoPointer<TPZCompMesh> m_cmesh_h1{nullptr};
     //! Hcurl mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh_hcurl{nullptr};
-    //! Eigensolver
-    TPZAutoPointer<TPZEigenSolver<CSTATE>> m_solver{nullptr};
     //! Analysis instance
-    TPZAutoPointer<TPZEigenAnalysis> m_an;
+    TPZAutoPointer<TPZEigenAnalysis> m_an{nullptr};
     //! Calculated eigenvalues
     TPZVec<CSTATE> m_evalues;
     //! Calculated eigenvectors

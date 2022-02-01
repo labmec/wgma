@@ -185,7 +185,7 @@ int main(int argc, char *argv[]) {
   krylov_solver->SetAsGeneralised(true);
   krylov_solver->SetEigenSorting(sortingRule);
 
-  analysis.SetSolver(krylov_solver);
+  analysis.SetSolver(*krylov_solver);
 
 
   analysis.Run(computeVectors);

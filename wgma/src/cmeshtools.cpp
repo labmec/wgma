@@ -125,7 +125,8 @@ cmeshtools::CreateCMesh(
   /*
    First we create the computational mesh associated with the H1 space
    (ez component)*/
-  auto * cmeshH1 =new TPZCompMesh(gmesh,isComplex);
+  TPZAutoPointer<TPZCompMesh> cmeshH1 =
+    new TPZCompMesh(gmesh,isComplex);
   cmeshH1->SetDefaultOrder(pOrder +1);//for deRham compatibility
   cmeshH1->SetDimModel(dim);
   //number of state variables in the problem
@@ -159,7 +160,8 @@ cmeshtools::CreateCMesh(
   /*
     Then we create the computational mesh associated with the HCurl space
    */
-  auto *cmeshHCurl = new TPZCompMesh(gmesh,isComplex);
+  TPZAutoPointer<TPZCompMesh> cmeshHCurl =
+    new TPZCompMesh(gmesh,isComplex);
   cmeshHCurl->SetDefaultOrder(pOrder);
   cmeshHCurl->SetDimModel(dim);
   
@@ -187,7 +189,8 @@ cmeshtools::CreateCMesh(
   cmeshHCurl->CleanUpUnconnectedNodes();
 
   
-  auto *cmeshMF =new TPZCompMesh(gmesh,isComplex);
+  TPZAutoPointer<TPZCompMesh> cmeshMF =
+    new TPZCompMesh(gmesh,isComplex);
   TPZWaveguideModalAnalysis *matWG = nullptr;
   for(auto i = 0; i < nVolMats; i++){
     matWG = new TPZWaveguideModalAnalysis(
@@ -204,7 +207,7 @@ cmeshtools::CreateCMesh(
     const auto id = pml.id;
     const auto alpha = pml.alpha;
     const auto type = pml.t;
-    AddRectangularPMLRegion(id, alpha, type, volmats, cmeshMF);
+    AddRectangularPMLRegion(id, alpha, type, volmats, gmesh, cmeshMF);
   }
   
   TPZBndCond *bcMat = nullptr;
@@ -222,13 +225,13 @@ cmeshtools::CreateCMesh(
   cmeshMF->CleanUpUnconnectedNodes();
 
   TPZManVector<TPZCompMesh*,3> meshVecIn(2);
-  meshVecIn[TPZWaveguideModalAnalysis::H1Index()] = cmeshH1;
-  meshVecIn[TPZWaveguideModalAnalysis::HCurlIndex()] = cmeshHCurl;
+  meshVecIn[TPZWaveguideModalAnalysis::H1Index()] = cmeshH1.operator->();
+  meshVecIn[TPZWaveguideModalAnalysis::HCurlIndex()] = cmeshHCurl.operator->();
 
   
-  TPZBuildMultiphysicsMesh::AddElements(meshVecIn, cmeshMF);
-  TPZBuildMultiphysicsMesh::AddConnects(meshVecIn, cmeshMF);
-  TPZBuildMultiphysicsMesh::TransferFromMeshes(meshVecIn, cmeshMF);
+  TPZBuildMultiphysicsMesh::AddElements(meshVecIn, cmeshMF.operator->());
+  TPZBuildMultiphysicsMesh::AddConnects(meshVecIn, cmeshMF.operator->());
+  TPZBuildMultiphysicsMesh::TransferFromMeshes(meshVecIn, cmeshMF.operator->());
 
   cmeshMF->ExpandSolution();
   cmeshMF->ComputeNodElCon();
@@ -280,14 +283,14 @@ void
 cmeshtools::AddRectangularPMLRegion(const int matId, const int alpha,
                                     const wgma::pml::type type,
                                     const std::set<int> &volmats,
+                                    TPZAutoPointer<TPZGeoMesh> gmesh,
                                     TPZAutoPointer<TPZCompMesh> cmesh)
 {
 
   //let us find the (xmin,xmax) and (ymin,ymax) of the PML region
   REAL xMax = -1e20, xMin = 1e20, yMax = -1e20, yMin = 1e20;
-  TPZGeoMesh *gmesh = cmesh->Reference();
   for (auto geo : gmesh->ElementVec()){
-    if (geo->MaterialId() == matId) {
+    if (geo && geo->MaterialId() == matId) {
       for (int iNode = 0; iNode < geo->NCornerNodes(); ++iNode) {
         TPZManVector<REAL, 3> co(3);
         geo->Node(iNode).GetCoordinates(co);
