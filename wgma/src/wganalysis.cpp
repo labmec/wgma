@@ -49,19 +49,18 @@ namespace wgma{
     m_an->SetStructuralMatrix(strmtrx);
   }
     
-  void WGAnalysis::SetSolver(TPZAutoPointer<TPZEigenSolver<CSTATE>> solv){
-    m_solver = solv;
-    m_an->SetSolver(*m_solver);
+  void WGAnalysis::SetSolver(const TPZEigenSolver<CSTATE> & solv){
+    m_an->SetSolver(solv);
   }
     
-  TPZAutoPointer<TPZEigenSolver<CSTATE>> WGAnalysis::GetSolver() const{
-    return m_solver;
+  TPZEigenSolver<CSTATE> & WGAnalysis::GetSolver() const{
+    return m_an->EigenSolver<CSTATE>();
   }
 
   void WGAnalysis::Run(bool compute_eigenvectors){
     m_an->SetComputeEigenvectors(compute_eigenvectors);
-
-    if(!m_solver){
+    auto *solv = m_an->Solver();
+    if(!solv){
       std::cerr<<__PRETTY_FUNCTION__
                <<"\nA solver has not been set.\n"
                <<"Check documentation of TPZKrylovEigenSolver"
@@ -69,8 +68,8 @@ namespace wgma{
       exit(-1);
     }
 
-    auto krylov_solver =
-      TPZAutoPointerDynamicCast<TPZKrylovEigenSolver<CSTATE>>(m_solver);
+    auto *krylov_solver =
+      dynamic_cast<TPZKrylovEigenSolver<CSTATE>*> (solv);      
     if(krylov_solver && krylov_solver->KrylovInitialVector().Rows() == 0){
       /**this is to ensure that the eigenvector subspace is orthogonal to
          the spurious solutions associated with et = 0 ez != 0*/
