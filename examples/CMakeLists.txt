@@ -19,3 +19,9 @@ add_pz_target(
   SOURCES ecf.cpp
   FILES meshes/ecf.msh meshes/ecf_closed.msh)
 target_link_libraries(ecf PUBLIC wgma)
+
+add_pz_target(
+  NAME planar_wg
+  SOURCES planar_wg.cpp
+  FILES meshes/planar_wg.msh)
+target_link_libraries(planar_wg PUBLIC wgma)
