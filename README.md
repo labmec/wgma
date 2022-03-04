@@ -75,3 +75,12 @@ Analysis of a rib waveguide.
 Illustrates
 - reading a `.msh` file from gmsh
 - directional refinement (useful for singularities)
+
+
+### ecf
+
+Analysis of an Exposed-Core-Fiber
+
+Illustrates
+- performance of a real-world scenario
+- how to generate dispersion curves and export to `.csv`
