@@ -228,7 +228,7 @@ cmeshtools::CreateCMesh(
     const int id = bc.id;
     const int volid = bc.volid;
     auto *matWG =
-      dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshH1->FindMaterial(volid));
+      dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshMF->FindMaterial(volid));
     auto *bcMat = matWG->CreateBC(matWG, id, bctype, val1, val2);
     cmeshMF->InsertMaterialObject(bcMat);
   }
