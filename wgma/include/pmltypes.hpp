@@ -65,11 +65,13 @@ namespace wgma{
 
     //! Data structure for easier creation of PML regions
     struct data{
-      type t;
-      STATE alpha;
-      int id;
-      explicit data(int i, type tp, STATE a) : id(i), t(tp), alpha(a) {}
-      data() : id(-100), alpha(0), t(type::xm) {}
+      type t{type::xm};
+      STATE alphax{0};
+      STATE alphay{0};
+      int id{-100};
+      explicit data(int i, type tp, STATE ax, STATE ay) :
+        id(i), t(tp), alphax(ax), alphay(ay) {}
+      data() = default;
     };
   };
   

@@ -1,5 +1,6 @@
 #include "cmeshtools.hpp"
 #include "pmltypes.hpp"
+#include "cmeshtools_impl.hpp"
 
 #include <pzgmesh.h>
 #include <pzcmesh.h>
@@ -20,7 +21,8 @@ cmeshtools::SetupGmshMaterialData(
   const TPZVec<std::map<std::string,int>> &gmshmats,
   const std::map<std::string,std::pair<CSTATE,CSTATE>> &matmap,
   const std::map<std::string,wgma::bc::type> &bcmap,
-  const STATE alphaPML,
+  const STATE alphaPMLx,
+  const STATE alphaPMLy,
   TPZVec<int> &volmatids,
   TPZVec<CSTATE> &ervec,
   TPZVec<CSTATE> &urvec,
@@ -60,7 +62,8 @@ cmeshtools::SetupGmshMaterialData(
         if(test){
           pmlvec.Resize(pos+1);
           pmlvec[pos].id = id;
-          pmlvec[pos].alpha = alphaPML;
+          pmlvec[pos].alphax = alphaPMLx;
+          pmlvec[pos].alphay = alphaPMLy;
           pmlvec[pos].t = pmltypes[ipml];
           found = true;
           break;
@@ -205,9 +208,12 @@ cmeshtools::CreateCMesh(
   }
   for(auto pml : pmlDataVec){
     const auto id = pml.id;
-    const auto alpha = pml.alpha;
+    const auto alphax = pml.alphax;
+    const auto alphay = pml.alphay;
     const auto type = pml.t;
-    AddRectangularPMLRegion(id, alpha, type, volmats, gmesh, cmeshMF);
+    AddRectangularPMLRegion<
+      TPZWaveguideModalAnalysisPML,TPZWaveguideModalAnalysis
+      >(id, alphax, alphay, type, volmats, gmesh, cmeshMF);
   }
   
   TPZBndCond *bcMat = nullptr;
@@ -277,85 +283,6 @@ cmeshtools::FindPMLNeighbourMaterial(
     DebugStop();
   }
   return closestEl->MaterialId();
-}
-
-void
-cmeshtools::AddRectangularPMLRegion(const int matId, const int alpha,
-                                    const wgma::pml::type type,
-                                    const std::set<int> &volmats,
-                                    TPZAutoPointer<TPZGeoMesh> gmesh,
-                                    TPZAutoPointer<TPZCompMesh> cmesh)
-{
-
-  //let us find the (xmin,xmax) and (ymin,ymax) of the PML region
-  REAL xMax = -1e20, xMin = 1e20, yMax = -1e20, yMin = 1e20;
-  for (auto geo : gmesh->ElementVec()){
-    if (geo && geo->MaterialId() == matId) {
-      for (int iNode = 0; iNode < geo->NCornerNodes(); ++iNode) {
-        TPZManVector<REAL, 3> co(3);
-        geo->Node(iNode).GetCoordinates(co);
-        const REAL &xP = co[0];
-        const REAL &yP = co[1];
-        if (xP > xMax) {
-          xMax = xP;
-        }
-        if (xP < xMin) {
-          xMin = xP;
-        }
-        if (yP > yMax) {
-          yMax = yP;
-        }
-        if (yP < yMin) {
-          yMin = yP;
-        }
-      }
-    }
-  }
-
-
-  //now we compute xBegin, yBegin, attx, atty and d for the material ctor
-  const bool attx = wgma::pml::attx(type);
-  const bool atty = wgma::pml::atty(type);
-  
-  REAL xBegin{-1}, yBegin{-1}, dX{-01101991.}, dY{-01101991.};
-  REAL boundPosX{-01101991.}, boundPosY{-01101991.};
-  if(attx){
-    const int xdir = wgma::pml::xinfo(type);
-    dX = xMax - xMin;
-    xBegin = xdir > 0 ? xMin : xMax;
-    boundPosX = xBegin;
-    boundPosY = (yMax + yMin)/2;
-  }
-
-  if(atty){
-    const int ydir = wgma::pml::yinfo(type);
-    dY = yMax - yMin;
-    yBegin = ydir > 0 ? yMin : yMax;
-    boundPosX = (xMax + xMin)/2;
-    boundPosY = yBegin;
-  }
-
-  if(attx && atty){
-    boundPosX = xBegin;
-    boundPosY = yBegin;
-  }
-  //find the neighbouring material
-  const auto neighMatId =
-    FindPMLNeighbourMaterial(gmesh, matId, volmats, boundPosX, boundPosY);
-
-  auto neighMat = dynamic_cast<TPZWaveguideModalAnalysis*>(
-    cmesh->FindMaterial(neighMatId));
-  if(!neighMat){
-    PZError<<__PRETTY_FUNCTION__;
-    PZError<<"\n neighbouring material not found in mesh, aborting...."<<std::endl;
-    DebugStop();
-  }
-  
-  auto pmlMat = new TPZWaveguideModalAnalysisPML(matId, *neighMat);
-  if(attx) pmlMat->SetAttX(xBegin, alpha, dX);
-  if(atty) pmlMat->SetAttY(yBegin, alpha, dY);
-  cmesh->InsertMaterialObject(pmlMat);
-  
 }
 
 void

@@ -11,6 +11,7 @@ set(headers
   include/pmltypes.hpp
   include/gmeshtools.hpp
   include/cmeshtools.hpp
+  include/cmeshtools_impl.hpp
   include/wganalysis.hpp
   include/slepcepshandler.hpp
   )

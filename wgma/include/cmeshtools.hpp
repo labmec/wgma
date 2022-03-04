@@ -35,7 +35,8 @@ namespace wgma::cmeshtools{
    @param [in] gmshmats vector returned from ReadGmshMesh
    @param [in] matmap for a given region name, contains the pairs (er,ur) for non pml regions
    @param [in] bcmap for a given boundary name, contains the bc type
-   @param [in] alphaPML PML attenuation constant
+   @param [in] alphaPMLx PML attenuation constant in the x direction
+   @param [in] alphaPMLy PML attenuation constant in the y direction
    @param [out] volmatids material identifiers of non-pml regions
    @param [out] ervec electric permittivity of non-pml regions
    @param [out] urvec magnetic permeability of non-pml regions
@@ -47,7 +48,8 @@ namespace wgma::cmeshtools{
 void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
                        const std::map<std::string,std::pair<CSTATE,CSTATE>> &matmap,
                        const std::map<std::string,wgma::bc::type> &bcmap,
-                       const STATE alphaPML,
+                       const STATE alphaPMLx,
+                       const STATE alphaPMLy,
                        TPZVec<int> &volmatids,
                        TPZVec<CSTATE> &ervec,
                        TPZVec<CSTATE> &urvec,
@@ -80,16 +82,21 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
      @brief Adds a rectangular PML region to a computational mesh.
      All the other mesh regions (excluding BCs) should have been previously inserted,
      so the function can identify to which region the PML is associated.
+     @tparam MATPML material to create in the PML
+     @tparam MATVOL material from which the PML inherits
      @param[in] matId pml material identifier.
-     @param[in] alpha attenuation constant.
+     @param[in] alphax attenuation constant in the x-direction.
+     @param[in] alphay attenuation constant in the y-direction.
      @param[in] type pml type.
      @param[in] volmats identifiers of valid mesh regions for pml neighbours
      @param[in] gmesh the geometric mesh.
      @param[in] cmesh the computational mesh.
      @return This method calls FindPMLNeighbourMaterial internally.
   */
+  template<class MATPML, class MATVOL>
   void
-  AddRectangularPMLRegion(const int matId, const int alpha,
+  AddRectangularPMLRegion(const int matId,
+                          const int alphax,const int alphay,
                           const wgma::pml::type type,
                           const std::set<int> &volmats,
                           TPZAutoPointer<TPZGeoMesh> gmesh,

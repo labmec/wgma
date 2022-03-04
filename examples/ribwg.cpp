@@ -159,7 +159,8 @@ int main(int argc, char *argv[]) {
 
   
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, matmap, bcmap,
-                                          alphaPML, volMatIdVec,
+                                          alphaPML, alphaPML,
+                                          volMatIdVec,
                                           erVec, urVec,
                                           pmlDataVec, bcDataVec);
   /*
