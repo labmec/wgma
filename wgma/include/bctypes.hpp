@@ -2,6 +2,8 @@
 #define _BCTYPES_HPP_
 #include <ostream>
 
+#include <TPZMatTypes.h>
+
 namespace wgma{
   namespace bc{
     //! Enum describing boundary condition types
@@ -39,6 +41,12 @@ namespace wgma{
       explicit data(int i, type tp, int v = 0) : id(i), t(tp), volid(v) {}
       data() {}
     };
+    //! Data structure for creating sources for scattering problems
+    struct source{
+      int id;//< material identifier
+      ForcingFunctionBCType<CSTATE> func;
+    };
+    
   };
 };
 #endif /* _BCTYPES_HPP_ */
