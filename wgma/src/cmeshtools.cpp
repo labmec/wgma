@@ -7,6 +7,8 @@
 #include <TPZNullMaterial.h>
 #include <Electromagnetics/TPZWaveguideModalAnalysis.h>
 #include <Electromagnetics/TPZWaveguideModalAnalysisPML.h>
+#include <Electromagnetics/TPZPlanarWGScattering.h>
+#include <Electromagnetics/TPZPlanarWGScatteringPML.h>
 #include <pzbuildmultiphysicsmesh.h>
 #include <TPZSimpleTimer.h>
 
@@ -97,6 +99,7 @@ cmeshtools::SetupGmshMaterialData(
         bcvec.resize(ibc+1);
         bcvec[ibc].id = id;
         bcvec[ibc].t = bcmap.at(name);
+        bcvec[ibc].name = name;
       }
     }
   }
@@ -258,6 +261,104 @@ cmeshtools::CMeshWgma2D(
   meshVec[1 + TPZWaveguideModalAnalysis::HCurlIndex()] = cmeshHCurl;
   return meshVec;
   
+}
+
+
+TPZAutoPointer<TPZCompMesh>
+cmeshtools::CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
+                              const wgma::planarwg::mode mode, int pOrder,
+                              wgma::cmeshtools::PhysicalData &data,
+                              std::vector<wgma::bc::source> sources,
+                              const STATE lambda, const REAL scale)
+{
+  static constexpr bool isComplex{true};
+  static constexpr int dim{2};
+  TPZAutoPointer<TPZCompMesh> cmeshH1 =
+    new TPZCompMesh(gmesh,isComplex);
+  cmeshH1->SetDimModel(dim);
+
+  const int nvolmats = data.matinfovec.size();
+  
+  //insert volumetric mats
+  std::set<int> volmats;
+  TPZPlanarWGScattering::ModeType matmode;
+  switch(mode){
+  case wgma::planarwg::mode::TE:
+    matmode = TPZPlanarWGScattering::ModeType::TE;
+    break;
+  case wgma::planarwg::mode::TM:
+    matmode = TPZPlanarWGScattering::ModeType::TM;
+    break;
+  }
+  for(auto [id,er,ur] : data.matinfovec){
+    auto *mat = new TPZPlanarWGScattering(id,ur,er,lambda,matmode,scale);
+    cmeshH1->InsertMaterialObject(mat);
+    //for pml
+    volmats.insert(id);
+  }
+  
+  for(auto pml : data.pmlvec){
+    const auto id = pml.id;
+    const auto alphax = pml.alphax;
+    const auto alphay = pml.alphay;
+    const auto type = pml.t;
+    wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWGScatteringPML,
+                                              TPZPlanarWGScattering>
+      (id, alphax, alphay, type, volmats, gmesh, cmeshH1);
+  }
+
+  
+  TPZFNMatrix<1, CSTATE> val1(1, 1, 1);
+  TPZManVector<CSTATE,1> val2(1, 0.);
+
+  /**let us associate each boundary with a given material.
+     this is important for the source boundary*/
+  for(auto &bc : data.bcvec){
+    for(auto *gel : gmesh->ElementVec()){
+      if(gel->MaterialId() == bc.id){
+        const auto maxside = gel->NSides() - 1;
+        bc.volid = gel->Neighbour(maxside).Element()->MaterialId();
+        break;
+      }
+    }
+  }
+
+  // for(auto bc : data.bcvec){
+  //   std::cout<<"bc "<<bc.id<<" mat "<<bc.volid<<std::endl;
+  // }
+  
+  for(auto bc : data.bcvec){
+    const int bctype = wgma::bc::to_int(bc.t);
+    const int id = bc.id;
+    const int volmatid = bc.volid;
+    auto *volmat =
+      dynamic_cast<TPZMaterialT<CSTATE>*> (cmeshH1->FindMaterial(volmatid));
+    auto *bcmat = volmat->CreateBC(volmat, id, bctype, val1, val2);
+    if(bc.t == wgma::bc::type::SOURCE){
+      bool foundsrc{false};
+      for(auto srcs : sources){
+        if(id == srcs.id){
+          bcmat->SetForcingFunctionBC(srcs.func);
+          foundsrc = true;
+        }
+      }
+      if(!foundsrc){
+        std::cout<<"error: prescripted source "<<bc.name<<" id "<<id<<" not found"
+                 <<"\nAborting..."<<std::endl;
+        DebugStop();
+      }
+    }
+    cmeshH1->InsertMaterialObject(bcmat);
+  }
+
+  
+  cmeshH1->SetAllCreateFunctionsContinuous();
+  cmeshH1->SetDefaultOrder(pOrder);
+  cmeshH1->AutoBuild();
+  cmeshH1->CleanUpUnconnectedNodes();
+  
+  return cmeshH1;
+
 }
 
 

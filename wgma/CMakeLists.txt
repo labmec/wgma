@@ -7,6 +7,7 @@ target_include_directories(wgma PUBLIC
   )
 
 set(headers
+  include/modetypes.hpp
   include/bctypes.hpp
   include/pmltypes.hpp
   include/gmeshtools.hpp
