@@ -177,7 +177,8 @@ void RunSimulation(const STATE lambda, const int nEigenpairs, const int pOrder, 
 
   
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, matmap, bcmap,
-                                          alphaPML, volMatIdVec,
+                                          alphaPML, alphaPML,
+                                          volMatIdVec,
                                           erVec, urVec,
                                           pmlDataVec, bcDataVec);
   /*

@@ -20,7 +20,8 @@ cmeshtools::SetupGmshMaterialData(
   const TPZVec<std::map<std::string,int>> &gmshmats,
   const std::map<std::string,std::pair<CSTATE,CSTATE>> &matmap,
   const std::map<std::string,wgma::bc::type> &bcmap,
-  const STATE alphaPML,
+  const STATE alphaPMLx,
+  const STATE alphaPMLy,
   TPZVec<int> &volmatids,
   TPZVec<CSTATE> &ervec,
   TPZVec<CSTATE> &urvec,
@@ -60,7 +61,8 @@ cmeshtools::SetupGmshMaterialData(
         if(test){
           pmlvec.Resize(pos+1);
           pmlvec[pos].id = id;
-          pmlvec[pos].alpha = alphaPML;
+          pmlvec[pos].alphax = alphaPMLx;
+          pmlvec[pos].alphay = alphaPMLy;
           pmlvec[pos].t = pmltypes[ipml];
           found = true;
           break;
@@ -205,9 +207,10 @@ cmeshtools::CreateCMesh(
   }
   for(auto pml : pmlDataVec){
     const auto id = pml.id;
-    const auto alpha = pml.alpha;
+    const auto alphax = pml.alphax;
+    const auto alphay = pml.alphay;
     const auto type = pml.t;
-    AddRectangularPMLRegion(id, alpha, type, volmats, gmesh, cmeshMF);
+    AddRectangularPMLRegion(id, alphax, alphay, type, volmats, gmesh, cmeshMF);
   }
   
   TPZBndCond *bcMat = nullptr;
@@ -280,7 +283,8 @@ cmeshtools::FindPMLNeighbourMaterial(
 }
 
 void
-cmeshtools::AddRectangularPMLRegion(const int matId, const int alpha,
+cmeshtools::AddRectangularPMLRegion(const int matId,
+                                    const int alphax, const int alphay,
                                     const wgma::pml::type type,
                                     const std::set<int> &volmats,
                                     TPZAutoPointer<TPZGeoMesh> gmesh,
@@ -352,8 +356,8 @@ cmeshtools::AddRectangularPMLRegion(const int matId, const int alpha,
   }
   
   auto pmlMat = new TPZWaveguideModalAnalysisPML(matId, *neighMat);
-  if(attx) pmlMat->SetAttX(xBegin, alpha, dX);
-  if(atty) pmlMat->SetAttY(yBegin, alpha, dY);
+  if(attx) pmlMat->SetAttX(xBegin, alphax, dX);
+  if(atty) pmlMat->SetAttY(yBegin, alphay, dY);
   cmesh->InsertMaterialObject(pmlMat);
   
 }

@@ -210,7 +210,8 @@ int main(int argc, char *argv[]) {
     int pmlCount{0};
     for(auto &pml : pmlDataVec){
       pml.id = matIdVec[matCount++];
-      pml.alpha = alphaPML;
+      pml.alphax = alphaPML;
+      pml.alphay = alphaPML;
       pml.t = pmlTypeVec[pmlCount++];
     }
 
