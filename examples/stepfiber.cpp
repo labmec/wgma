@@ -198,38 +198,43 @@ int main(int argc, char *argv[]) {
   }
 
   //setting up cmesh data
-  TPZVec<int> volMatIdVec(2,-1);
-  TPZVec<wgma::pml::data> pmlDataVec(usingPML ? 8 : 0);
-  TPZVec<wgma::bc::data> bcDataVec(1);
+  //Let us fill the struct needed to CreateCMesh
+  wgma::cmeshtools::PhysicalData data;
+  
   {
     int matCount = 0;
-    for(auto &matid: volMatIdVec){
-      matid = matIdVec[matCount++];
-    }
+    data.matinfovec.push_back(
+      std::make_tuple(matIdVec[matCount++],
+                      coreReffIndex*coreReffIndex,
+                      coreUr*coreUr));
+    data.matinfovec.push_back(
+      std::make_tuple(matIdVec[matCount++],
+                      claddingReffIndex*claddingReffIndex,
+                      claddingUr*claddingUr));
+    
+    constexpr int nPML = usingPML ? 8 : 0;
 
-    int pmlCount{0};
-    for(auto &pml : pmlDataVec){
+    for(int ipml = 0; ipml < nPML; ipml++){
+      wgma::pml::data pml;
       pml.id = matIdVec[matCount++];
       pml.alphax = alphaPML;
       pml.alphay = alphaPML;
-      pml.t = pmlTypeVec[pmlCount++];
+      pml.t = pmlTypeVec[ipml];
+      data.pmlvec.push_back(pml);
     }
+    
+    wgma::bc::data bc;
+    bc.id = matIdVec[matCount];
+    bc.t = wgma::bc::type::PEC;
 
-    bcDataVec[0].id = matIdVec[matCount];
-    bcDataVec[0].t = wgma::bc::type::PEC;
+    data.bcvec.push_back(bc);
   }
-  
-  TPZVec<CSTATE> urVec({coreUr, claddingUr});
-  TPZVec<CSTATE> erVec({coreReffIndex*coreReffIndex,
-      claddingReffIndex*claddingReffIndex});
 
   /*
    The problem uses an H1 approximation space for the longitudinal component 
    and a HCurl approximation space for the transversal one. Therefore, three
   // computational meshes are generated. One for each space and a multiphysics mesh*/
-  auto meshVec = wgma::cmeshtools::CreateCMesh(gmesh,pOrder,volMatIdVec,
-                                               urVec, erVec, pmlDataVec,
-                                               bcDataVec, lambda,scale);
+  auto meshVec = wgma::cmeshtools::CreateCMesh(gmesh,pOrder,data, lambda,scale);
 
   
   //WGAnalysis class is responsible for managing the modal analysis

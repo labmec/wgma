@@ -23,16 +23,12 @@ cmeshtools::SetupGmshMaterialData(
   const std::map<std::string,wgma::bc::type> &bcmap,
   const STATE alphaPMLx,
   const STATE alphaPMLy,
-  TPZVec<int> &volmatids,
-  TPZVec<CSTATE> &ervec,
-  TPZVec<CSTATE> &urvec,
-  TPZVec<wgma::pml::data> &pmlvec,
-  TPZVec<wgma::bc::data> &bcvec)
+  wgma::cmeshtools::PhysicalData &data)
 {
-  volmatids.Resize(0);
-  urvec.Resize(0);
-  ervec.Resize(0);
-  pmlvec.Resize(0);
+  auto &matinfo = data.matinfovec;
+  auto &pmlvec = data.pmlvec;
+  auto &bcvec = data.bcvec;
+  pmlvec.resize(0);
     
   for(auto mat : gmshmats[2]){
     const std::string name = mat.first;
@@ -60,7 +56,7 @@ cmeshtools::SetupGmshMaterialData(
         const auto rx = std::regex{ pmlname, std::regex_constants::icase };
         const bool test = std::regex_search(name, rx);
         if(test){
-          pmlvec.Resize(pos+1);
+          pmlvec.resize(pos+1);
           pmlvec[pos].id = id;
           pmlvec[pos].alphax = alphaPMLx;
           pmlvec[pos].alphay = alphaPMLy;
@@ -80,13 +76,12 @@ cmeshtools::SetupGmshMaterialData(
                  <<"\nAborting..."<<std::endl;
         DebugStop();
       }else{
-        const auto pos = volmatids.size();
-        volmatids.Resize(pos+1);
-        urvec.Resize(pos+1);
-        ervec.Resize(pos+1);
-        volmatids[pos] = id;
-        ervec[pos] = matmap.at(name).first;
-        urvec[pos] = matmap.at(name).second;
+        const auto pos = matinfo.size();
+        matinfo.push_back(std::make_tuple(
+                            id,
+                            matmap.at(name).first,
+                            matmap.at(name).second)
+                          );
       }
     }
   }
@@ -99,7 +94,7 @@ cmeshtools::SetupGmshMaterialData(
         such as circumference arcs. soo, not finding it is not a problem*/
       if(bcmap.find(name) != bcmap.end()){
         const int ibc = bcvec.size();
-        bcvec.Resize(ibc+1);
+        bcvec.resize(ibc+1);
         bcvec[ibc].id = id;
         bcvec[ibc].t = bcmap.at(name);
       }
@@ -112,15 +107,14 @@ cmeshtools::SetupGmshMaterialData(
 TPZVec<TPZAutoPointer<TPZCompMesh>>
 cmeshtools::CreateCMesh(
   TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
-  const TPZVec<int> &volMatIdVec, const TPZVec<CSTATE> &urVec,
-  const TPZVec<CSTATE> &erVec, const TPZVec<pml::data> &pmlDataVec,
-  const TPZVec<bc::data> &bcDataVec, const STATE lambda, const REAL &scale)
+  PhysicalData &data, const STATE lambda, const REAL &scale)
 {
   TPZSimpleTimer timer ("Create cmesh");
   constexpr int dim = 2;
   constexpr bool isComplex{true};
-
-  const int nVolMats = volMatIdVec.size();
+  auto &pmlDataVec = data.pmlvec;
+  auto &bcDataVec = data.bcvec;
+  const int nVolMats = data.matinfovec.size();
   const int nPmlMats = pmlDataVec.size();
   const int nBcMats = bcDataVec.size();
   
@@ -144,7 +138,8 @@ cmeshtools::CreateCMesh(
   cmeshH1->SetDimModel(dim);
   //number of state variables in the problem
   constexpr int nState = 1;
-  for(auto matid : volMatIdVec){
+  for(auto regioninfo : data.matinfovec){
+    auto matid = std::get<0>(regioninfo);
     auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
     cmeshH1->InsertMaterialObject(dummyMat);
   }
@@ -179,7 +174,8 @@ cmeshtools::CreateCMesh(
   cmeshHCurl->SetDefaultOrder(pOrder);
   cmeshHCurl->SetDimModel(dim);
   
-  for(auto matid : volMatIdVec){
+  for(auto regioninfo : data.matinfovec){
+    auto matid = std::get<0>(regioninfo);
     auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
     cmeshHCurl->InsertMaterialObject(dummyMat);
   }
@@ -207,16 +203,15 @@ cmeshtools::CreateCMesh(
   
   TPZAutoPointer<TPZCompMesh> cmeshMF =
     new TPZCompMesh(gmesh,isComplex);
-  for(auto i = 0; i < nVolMats; i++){
-    auto *matWG = new TPZWaveguideModalAnalysis(
-      volMatIdVec[i], urVec[i], erVec[i], lambda, scale);
+  for(auto [matid, er, ur] : data.matinfovec){
+    auto *matWG = new TPZWaveguideModalAnalysis(matid, er, ur, lambda, scale);
     cmeshMF->InsertMaterialObject(matWG);
   }
   
   //insert PML regions
   std::set<int> volmats;
-  for(auto mat : volMatIdVec){
-    volmats.insert(mat);
+  for(auto [matid, er, ur] : data.matinfovec){
+    volmats.insert(matid);
   }
   for(auto pml : pmlDataVec){
     const auto id = pml.id;

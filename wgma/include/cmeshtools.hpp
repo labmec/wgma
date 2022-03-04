@@ -6,6 +6,7 @@
 #include <pzreal.h>
 
 #include <set>
+#include <vector>
 #include <map>
 
 template<class T>
@@ -19,11 +20,25 @@ class TPZGeoMesh;
 //! Contains a set of routines for creating and manipulating computational meshes.
 namespace wgma::cmeshtools{
 
+  /** @brief Data needed for creating the computational mesh.
+      @note for gmsh generated meshes, the routine SetupGmshMaterialData
+      fills all the data in the correct format.
+   */
+  struct PhysicalData{
+    //! each position contains the tuple (id,er,ur) for a given region of the mesh
+    std::vector<std::tuple<int,CSTATE,CSTATE>> matinfovec;
+    //! each position contains data for a given pml region
+    std::vector<wgma::pml::data> pmlvec;
+    //! each position contains data for a given boundary condition
+    std::vector<wgma::bc::data> bcvec;
+  };
   /**
    @brief This function associates materials (regions) read from .msh file
    with the materials to be created in the computational mesh.
-   The output of this function is in the expected format for wgma::cmeshtools::CreateCMesh.
-   alphaPML is ignored if no PML regions are detected. PML regions' name are mandatory 
+   The output of this function is in the expected format for 
+   wgma::cmeshtools::CreateCMesh.
+   alphaPMLx/alphaPMLy are ignored if no PML regions are detected. 
+   PML regions' name are mandatory 
    to contain pml and the appropriate pml type (both are case insensitive).
    See pmltypes.hpp for naming conventions.
    e.g. 
@@ -37,46 +52,29 @@ namespace wgma::cmeshtools{
    @param [in] bcmap for a given boundary name, contains the bc type
    @param [in] alphaPMLx PML attenuation constant in the x direction
    @param [in] alphaPMLy PML attenuation constant in the y direction
-   @param [out] volmatids material identifiers of non-pml regions
-   @param [out] ervec electric permittivity of non-pml regions
-   @param [out] urvec magnetic permeability of non-pml regions
-   @param [out] pmlvec data of pml regions
-   @param [out] bcvec data of bc regins
-
+   @param [out] data organised data for CreateCMesh routine
    @note The .msh file can be read with wgma::gmeshtools::ReadGmshMesh.
 */
 void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
-                       const std::map<std::string,std::pair<CSTATE,CSTATE>> &matmap,
-                       const std::map<std::string,wgma::bc::type> &bcmap,
-                       const STATE alphaPMLx,
-                       const STATE alphaPMLy,
-                       TPZVec<int> &volmatids,
-                       TPZVec<CSTATE> &ervec,
-                       TPZVec<CSTATE> &urvec,
-                       TPZVec<wgma::pml::data> &pmlvec,
-                       TPZVec<wgma::bc::data> &bcvec);
+                           const std::map<std::string,std::pair<CSTATE,CSTATE>> &matmap,
+                           const std::map<std::string,wgma::bc::type> &bcmap,
+                           const STATE alphaPMLx,
+                           const STATE alphaPMLy,
+                           PhysicalData &data);
   
   /**
-     @brief Creates the computational meshes used for approximating the waveguide EVP.
+     @brief Creates the computational meshes used for approximating the waveguide EVP in two dimensions.
      Three meshes will be created: one for the H1 approximation space, one for the
      HCurl approximation space and one multiphysics mesh combining both spaces.
-     If `pmlDataVec.size()>0`, the PML regions will be created and their 
-     corresponding domain regions automatically identified.
      @param[in] gmesh geometrical mesh
      @param[in] pOrder polynomial order
-     @param[in] volMatIdVec material identifiers of domain regions (no PML or BC)
-     @param[in] urVec magnetic permeability of domain regions
-     @param[in] erVec electric permittivity of domain regions
-     @param[in] pmlDataVec array with PML data
-     @param[in] bcDataVec array with BC data
+     @param[in] data information regarding domain's regions
      @param[in] lambda operational wavelength
      @param[in] scale geometric scaling (characteristic length) for better floating point precision
   */
   TPZVec<TPZAutoPointer<TPZCompMesh>>
   CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
-              const TPZVec<int> &volMatIdVec, const TPZVec<CSTATE> &urVec,
-              const TPZVec<CSTATE> &erVec, const TPZVec<pml::data> &pmlDataVec,
-              const TPZVec<bc::data> &bcDataVec, const STATE lambda, const REAL &scale);
+              PhysicalData &data, const STATE lambda, const REAL &scale);
 
   /**
      @brief Adds a rectangular PML region to a computational mesh.

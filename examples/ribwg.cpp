@@ -157,19 +157,15 @@ int main(int argc, char *argv[]) {
   TPZVec<wgma::pml::data> pmlDataVec;
   TPZVec<wgma::bc::data> bcDataVec;
 
-  
+  wgma::cmeshtools::PhysicalData data;
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, matmap, bcmap,
                                           alphaPML, alphaPML,
-                                          volMatIdVec,
-                                          erVec, urVec,
-                                          pmlDataVec, bcDataVec);
+                                          data);
   /*
    The problem uses an H1 approximation space for the longitudinal component 
    and a HCurl approximation space for the transversal one. Therefore, three
   // computational meshes are generated. One for each space and a multiphysics mesh*/
-  auto meshVec = wgma::cmeshtools::CreateCMesh(gmesh,pOrder,volMatIdVec,
-                                               urVec, erVec, pmlDataVec,
-                                               bcDataVec, lambda,scale);
+  auto meshVec = wgma::cmeshtools::CreateCMesh(gmesh,pOrder,data, lambda,scale);
 
   /**
      Increasing the polynomial order of an element can only improve
