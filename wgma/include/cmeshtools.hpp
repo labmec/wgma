@@ -133,16 +133,16 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
                            const std::set<int> &volmats,
                            const REAL boundPosX, const REAL boundPosY);
   
-  /** @brief Counts active equations per approximation space*/
-  void CountActiveEquations(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
+  /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
+  void CountActiveWgma2DEqs(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
                             const std::set<int64_t> &boundConnects,
                             int &neq,
                             int &nH1Equations, int &nHCurlEquations);
   /** @brief Gets the indices of the equations associated with dirichlet homogeneous BCs
       so they can be filtered out of the global system*/
-  void FilterBoundaryEquations(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
-                               TPZVec<int64_t> &activeEquations, int &neq,
-                               int &neqOriginal, int& nh1, int &nhcurl);
+  void FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
+                               TPZVec<int64_t> &activeEquations,
+                               std::set<int64_t>  &boundConnects);
 };
 
 #endif /* _CMESHTOOLS_HPP_ */

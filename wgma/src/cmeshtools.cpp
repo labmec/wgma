@@ -396,7 +396,7 @@ cmeshtools::FindPMLNeighbourMaterial(
 }
 
 void
-cmeshtools::CountActiveEquations(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
+cmeshtools::CountActiveWgma2DEqs(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
                                  const std::set<int64_t> &boundConnects,
                                  int &neq,
                                  int &nH1Equations, int &nHCurlEquations)
@@ -435,15 +435,13 @@ cmeshtools::CountActiveEquations(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
 }
 
 void
-cmeshtools::FilterBoundaryEquations(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
-                                    TPZVec<int64_t> &activeEquations, int &neq,
-                                    int &neqOriginal,
-                                    int &nh1, int &nhcurl)
+cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
+                                    TPZVec<int64_t> &activeEquations,
+                                    std::set<int64_t> &boundConnects)
 {
   TPZSimpleTimer timer ("Filter dirichlet eqs");
-  auto cmesh = meshVec[0];
   TPZManVector<int64_t, 1000> allConnects;
-  std::set<int64_t> boundConnects;
+  boundConnects.clear();
 
   for (int iel = 0; iel < cmesh->NElements(); iel++) {
     TPZCompEl *cel = cmesh->ElementVec()[iel];
@@ -486,7 +484,4 @@ cmeshtools::FilterBoundaryEquations(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
       }
     }
   }
-
-  neqOriginal = cmesh->NEquations();
-  CountActiveEquations(meshVec, boundConnects, neq, nh1, nhcurl);
 }

@@ -34,16 +34,18 @@ namespace wgma{
     
     
     if(filter_bound){
-      int n_dofs_before{-1};
-      wgma::cmeshtools::FilterBoundaryEquations(meshvec, activeEquations,
-                                                m_n_dofs_mf, n_dofs_before,
-                                                m_n_dofs_h1, m_n_dofs_hcurl);
+      int n_dofs_before = m_cmesh_mf->NEquations();
+      std::set<int64_t> boundConnects;
+      wgma::cmeshtools::FilterBoundaryEquations(m_cmesh_mf, activeEquations,
+                                                boundConnects);
+      wgma::cmeshtools::CountActiveWgma2DEqs(meshvec,boundConnects,m_n_dofs_mf,
+                                             m_n_dofs_h1,m_n_dofs_hcurl);
       std::cout<<"neq(before): "<<n_dofs_before
                <<"\tneq(after): "<<m_n_dofs_mf<<std::endl;
       strmtrx->EquationFilter().SetActiveEquations(activeEquations);
     }else{
       std::set<int64_t> boundConnects;
-      wgma::cmeshtools::CountActiveEquations(meshvec,boundConnects,m_n_dofs_mf,
+      wgma::cmeshtools::CountActiveWgma2DEqs(meshvec,boundConnects,m_n_dofs_mf,
                                              m_n_dofs_h1,m_n_dofs_hcurl);
     }
     m_an->SetStructuralMatrix(strmtrx);
