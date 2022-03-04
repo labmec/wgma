@@ -7,13 +7,15 @@ namespace wgma{
     //! Enum describing boundary condition types
     enum class type {
       PEC,//!< Perfect electric conductor (dirichlet)
-      PMC//!< Perfect magnetic conductor (neumann)
+      PMC,//!< Perfect magnetic conductor (neumann)
+      SOURCE//!< Source BC (for scattering problems)
     };
 
     inline int to_int(type t){
       switch(t){
       case type::PEC: return 0;
       case type::PMC: return 1;
+      case type::SOURCE: return 2;
       }
     }
 
@@ -21,6 +23,7 @@ namespace wgma{
       switch(t){
       case type::PEC: return "PEC";
       case type::PMC: return "PMC";
+      case type::SOURCE: return "SOURCE";
       }
     }
 
@@ -28,12 +31,13 @@ namespace wgma{
       return out << to_string(t);
     }
 
-    //! Data structure for easier creation of PML regions
+    //! Data structure for easier creation of Boundary Conditions
     struct data{
-      type t;
-      int id;
-      explicit data(int i, type tp) : id(i), t(tp) {}
-      data() : t(type::PEC), id(-100) {}
+      int id{-100};
+      type t{type::PEC};
+      int volid{-100};
+      explicit data(int i, type tp, int v = 0) : id(i), t(tp), volid(v) {}
+      data() {}
     };
   };
 };
