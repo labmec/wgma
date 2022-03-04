@@ -64,9 +64,9 @@ int main(int argc, char *argv[]) {
   //see CreateStepFiberMesh for details on parameters
   
   //refractive index of the fibers core
-  constexpr STATE coreReffIndex{1.4457};
+  constexpr STATE core_n{1.4457};
   //refractive index of the fibers cladding
-  constexpr STATE claddingReffIndex{1.4378};
+  constexpr STATE cladding_n{1.4378};
   //magnetic permeability of the core
   constexpr STATE coreUr{1};
   //magnetic permeability of the cladding
@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
   constexpr STATE lambda{1.55e-6};
   /*both distances from the core and pml width are measured
    in wavelengths in the cladding material*/
-  constexpr REAL lambdaCladding = lambda*claddingReffIndex;
+  constexpr REAL lambdaCladding = lambda*cladding_n;
   //whether to surround the domain by a PML
   constexpr bool usingPML{true};
   //distance from the core from which the PML begins
@@ -205,11 +205,11 @@ int main(int argc, char *argv[]) {
     int matCount = 0;
     data.matinfovec.push_back(
       std::make_tuple(matIdVec[matCount++],
-                      coreReffIndex*coreReffIndex,
+                      core_n*core_n,
                       coreUr*coreUr));
     data.matinfovec.push_back(
       std::make_tuple(matIdVec[matCount++],
-                      claddingReffIndex*claddingReffIndex,
+                      cladding_n*cladding_n,
                       claddingUr*claddingUr));
     
     constexpr int nPML = usingPML ? 8 : 0;
@@ -468,6 +468,8 @@ CreateStepFiberMesh(
       iedge++;
       edgeVec[iedge].m_nel = nElsCoreT;
       edgeVec[iedge].m_nodes = {12+2*i,13+2*i};//ok
+      edgeVec[iedge].m_create_el = true;
+      edgeVec[iedge].m_matid = matIdBC;
       iedge++;
     }
     //pml xpym, xpyp, xmyp, xmym
@@ -475,10 +477,14 @@ CreateStepFiberMesh(
       edgeVec[iedge].m_nel = nElsPml;
       //({19,20},{13,21},{15,22},{17,23})
       edgeVec[iedge].m_nodes = {13+2*((i+3)%4), 20+i};
+      edgeVec[iedge].m_create_el = true;
+      edgeVec[iedge].m_matid = matIdBC;
       iedge++;
       edgeVec[iedge].m_nel = nElsPml;
       //({20,12},{21,14},{22,16},{23,18})
       edgeVec[iedge].m_nodes = {20+i,12+2*i};
+      edgeVec[iedge].m_create_el = true;
+      edgeVec[iedge].m_matid = matIdBC;
       iedge++;
     }
   }
