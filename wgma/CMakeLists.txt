@@ -14,6 +14,7 @@ set(headers
   include/cmeshtools.hpp
   include/cmeshtools_impl.hpp
   include/wganalysis.hpp
+  include/scattering.hpp
   include/slepcepshandler.hpp
   )
 
@@ -21,6 +22,7 @@ set(sources
   src/cmeshtools.cpp
   src/gmeshtools.cpp
   src/wganalysis.cpp
+  src/scattering.cpp
   src/slepcepshandler.cpp
   )
 
