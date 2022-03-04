@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
       std::to_string(nDivX) + " _" + std::to_string(nDivY);
     wgma::gmeshtools::PrintGeoMesh(gmesh,filename);
   }
-  //Let us fill the struct needed to CreateCMesh
+  //Let us fill the struct needed to CMeshWgma2D
   wgma::cmeshtools::PhysicalData data;
 
   //setting material info
@@ -168,7 +168,7 @@ int main(int argc, char *argv[]) {
    The problem uses an H1 approximation space for the longitudinal component 
    and a HCurl approximation space for the transversal one. Therefore, three
   // computational meshes are generated. One for each space and a multiphysics mesh*/
-  auto meshVec = wgma::cmeshtools::CreateCMesh(gmesh,pOrder,data, lambda,scale);
+  auto meshVec = wgma::cmeshtools::CMeshWgma2D(gmesh,pOrder,data, lambda,scale);
 
   //WGAnalysis class is responsible for managing the modal analysis
   wgma::WGAnalysis analysis(meshVec,nThreads,optimizeBandwidth,filterBoundaryEqs);

@@ -14,7 +14,7 @@ namespace wgma{
   public:
     /**
        @brief Creates the analysis module based on a given set
-       of computational meshes as returned by cmeshtools::CreateCMesh
+       of computational meshes as returned by cmeshtools::CMeshWgma2D
        @param [in] n_threads Number of threads to be used in the analysis
        @param [in] meshvec Vector containing the computational meshes
        @param [in] reorder_eqs whether the equations are reordered for optimising bandwidth

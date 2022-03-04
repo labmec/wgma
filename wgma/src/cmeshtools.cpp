@@ -105,7 +105,7 @@ cmeshtools::SetupGmshMaterialData(
 
 
 TPZVec<TPZAutoPointer<TPZCompMesh>>
-cmeshtools::CreateCMesh(
+cmeshtools::CMeshWgma2D(
   TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
   PhysicalData &data, const STATE lambda, const REAL &scale)
 {

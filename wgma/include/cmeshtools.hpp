@@ -36,7 +36,7 @@ namespace wgma::cmeshtools{
    @brief This function associates materials (regions) read from .msh file
    with the materials to be created in the computational mesh.
    The output of this function is in the expected format for 
-   wgma::cmeshtools::CreateCMesh.
+   wgma::cmeshtools::CMeshWgma2D.
    alphaPMLx/alphaPMLy are ignored if no PML regions are detected. 
    PML regions' name are mandatory 
    to contain pml and the appropriate pml type (both are case insensitive).
@@ -52,7 +52,7 @@ namespace wgma::cmeshtools{
    @param [in] bcmap for a given boundary name, contains the bc type
    @param [in] alphaPMLx PML attenuation constant in the x direction
    @param [in] alphaPMLy PML attenuation constant in the y direction
-   @param [out] data organised data for CreateCMesh routine
+   @param [out] data organised data for CMeshWgma2D routine
    @note The .msh file can be read with wgma::gmeshtools::ReadGmshMesh.
 */
 void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
@@ -73,7 +73,7 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
      @param[in] scale geometric scaling (characteristic length) for better floating point precision
   */
   TPZVec<TPZAutoPointer<TPZCompMesh>>
-  CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
+  CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
               PhysicalData &data, const STATE lambda, const REAL &scale);
 
   /**
