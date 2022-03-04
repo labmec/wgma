@@ -124,7 +124,17 @@ cmeshtools::CreateCMesh(
   const int nPmlMats = pmlDataVec.size();
   const int nBcMats = bcDataVec.size();
   
-
+  /**let us associate each boundary with a given material.
+     this is important for any non-homogeneous BCs*/
+  for(auto &bc : bcDataVec){
+    for(auto *gel : gmesh->ElementVec()){
+      if(gel->MaterialId() == bc.id){
+        const auto maxside = gel->NSides() - 1;
+        bc.volid = gel->Neighbour(maxside).Element()->MaterialId();
+        break;
+      }
+    }
+  }
   /*
    First we create the computational mesh associated with the H1 space
    (ez component)*/
@@ -134,25 +144,26 @@ cmeshtools::CreateCMesh(
   cmeshH1->SetDimModel(dim);
   //number of state variables in the problem
   constexpr int nState = 1;
-  TPZMaterialT<CSTATE> *dummyMat{nullptr};
   for(auto matid : volMatIdVec){
-    dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+    auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
     cmeshH1->InsertMaterialObject(dummyMat);
   }
   for(auto pml : pmlDataVec){
     const auto matid = pml.id;
-    dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+    auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
     cmeshH1->InsertMaterialObject(dummyMat);
   }
 
   
   TPZFNMatrix<1, CSTATE> val1(1, 1, 1);
   TPZManVector<CSTATE,1> val2(1, 0.);
-  TPZBndCond *dummyBC = nullptr;
   for(auto bc : bcDataVec){
     const int bctype = wgma::bc::to_int(bc.t);
     const int id = bc.id;
-    dummyBC = dummyMat->CreateBC(dummyMat, id, bctype, val1, val2);
+    const int volid = bc.volid;
+    auto *dummyMat =
+      dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshH1->FindMaterial(volid));
+    auto *dummyBC = dummyMat->CreateBC(dummyMat, id, bctype, val1, val2);
     cmeshH1->InsertMaterialObject(dummyBC);
   }
 
@@ -169,21 +180,23 @@ cmeshtools::CreateCMesh(
   cmeshHCurl->SetDimModel(dim);
   
   for(auto matid : volMatIdVec){
-    dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+    auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
     cmeshHCurl->InsertMaterialObject(dummyMat);
   }
   for(auto pml : pmlDataVec){
-    const auto matid = pml.id;
-    dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+    const auto dummyMatid = pml.id;
+    auto *dummyMat = new TPZNullMaterial<CSTATE>(dummyMatid,dim,nState);
     cmeshHCurl->InsertMaterialObject(dummyMat);
   }
 
   
-  dummyBC = nullptr;
   for(auto bc : bcDataVec){
     const int bctype = wgma::bc::to_int(bc.t);
     const int id = bc.id;
-    dummyBC = dummyMat->CreateBC(dummyMat, id, bctype, val1, val2);
+    const int volid = bc.volid;
+    auto *dummyMat =
+      dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshHCurl->FindMaterial(volid));
+    auto *dummyBC = dummyMat->CreateBC(dummyMat, id, bctype, val1, val2);
     cmeshHCurl->InsertMaterialObject(dummyBC);
   }
 
@@ -194,9 +207,8 @@ cmeshtools::CreateCMesh(
   
   TPZAutoPointer<TPZCompMesh> cmeshMF =
     new TPZCompMesh(gmesh,isComplex);
-  TPZWaveguideModalAnalysis *matWG = nullptr;
   for(auto i = 0; i < nVolMats; i++){
-    matWG = new TPZWaveguideModalAnalysis(
+    auto *matWG = new TPZWaveguideModalAnalysis(
       volMatIdVec[i], urVec[i], erVec[i], lambda, scale);
     cmeshMF->InsertMaterialObject(matWG);
   }
@@ -216,11 +228,13 @@ cmeshtools::CreateCMesh(
       >(id, alphax, alphay, type, volmats, gmesh, cmeshMF);
   }
   
-  TPZBndCond *bcMat = nullptr;
   for(auto bc : bcDataVec){
     const int bctype = wgma::bc::to_int(bc.t);
     const int id = bc.id;
-    bcMat = matWG->CreateBC(matWG, id, bctype, val1, val2);
+    const int volid = bc.volid;
+    auto *matWG =
+      dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshH1->FindMaterial(volid));
+    auto *bcMat = matWG->CreateBC(matWG, id, bctype, val1, val2);
     cmeshMF->InsertMaterialObject(bcMat);
   }
 
