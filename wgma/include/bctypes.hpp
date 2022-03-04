@@ -35,6 +35,7 @@ namespace wgma{
 
     //! Data structure for easier creation of Boundary Conditions
     struct data{
+      std::string name{"none"};
       int id{-100};
       type t{type::PEC};
       int volid{-100};
