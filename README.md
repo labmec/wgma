@@ -107,3 +107,13 @@ Illustrates
 - how to analyse 2D planar waveguides for a given excitation source
 - how to analyse 2D planar waveguide discontinuities using por truncation with PMLs
 - how to prescribe custom sources
+
+### pcwg
+
+Modal analysis of a 2D photonic crystal followed by scattering analysis
+
+Illustrates
+- how to easily generate `.msh` meshes in python allowing for exact representation 
+of curved geometries
+- how to perform more complex analysis and transfer the solution between different 
+problems

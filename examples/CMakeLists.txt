@@ -22,6 +22,15 @@ target_link_libraries(ecf PUBLIC wgma)
 
 add_pz_target(
   NAME planar_wg
-  SOURCES planar_wg.cpp
+  SOURCES planar_wg.cpp 
   FILES meshes/planar_wg.msh meshes/wg_disc.msh)
 target_link_libraries(planar_wg PUBLIC wgma)
+
+add_pz_target(
+  NAME pcwg
+  SOURCES pcwg.cpp
+  FILES meshes/pcwg.msh meshes/pcwg_circdata.csv
+  FILES meshes/pcwg_test.msh meshes/pcwg_test_circdata.csv
+  )
+
+target_link_libraries(pcwg PUBLIC wgma)
