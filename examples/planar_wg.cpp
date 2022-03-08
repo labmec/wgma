@@ -120,7 +120,8 @@ int main(int argc, char *argv[]) {
   
   //creates gmesh
   //filename
-  const std::string filename{"meshes/planar_wg.msh"};
+  //check meshes/planar_wg.msh for a simpler example of the TE mode
+  const std::string filename{"meshes/wg_disc.msh"};
   TPZVec<std::map<std::string,int>> gmshmats;
   auto gmesh = wgma::gmeshtools::ReadGmshMesh(filename, scale, gmshmats);
 

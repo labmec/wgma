@@ -105,4 +105,5 @@ Scattering analysis of a planar slab waveguide
 
 Illustrates
 - how to analyse 2D planar waveguides for a given excitation source
+- how to analyse 2D planar waveguide discontinuities using por truncation with PMLs
 - how to prescribe custom sources
