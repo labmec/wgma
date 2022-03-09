@@ -645,9 +645,12 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
   };
   
   std::map<int,int> arc_ids;
+  std::map<int,bool> found_arcs;
   for(auto i = 0; i < circles.size(); i++){
     arc_ids[circles[i].m_matid] = i;
+    found_arcs[circles[i].m_matid] = false;
   }
+
   
   for(auto el : gmesh->ElementVec()){
     //this way we avoid processing recently inserted elements
@@ -656,6 +659,7 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
     const bool is_arc = arc_ids.find(matid) != arc_ids.end();
 
     if(is_arc){//found arc
+      found_arcs[matid] = true;
       const int arc_pos = arc_ids[matid];
       const REAL r = circles[arc_pos].m_radius;
       const REAL xc = circles[arc_pos].m_xc;
@@ -743,7 +747,15 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
           new_neigh = neigh_el;
         }
         new_neigh->SetNeighbourForBlending(neigh_side);
+        new_neigh->BuildBlendConnectivity();
       }
+    }
+  }
+
+  for(auto arc : found_arcs){
+    if(!arc.second){
+      PZError<<__PRETTY_FUNCTION__
+             <<"\n arc "<<arc.first<<" not found in mesh"<<std::endl;
     }
   }
 }
