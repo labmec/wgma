@@ -8,16 +8,22 @@ namespace wgma{
   namespace bc{
     //! Enum describing boundary condition types
     enum class type {
-      PEC,//!< Perfect electric conductor (dirichlet)
-      PMC,//!< Perfect magnetic conductor (neumann)
-      SOURCE//!< Source BC (for scattering problems)
+      PEC,     //!< Perfect electric conductor (dirichlet)
+      PMC,     //!< Perfect magnetic conductor (neumann)
+      SOURCE,  //!< Source BC (for scattering problems)
+      PERIODIC //!< Periodic BC (must come in pairs)
     };
 
-    inline int to_int(type t){
-      switch(t){
-      case type::PEC: return 0;
-      case type::PMC: return 1;
-      case type::SOURCE: return 2;
+    inline int to_int(type t) {
+      switch (t) {
+      case type::PEC:
+        return 0;
+      case type::PMC:
+        return 1;
+      case type::SOURCE:
+        return 2;
+      case type::PERIODIC:
+        return 3;
       }
     }
 
@@ -26,6 +32,8 @@ namespace wgma{
       case type::PEC: return "PEC";
       case type::PMC: return "PMC";
       case type::SOURCE: return "SOURCE";
+      case type::PERIODIC:
+        return "PERIODIC";
       }
     }
 
