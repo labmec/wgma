@@ -1,3 +1,5 @@
+#ifndef _CMESHTOOLS_IMPL_
+#define _CMESHTOOLS_IMPL_
 #include <cmeshtools.hpp>
 
 #include <pzgmesh.h>
@@ -83,3 +85,4 @@ wgma::cmeshtools::AddRectangularPMLRegion(const int matId,
   cmesh->InsertMaterialObject(pmlMat);
   
 }
+#endif
