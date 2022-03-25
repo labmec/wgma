@@ -585,6 +585,17 @@ wgma::gmeshtools::ReadGmshMesh(const std::string filename,
                                const REAL scale,
                                TPZVec<std::map<std::string,int>> & matids)
 {
+  std::map<int64_t,int64_t> dummy;
+  return ReadPeriodicGmshMesh(filename,scale,matids,dummy);
+}
+
+TPZAutoPointer<TPZGeoMesh>
+wgma::gmeshtools::ReadPeriodicGmshMesh(const std::string filename,
+                                       const REAL scale,
+                                       TPZVec<std::map<std::string,int>> & matids,
+                                       std::map<int64_t,int64_t> &periodic_bcs)
+{
+  
   TPZGmshReader meshReader;
   meshReader.SetCharacteristiclength(scale);
   TPZAutoPointer<TPZGeoMesh> gmesh =
@@ -598,9 +609,9 @@ wgma::gmeshtools::ReadGmshMesh(const std::string filename,
     }
   }
   
+  periodic_bcs = meshReader.GetPeriodicEls();
   return gmesh;
 }
-
 
 void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
                                                  const TPZVec<ArcData> &circles)

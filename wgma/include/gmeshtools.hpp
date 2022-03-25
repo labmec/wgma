@@ -90,6 +90,21 @@ namespace wgma::gmeshtools{
   ReadGmshMesh(const std::string filename,
                const REAL scale,
                TPZVec<std::map<std::string,int>> & matids);
+  /**
+     @brief Reads a .msh mesh file, creates a TPZGeoMesh and
+     stores the material identifiers (named physical regions) that were found.
+     Also, returns periodicity info (corresponding elements' ids).
+     @param[in] filename name of the .msh file to be read
+     @param[in] scale factor (characteristic length) to be applied in the mesh
+     @param[out] matids on exit, it stores the pairs (name, matid) indexed by dimension
+     @param[out] periodic_els corresponding indexes of periodic elements.
+     @note position [x] of matids will contain the materials of dimension x.
+   */
+  TPZAutoPointer<TPZGeoMesh>
+  ReadPeriodicGmshMesh(const std::string filename,
+                       const REAL scale,
+                       TPZVec<std::map<std::string,int>> & matids,
+                       std::map<int64_t,int64_t> &periodic_els);
 
   //! Stores data for allowing exact geometric representation of circumference arcs.
   struct ArcData{
