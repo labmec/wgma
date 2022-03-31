@@ -71,12 +71,12 @@ cmeshtools::SetupGmshMaterialData(
       if(!found){
         std::cout<<"error: mat "<<name<<" id "<<id<<" not found"
                  <<"\nAborting..."<<std::endl;
+        DebugStop();
       }
     }else{
       if(matmap.find(name) == matmap.end()){//material not found
         std::cout<<"error: mat "<<name<<" id "<<id<<" not found"
-                 <<"\nAborting..."<<std::endl;
-        DebugStop();
+                 <<"\nSkipping..."<<std::endl;
       }else{
         const auto pos = matinfo.size();
         matinfo.push_back(std::make_tuple(
