@@ -338,7 +338,7 @@ cmeshtools::CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
       bool foundsrc{false};
       for(auto srcs : sources){
         if(id == srcs.id){
-          bcmat->SetForcingFunctionBC(srcs.func);
+          bcmat->SetForcingFunctionBC(srcs.func,srcs.porder);
           foundsrc = true;
         }
       }

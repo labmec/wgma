@@ -53,7 +53,8 @@ namespace wgma{
     //! Data structure for creating sources for scattering problems
     struct source{
       int id;//< material identifier
-      ForcingFunctionBCType<CSTATE> func;
+      ForcingFunctionBCType<CSTATE> func;//function
+      int porder{-1};//< suggested polynomial order for integration
     };
     
   };
