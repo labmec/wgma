@@ -16,6 +16,7 @@ set(headers
   include/wganalysis.hpp
   include/scattering.hpp
   include/slepcepshandler.hpp
+  include/util.hpp
   )
 
 set(sources
@@ -24,6 +25,7 @@ set(sources
   src/wganalysis.cpp
   src/scattering.cpp
   src/slepcepshandler.cpp
+  src/util.cpp
   )
 
 target_sources(wgma PUBLIC ${headers})
