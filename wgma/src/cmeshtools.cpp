@@ -472,10 +472,10 @@ cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
       if (con.HasDependency())
         continue;
       const auto seqnum = con.SequenceNumber();
+      if(seqnum < 0) { continue; }
       const auto pos = cmesh->Block().Position(seqnum);
       const auto blocksize = cmesh->Block().Size(seqnum);
-      if (blocksize == 0)
-        continue;
+      if (blocksize == 0){ continue; }
 
       const auto vs = activeEquations.size();
       activeEquations.Resize(vs + blocksize);
