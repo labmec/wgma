@@ -583,17 +583,19 @@ void CreateQuadPts(const TPZVec<wgma::gmeshtools::QuadData> &quadsVec,
 TPZAutoPointer<TPZGeoMesh>
 wgma::gmeshtools::ReadGmshMesh(const std::string filename,
                                const REAL scale,
-                               TPZVec<std::map<std::string,int>> & matids)
+                               TPZVec<std::map<std::string,int>> & matids,
+                               const bool verbose)
 {
   std::map<int64_t,int64_t> dummy;
-  return ReadPeriodicGmshMesh(filename,scale,matids,dummy);
+  return ReadPeriodicGmshMesh(filename,scale,matids,dummy, verbose);
 }
 
 TPZAutoPointer<TPZGeoMesh>
 wgma::gmeshtools::ReadPeriodicGmshMesh(const std::string filename,
                                        const REAL scale,
                                        TPZVec<std::map<std::string,int>> & matids,
-                                       std::map<int64_t,int64_t> &periodic_bcs)
+                                       std::map<int64_t,int64_t> &periodic_bcs,
+                                       const bool verbose)
 {
   
   TPZGmshReader meshReader;
@@ -602,10 +604,12 @@ wgma::gmeshtools::ReadPeriodicGmshMesh(const std::string filename,
     meshReader.GeometricGmshMesh(filename);
 
   matids = meshReader.GetDimNamePhysical();
-  for(int i = 0; i < 3; i++){
-    std::cout<<"materials with dim "<<i<<std::endl;
-    for(auto &mat : matids[i]){
-      std::cout<<"\t name: "<<mat.first <<" id: "<<mat.second<<std::endl;
+  if(verbose){
+    for(int i = 0; i < 3; i++){
+      std::cout<<"materials with dim "<<i<<std::endl;
+      for(auto &mat : matids[i]){
+        std::cout<<"\t name: "<<mat.first <<" id: "<<mat.second<<std::endl;
+      }
     }
   }
   

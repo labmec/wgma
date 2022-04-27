@@ -83,13 +83,15 @@ namespace wgma::gmeshtools{
      @param[in] filename name of the .msh file to be read
      @param[in] scale factor (characteristic length) to be applied in the mesh
      @param[out] matids on exit, it stores the pairs (name, matid) indexed by dimension
+     @param[in] verbose whether to output information about read materials
 
      @note position [x] of matids will contain the materials of dimension x.
    */
   TPZAutoPointer<TPZGeoMesh>
   ReadGmshMesh(const std::string filename,
                const REAL scale,
-               TPZVec<std::map<std::string,int>> & matids);
+               TPZVec<std::map<std::string,int>> & matids,
+               bool verbose = true);
   /**
      @brief Reads a .msh mesh file, creates a TPZGeoMesh and
      stores the material identifiers (named physical regions) that were found.
@@ -98,13 +100,15 @@ namespace wgma::gmeshtools{
      @param[in] scale factor (characteristic length) to be applied in the mesh
      @param[out] matids on exit, it stores the pairs (name, matid) indexed by dimension
      @param[out] periodic_els corresponding indexes of periodic elements.
+     @param[in] verbose whether to output information about read materials
      @note position [x] of matids will contain the materials of dimension x.
    */
   TPZAutoPointer<TPZGeoMesh>
   ReadPeriodicGmshMesh(const std::string filename,
                        const REAL scale,
                        TPZVec<std::map<std::string,int>> & matids,
-                       std::map<int64_t,int64_t> &periodic_els);
+                       std::map<int64_t,int64_t> &periodic_els,
+                       bool verbose = true);
 
   //! Stores data for allowing exact geometric representation of circumference arcs.
   struct ArcData{
