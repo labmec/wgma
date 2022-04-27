@@ -407,16 +407,20 @@ namespace wgma::slepc{
         VecRestoreArray(eigVec,&eigVecArray);
       }
     }
+
+    EPSDestroy(&eps);
+    
+    MatDestroy(&petscA);
+    MatDestroy(&petscB);
+
+
     if(iaP) PetscFree(iaP);
     if(jaP) PetscFree(jaP);
     if(aaP) PetscFree(aaP);
     if(ibP) PetscFree(ibP);
     if(jbP) PetscFree(jbP);
     if(abP) PetscFree(abP);
-    if(petscA) PetscFree(petscA);
-    if(petscB) PetscFree(petscB);
     
-    EPSDestroy(&eps);
     return 0;
 #endif
     return -1;
