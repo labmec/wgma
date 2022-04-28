@@ -143,6 +143,13 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
   void FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
                                TPZVec<int64_t> &activeEquations,
                                std::set<int64_t>  &boundConnects);
+
+  /**
+     @brief Ensures correct destruction of a periodic computational mesh.
+     This routine should be called before destroying a periodic mesh in
+     order to avoid run-time errors.
+   */
+  void RemovePeriodicity(TPZAutoPointer<TPZCompMesh> cmesh);
 };
 
 #endif /* _CMESHTOOLS_HPP_ */

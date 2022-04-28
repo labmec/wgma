@@ -485,3 +485,10 @@ cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
     }
   }
 }
+
+void cmeshtools::RemovePeriodicity(TPZAutoPointer<TPZCompMesh> cmesh)
+{
+  for(auto &con : cmesh->ConnectVec()){
+    con.RemoveDepend();
+  }
+}
