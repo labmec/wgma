@@ -278,7 +278,8 @@ cmeshtools::CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
   cmeshH1->SetDimModel(dim);
 
   const int nvolmats = data.matinfovec.size();
-  
+  //all mats (so TPZCompMesh::AutoBuild doesnt break on periodic meshes)
+  std::set<int> allmats;
   //insert volumetric mats
   std::set<int> volmats;
   TPZPlanarWGScattering::ModeType matmode;
@@ -295,6 +296,7 @@ cmeshtools::CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
     cmeshH1->InsertMaterialObject(mat);
     //for pml
     volmats.insert(id);
+    allmats.insert(id);
   }
   
   for(auto pml : data.pmlvec){
@@ -305,6 +307,7 @@ cmeshtools::CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
     wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWGScatteringPML,
                                               TPZPlanarWGScattering>
       (id, alphax, alphay, type, volmats, gmesh, cmeshH1);
+    allmats.insert(id);
   }
 
   
@@ -349,12 +352,13 @@ cmeshtools::CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
       }
     }
     cmeshH1->InsertMaterialObject(bcmat);
+    allmats.insert(id);
   }
 
   
   cmeshH1->SetAllCreateFunctionsContinuous();
   cmeshH1->SetDefaultOrder(pOrder);
-  cmeshH1->AutoBuild();
+  cmeshH1->AutoBuild(allmats);
   cmeshH1->CleanUpUnconnectedNodes();
   
   return cmeshH1;
