@@ -347,8 +347,7 @@ cmeshtools::CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
       }
       if(!foundsrc){
         std::cout<<"error: prescripted source "<<bc.name<<" id "<<id<<" not found"
-                 <<"\nAborting..."<<std::endl;
-        DebugStop();
+                 <<"\n Is it a FEM source?"<<std::endl;
       }
     }
     cmeshH1->InsertMaterialObject(bcmat);
