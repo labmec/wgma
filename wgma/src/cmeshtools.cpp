@@ -292,7 +292,7 @@ cmeshtools::CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
     break;
   }
   for(auto [id,er,ur] : data.matinfovec){
-    auto *mat = new TPZPlanarWGScattering(id,ur,er,lambda,matmode,scale);
+    auto *mat = new TPZPlanarWGScattering(id,er,ur,lambda,matmode,scale);
     cmeshH1->InsertMaterialObject(mat);
     //for pml
     volmats.insert(id);
