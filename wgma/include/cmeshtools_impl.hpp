@@ -4,8 +4,10 @@
 
 #include <pzgmesh.h>
 #include <pzcmesh.h>
-
-template<class MATPML, class MATVOL>
+#include <Electromagnetics/TPZMatPML.h>
+#include <TPZMatSingleSpace.h>
+#include <TPZMatCombinedSpaces.h>
+template<class MATVOL>
 void
 wgma::cmeshtools::AddRectangularPMLRegion(const int matId,
                                     const int alphax, const int alphay,
@@ -79,7 +81,12 @@ wgma::cmeshtools::AddRectangularPMLRegion(const int matId,
     DebugStop();
   }
   
-  auto pmlMat = new MATPML(matId, *neighMat);
+  TPZMatPML<MATVOL> *pmlMat{nullptr};
+  if constexpr (std::is_base_of_v<TPZMatCombinedSpaces, MATVOL>){
+    pmlMat = new TPZCombinedSpacesPML<MATVOL>(matId, *neighMat);
+  }else{
+    pmlMat = new TPZSingleSpacePML<MATVOL>(matId, *neighMat);
+  }
   if(attx) pmlMat->SetAttX(xBegin, alphax, dX);
   if(atty) pmlMat->SetAttY(yBegin, alphay, dY);
   cmesh->InsertMaterialObject(pmlMat);

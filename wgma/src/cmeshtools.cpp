@@ -7,9 +7,8 @@
 #include <pzcmesh.h>
 #include <TPZNullMaterial.h>
 #include <Electromagnetics/TPZWaveguideModalAnalysis.h>
-#include <Electromagnetics/TPZWaveguideModalAnalysisPML.h>
 #include <Electromagnetics/TPZPlanarWGScattering.h>
-#include <Electromagnetics/TPZPlanarWGScatteringPML.h>
+#include <Electromagnetics/TPZMatPML.h>
 #include <pzbuildmultiphysicsmesh.h>
 #include <TPZSimpleTimer.h>
 
@@ -226,7 +225,7 @@ cmeshtools::CMeshWgma2D(
     const auto alphay = pml.alphay;
     const auto type = pml.t;
     AddRectangularPMLRegion<
-      TPZWaveguideModalAnalysisPML,TPZWaveguideModalAnalysis
+      TPZWaveguideModalAnalysis
       >(id, alphax, alphay, type, volmats, gmesh, cmeshMF);
   }
   
@@ -308,8 +307,7 @@ cmeshtools::CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
     const auto alphax = pml.alphax;
     const auto alphay = pml.alphay;
     const auto type = pml.t;
-    wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWGScatteringPML,
-                                              TPZPlanarWGScattering>
+    wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWGScattering>
       (id, alphax, alphay, type, volmats, gmesh, cmeshH1);
     allmats.insert(id);
   }

@@ -101,7 +101,6 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
      @brief Adds a rectangular PML region to a computational mesh.
      All the other mesh regions (excluding BCs) should have been previously inserted,
      so the function can identify to which region the PML is associated.
-     @tparam MATPML material to create in the PML
      @tparam MATVOL material from which the PML inherits
      @param[in] matId pml material identifier.
      @param[in] alphax attenuation constant in the x-direction.
@@ -112,7 +111,7 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
      @param[in] cmesh the computational mesh.
      @return This method calls FindPMLNeighbourMaterial internally.
   */
-  template<class MATPML, class MATVOL>
+  template<class MATVOL>
   void
   AddRectangularPMLRegion(const int matId,
                           const int alphax,const int alphay,
