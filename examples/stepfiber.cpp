@@ -81,11 +81,11 @@ int main(int argc, char *argv[]) {
   //whether to surround the domain by a PML
   constexpr bool usingPML{true};
   //distance from the core from which the PML begins
-  constexpr REAL boundDist{2*lambdaCladding};
+  constexpr REAL boundDist{1.1*lambdaCladding};
   //pml width
-  constexpr REAL dPML{4*lambdaCladding};
+  constexpr REAL dPML{1*lambdaCladding};
   //number of layers in the pml
-  constexpr int nLayersPML{2};
+  constexpr int nLayersPML{3};
   /**PML attenuation constant
      for a quadratic PML, one suggestion is to calculate it as:
      \frac{-3 \ln (R)}{4 \omega d n}
@@ -98,10 +98,10 @@ int main(int argc, char *argv[]) {
      for this value:
      R = 10^{-25}
      \omega = 2 \pi c_0 / \lambda
-     d = \lambda * 4
+     d = dPML
      n = 1.4378
    */
-  constexpr STATE alphaPML{2.7e-9};
+  constexpr STATE alphaPML{0.044};
   /*
     Given the small dimensions of the domain, scaling it can help in 
     achieving good precision. Using 1./k0 as a scale factor results in 
