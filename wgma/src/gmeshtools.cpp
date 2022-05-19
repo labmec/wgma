@@ -617,6 +617,33 @@ wgma::gmeshtools::ReadPeriodicGmshMesh(const std::string filename,
   return gmesh;
 }
 
+
+std::optional<int>
+wgma::gmeshtools::FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh> gmesh,
+                                     const int mat,
+                                     const std::set<int> &volmats)
+{
+
+  for(auto gel : gmesh->ElementVec()){
+    if(!gel || gel->MaterialId() != mat){continue;}
+
+    auto gelside = TPZGeoElSide(gel,gel->NSides()-1);
+    auto neigh = gelside.Neighbour();
+    while(neigh != gelside){
+      
+      if(auto el = neigh.Element(); el){
+        const auto matid = el->MaterialId();
+        if(volmats.count(matid)){//matid is in the set of valid mats
+          return matid;
+        }
+      }
+      neigh = neigh.Neighbour();
+    }
+  }
+  
+  return std::nullopt;
+}
+
 void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
                                                  const TPZVec<ArcData> &circles)
 {

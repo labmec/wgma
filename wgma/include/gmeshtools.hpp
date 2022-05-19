@@ -110,6 +110,17 @@ namespace wgma::gmeshtools{
                        std::map<int64_t,int64_t> &periodic_els,
                        bool verbose = true);
 
+  /**
+     @brief Finds a valid neighbouring material for a given boundary material.
+     Only neighbours with identifiers in volmats will be considered.
+     @param[in] gmesh geometric mesh
+     @param[in] mat material whose neighbour we are looking for
+     @param[in] volmats possible ids for neighbour candidates
+  */
+  [[nodiscard]] std::optional<int> FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh> gmesh,
+                                                      const int mat,
+                                                      const std::set<int> &volmats);
+
   //! Stores data for allowing exact geometric representation of circumference arcs.
   struct ArcData{
     int m_matid{-10};//< material identifier

@@ -1,6 +1,7 @@
 #include "cmeshtools.hpp"
 #include "pmltypes.hpp"
 #include "cmeshtools_impl.hpp"
+#include "gmeshtools.hpp"
 
 #include <pzgmesh.h>
 #include <pzcmesh.h>
@@ -121,17 +122,7 @@ cmeshtools::CMeshWgma2D(
   const int nPmlMats = pmlDataVec.size();
   const int nBcMats = bcDataVec.size();
   
-  /**let us associate each boundary with a given material.
-     this is important for any non-homogeneous BCs*/
-  for(auto &bc : bcDataVec){
-    for(auto *gel : gmesh->ElementVec()){
-      if(gel->MaterialId() == bc.id){
-        const auto maxside = gel->NSides() - 1;
-        bc.volid = gel->Neighbour(maxside).Element()->MaterialId();
-        break;
-      }
-    }
-  }
+  
   /*
    First we create the computational mesh associated with the H1 space
    (ez component)*/
@@ -141,17 +132,34 @@ cmeshtools::CMeshWgma2D(
   cmeshH1->SetDimModel(dim);
   //number of state variables in the problem
   constexpr int nState = 1;
+
+
+  std::set<int> volmats;
   for(auto regioninfo : data.matinfovec){
     auto matid = std::get<0>(regioninfo);
     auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
     cmeshH1->InsertMaterialObject(dummyMat);
+    volmats.insert(matid);
   }
+  
   for(auto pml : pmlDataVec){
     const auto matid = pml.id;
     auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
     cmeshH1->InsertMaterialObject(dummyMat);
   }
 
+
+
+  /**let us associate each boundary with a given material.
+     this is important for any non-homogeneous BCs*/
+  for(auto &bc : bcDataVec){
+    auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, volmats);
+    if(!res.has_value()){
+      std::cout<<__PRETTY_FUNCTION__
+               <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
+    }
+    bc.volid = res.value();
+  }
   
   TPZFNMatrix<1, CSTATE> val1(1, 1, 1);
   TPZManVector<CSTATE,1> val2(1, 0.);
@@ -212,10 +220,6 @@ cmeshtools::CMeshWgma2D(
   }
   
   //insert PML regions
-  std::set<int> volmats;
-  for(auto [matid, er, ur] : data.matinfovec){
-    volmats.insert(matid);
-  }
   for(auto pml : pmlDataVec){
     const auto id = pml.id;
     const auto alphax = pml.alphax;
