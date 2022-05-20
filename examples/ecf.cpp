@@ -183,11 +183,12 @@ void RunSimulation(const STATE lambda, const int nEigenpairs, const int pOrder, 
    The problem uses an H1 approximation space for the longitudinal component 
    and a HCurl approximation space for the transversal one. Therefore, three
   // computational meshes are generated. One for each space and a multiphysics mesh*/
-  auto meshVec = wgma::cmeshtools::CMeshWgma2D(gmesh,pOrder,data, lambda,scale);
+  auto meshVec = wgma::wganalysis::CMeshWgma2D(gmesh,pOrder,data, lambda,scale);
 
   
-  //WGAnalysis class is responsible for managing the modal analysis
-  wgma::WGAnalysis analysis(meshVec,nThreads,optimizeBandwidth,filterBoundaryEqs);
+  //Analysis class is responsible for managing the modal analysis
+  wgma::wganalysis::Wgma2D analysis(meshVec,nThreads,
+                                            optimizeBandwidth,filterBoundaryEqs);
   
   auto solver = SetupSolver(nEigenpairs, target, sortingRule, usingSLEPC);
 
