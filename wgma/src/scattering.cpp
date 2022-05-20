@@ -74,6 +74,8 @@ namespace wgma{
     TPZStack<std::string> scalnames, vecnames;
     scalnames.Push("Field_re");
     scalnames.Push("Field_abs");
+    vecnames.Push("Deriv_re");
+    vecnames.Push("Deriv_abs");
     const std::string plotfile = filename+".vtk";
     constexpr int dim{2};
     m_an->DefineGraphMesh(dim, scalnames, vecnames,plotfile);
