@@ -61,20 +61,6 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
                            const STATE alphaPMLx,
                            const STATE alphaPMLy,
                            PhysicalData &data);
-  
-  /**
-     @brief Creates the computational meshes used for approximating the waveguide EVP in two dimensions.
-     Three meshes will be created: one for the H1 approximation space, one for the
-     HCurl approximation space and one multiphysics mesh combining both spaces.
-     @param[in] gmesh geometrical mesh
-     @param[in] pOrder polynomial order
-     @param[in] data information regarding domain's regions
-     @param[in] lambda operational wavelength
-     @param[in] scale geometric scaling (characteristic length) for better floating point precision
-  */
-  TPZVec<TPZAutoPointer<TPZCompMesh>>
-  CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
-              PhysicalData &data, const STATE lambda, const REAL &scale);
 
   /**
      @brief Creates the computational mesh used for the scattering analysis of planar waveguides.
@@ -120,11 +106,6 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
                           TPZAutoPointer<TPZGeoMesh> gmesh,
                           TPZAutoPointer<TPZCompMesh> cmesh);
   
-  /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
-  void CountActiveWgma2DEqs(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
-                            const std::set<int64_t> &boundConnects,
-                            int &neq,
-                            int &nH1Equations, int &nHCurlEquations);
   /** @brief Gets the indices of the equations associated with dirichlet homogeneous BCs
       so they can be filtered out of the global system*/
   void FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,

@@ -1,11 +1,13 @@
 #ifndef _WGANALYSIS_HPP_
 #define _WGANALYSIS_HPP_
 
+#include <cmeshtools.hpp>
+
 #include <pzcmesh.h>
 #include <TPZEigenSolver.h>
 #include <TPZEigenAnalysis.h>
 
-namespace wgma{
+namespace wgma::modal_analysis{
   /**
      @brief  Class responsible for managing the modal analysis of waveguides
      @note The eigensolver still has to be configured.
@@ -88,6 +90,28 @@ namespace wgma{
     //! Whether the equations have been filtered
     bool m_filter_bound{false};
   };
+
+
+  /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
+  void CountActiveWgma2DEqs(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
+                            const std::set<int64_t> &boundConnects,
+                            int &neq,
+                            int &nH1Equations, int &nHCurlEquations);
+
+  /**
+     @brief Creates the computational meshes used for approximating the waveguide EVP in two dimensions.
+     Three meshes will be created: one for the H1 approximation space, one for the
+     HCurl approximation space and one multiphysics mesh combining both spaces.
+     @param[in] gmesh geometrical mesh
+     @param[in] pOrder polynomial order
+     @param[in] data information regarding domain's regions
+     @param[in] lambda operational wavelength
+     @param[in] scale geometric scaling (characteristic length) for better floating point precision
+  */
+  TPZVec<TPZAutoPointer<TPZCompMesh>>
+  CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
+              cmeshtools::PhysicalData &data,
+              const STATE lambda, const REAL &scale);
 };
 
 #endif /* _WGANALYSIS_HPP_ */

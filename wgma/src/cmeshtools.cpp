@@ -5,11 +5,8 @@
 
 #include <pzgmesh.h>
 #include <pzcmesh.h>
-#include <TPZNullMaterial.h>
-#include <Electromagnetics/TPZWaveguideModalAnalysis.h>
 #include <Electromagnetics/TPZPlanarWGScattering.h>
-#include <Electromagnetics/TPZMatPML.h>
-#include <pzbuildmultiphysicsmesh.h>
+#include <TPZBndCond.h>
 #include <TPZSimpleTimer.h>
 
 
@@ -104,166 +101,6 @@ cmeshtools::SetupGmshMaterialData(
     }
   }
     
-}
-
-
-TPZVec<TPZAutoPointer<TPZCompMesh>>
-cmeshtools::CMeshWgma2D(
-  TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
-  PhysicalData &data, const STATE lambda, const REAL &scale)
-{
-  TPZSimpleTimer timer ("Create cmesh");
-  constexpr int dim = 2;
-  constexpr bool isComplex{true};
-  auto &pmlDataVec = data.pmlvec;
-  auto &bcDataVec = data.bcvec;
-  const int nVolMats = data.matinfovec.size();
-  const int nPmlMats = pmlDataVec.size();
-  const int nBcMats = bcDataVec.size();
-  
-  
-  /*
-   First we create the computational mesh associated with the H1 space
-   (ez component)*/
-  TPZAutoPointer<TPZCompMesh> cmeshH1 =
-    new TPZCompMesh(gmesh,isComplex);
-  cmeshH1->SetDefaultOrder(pOrder +1);//for deRham compatibility
-  cmeshH1->SetDimModel(dim);
-  //number of state variables in the problem
-  constexpr int nState = 1;
-
-
-  std::set<int> volmats;
-  for(auto regioninfo : data.matinfovec){
-    auto matid = std::get<0>(regioninfo);
-    auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
-    cmeshH1->InsertMaterialObject(dummyMat);
-    volmats.insert(matid);
-  }
-  
-  for(auto pml : pmlDataVec){
-    const auto matid = pml.id;
-    auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
-    cmeshH1->InsertMaterialObject(dummyMat);
-  }
-
-
-
-  /**let us associate each boundary with a given material.
-     this is important for any non-homogeneous BCs*/
-  for(auto &bc : bcDataVec){
-    auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, volmats);
-    if(!res.has_value()){
-      std::cout<<__PRETTY_FUNCTION__
-               <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
-    }
-    bc.volid = res.value();
-  }
-  
-  TPZFNMatrix<1, CSTATE> val1(1, 1, 1);
-  TPZManVector<CSTATE,1> val2(1, 0.);
-  for(auto bc : bcDataVec){
-    const int bctype = wgma::bc::to_int(bc.t);
-    const int id = bc.id;
-    const int volid = bc.volid;
-    auto *dummyMat =
-      dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshH1->FindMaterial(volid));
-    auto *dummyBC = dummyMat->CreateBC(dummyMat, id, bctype, val1, val2);
-    cmeshH1->InsertMaterialObject(dummyBC);
-  }
-
-  cmeshH1->SetAllCreateFunctionsContinuous();
-  cmeshH1->AutoBuild();
-  cmeshH1->CleanUpUnconnectedNodes();
-
-  /*
-    Then we create the computational mesh associated with the HCurl space
-   */
-  TPZAutoPointer<TPZCompMesh> cmeshHCurl =
-    new TPZCompMesh(gmesh,isComplex);
-  cmeshHCurl->SetDefaultOrder(pOrder);
-  cmeshHCurl->SetDimModel(dim);
-  
-  for(auto regioninfo : data.matinfovec){
-    auto matid = std::get<0>(regioninfo);
-    auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
-    cmeshHCurl->InsertMaterialObject(dummyMat);
-  }
-  for(auto pml : pmlDataVec){
-    const auto dummyMatid = pml.id;
-    auto *dummyMat = new TPZNullMaterial<CSTATE>(dummyMatid,dim,nState);
-    cmeshHCurl->InsertMaterialObject(dummyMat);
-  }
-
-  
-  for(auto bc : bcDataVec){
-    const int bctype = wgma::bc::to_int(bc.t);
-    const int id = bc.id;
-    const int volid = bc.volid;
-    auto *dummyMat =
-      dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshHCurl->FindMaterial(volid));
-    auto *dummyBC = dummyMat->CreateBC(dummyMat, id, bctype, val1, val2);
-    cmeshHCurl->InsertMaterialObject(dummyBC);
-  }
-
-  cmeshHCurl->SetAllCreateFunctionsHCurl();
-  cmeshHCurl->AutoBuild();
-  cmeshHCurl->CleanUpUnconnectedNodes();
-
-  
-  TPZAutoPointer<TPZCompMesh> cmeshMF =
-    new TPZCompMesh(gmesh,isComplex);
-  for(auto [matid, er, ur] : data.matinfovec){
-    auto *matWG = new TPZWaveguideModalAnalysis(matid, er, ur, lambda, scale);
-    cmeshMF->InsertMaterialObject(matWG);
-  }
-  
-  //insert PML regions
-  for(auto pml : pmlDataVec){
-    const auto id = pml.id;
-    const auto alphax = pml.alphax;
-    const auto alphay = pml.alphay;
-    const auto type = pml.t;
-    AddRectangularPMLRegion<
-      TPZWaveguideModalAnalysis
-      >(id, alphax, alphay, type, volmats, gmesh, cmeshMF);
-  }
-  
-  for(auto bc : bcDataVec){
-    const int bctype = wgma::bc::to_int(bc.t);
-    const int id = bc.id;
-    const int volid = bc.volid;
-    auto *matWG =
-      dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshMF->FindMaterial(volid));
-    auto *bcMat = matWG->CreateBC(matWG, id, bctype, val1, val2);
-    cmeshMF->InsertMaterialObject(bcMat);
-  }
-
-  cmeshMF->SetDimModel(dim);
-  cmeshMF->SetAllCreateFunctionsMultiphysicElem();
-
-  cmeshMF->AutoBuild();
-  cmeshMF->CleanUpUnconnectedNodes();
-
-  TPZManVector<TPZCompMesh*,3> meshVecIn(2);
-  meshVecIn[TPZWaveguideModalAnalysis::H1Index()] = cmeshH1.operator->();
-  meshVecIn[TPZWaveguideModalAnalysis::HCurlIndex()] = cmeshHCurl.operator->();
-
-  
-  TPZBuildMultiphysicsMesh::AddElements(meshVecIn, cmeshMF.operator->());
-  TPZBuildMultiphysicsMesh::AddConnects(meshVecIn, cmeshMF.operator->());
-  TPZBuildMultiphysicsMesh::TransferFromMeshes(meshVecIn, cmeshMF.operator->());
-
-  cmeshMF->ExpandSolution();
-  cmeshMF->ComputeNodElCon();
-  cmeshMF->CleanUpUnconnectedNodes();
-
-  TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec(3,nullptr);
-  meshVec[0] = cmeshMF;
-  meshVec[1 + TPZWaveguideModalAnalysis::H1Index()] = cmeshH1;
-  meshVec[1 + TPZWaveguideModalAnalysis::HCurlIndex()] = cmeshHCurl;
-  return meshVec;
-  
 }
 
 
@@ -366,45 +203,6 @@ cmeshtools::CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
 
 }
 
-
-void
-cmeshtools::CountActiveWgma2DEqs(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
-                                 const std::set<int64_t> &boundConnects,
-                                 int &neq,
-                                 int &nH1Equations, int &nHCurlEquations)
-{
-  auto cmesh = meshVec[0];
-  neq = nH1Equations = nHCurlEquations = 0;
-  auto cmeshHCurl = meshVec[1];
-  auto cmeshH1 = meshVec[2];
-  
-  for (int iCon = 0; iCon < cmesh->NConnects(); iCon++) {
-    bool isH1;
-    if (boundConnects.find(iCon) == boundConnects.end()) {
-      if (cmesh->ConnectVec()[iCon].HasDependency())
-        continue;
-      int seqnum = cmesh->ConnectVec()[iCon].SequenceNumber();
-      int blocksize = cmesh->Block().Size(seqnum);
-      if (TPZWaveguideModalAnalysis::H1Index() == 0 && iCon < cmeshH1->NConnects()) {
-        isH1 = true;
-      } else if (TPZWaveguideModalAnalysis::H1Index() == 1 && iCon >= cmeshHCurl->NConnects()) {
-        isH1 = true;
-      } else {
-        isH1 = false;
-      }
-      for (int ieq = 0; ieq < blocksize; ieq++) {
-        neq++;
-        isH1 == true ? nH1Equations++ : nHCurlEquations++;
-      }
-    }
-  }
-  std::cout << "------\tactive eqs\t-------" << std::endl;
-  std::cout << "# H1 equations: " << nH1Equations << std::endl;
-  std::cout << "# HCurl equations: " << nHCurlEquations << std::endl;
-  std::cout << "# equations: " << neq << std::endl;
-  std::cout << "------\t----------\t-------" << std::endl;
-  return;
-}
 
 void
 cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
