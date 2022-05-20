@@ -119,18 +119,6 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
                           const std::set<int> &volmats,
                           TPZAutoPointer<TPZGeoMesh> gmesh,
                           TPZAutoPointer<TPZCompMesh> cmesh);
-
-  /**
-     @brief Finds the neighbouring material of a given pml region.
-     @param[in] gmesh geometrical mesh.
-     @param[in] pmlId pml material identifier.
-     @param[in] boundPosX x-coordinate of the pml with the inner domain
-     @param[in] boundPosY y-coordinate of the pml with the inner domain
-  */
-  int
-  FindPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,const int pmlId,
-                           const std::set<int> &volmats,
-                           const REAL boundPosX, const REAL boundPosY);
   
   /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
   void CountActiveWgma2DEqs(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,

@@ -2,6 +2,8 @@
 #define _CMESHTOOLS_IMPL_
 #include <cmeshtools.hpp>
 
+#include <gmeshtools.hpp>
+
 #include <pzgmesh.h>
 #include <pzcmesh.h>
 #include <Electromagnetics/TPZMatPML.h>
@@ -70,11 +72,15 @@ wgma::cmeshtools::AddRectangularPMLRegion(const int matId,
     boundPosY = yBegin;
   }
   //find the neighbouring material
-  const auto neighMatId =
-    FindPMLNeighbourMaterial(gmesh, matId, volmats, boundPosX, boundPosY);
+  const auto neigh_mat_res =
+    gmeshtools::FindPMLNeighbourMaterial(gmesh, matId, volmats, boundPosX, boundPosY);
 
-  auto neighMat = dynamic_cast<MATVOL*>(
-    cmesh->FindMaterial(neighMatId));
+  MATVOL *neighMat{nullptr};
+  if(neigh_mat_res.has_value()){
+    neighMat = dynamic_cast<MATVOL*>(
+      cmesh->FindMaterial(neigh_mat_res.value()));
+  }
+   
   if(!neighMat){
     PZError<<__PRETTY_FUNCTION__;
     PZError<<"\n neighbouring material not found in mesh, aborting...."<<std::endl;

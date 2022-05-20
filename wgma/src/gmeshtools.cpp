@@ -617,6 +617,39 @@ wgma::gmeshtools::ReadPeriodicGmshMesh(const std::string filename,
   return gmesh;
 }
 
+std::optional<int>
+wgma::gmeshtools::FindPMLNeighbourMaterial(
+  TPZAutoPointer<TPZGeoMesh> gmesh,
+  const int pmlId,
+  const std::set<int> &volmats,
+  const REAL boundPosX, const REAL boundPosY)
+{
+  TPZGeoEl * closestEl = nullptr;
+  REAL dist = 1e16;
+  for(auto &currentEl : gmesh->ElementVec()){
+    if ( !currentEl ||
+         currentEl->NSubElements() > 0  ||
+         currentEl->Dimension() != 2 ||
+         volmats.count(currentEl->MaterialId()) == 0) continue;
+    TPZVec<REAL> qsi(2,-1);
+    const int largerSize = currentEl->NSides() - 1;
+    currentEl->CenterPoint(largerSize, qsi);
+    TPZVec<REAL> xCenter(3,-1);
+    currentEl->X(qsi, xCenter);
+    const REAL currentDist = (xCenter[0]-boundPosX)*(xCenter[0]-boundPosX) +
+      (xCenter[1]-boundPosY)*(xCenter[1]-boundPosY);
+    if(currentDist < dist){
+      dist = currentDist;
+      closestEl = currentEl;
+    }
+  }
+
+  if(!closestEl){
+    return std::nullopt;
+  }
+  return closestEl->MaterialId();
+}
+
 
 std::optional<int>
 wgma::gmeshtools::FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh> gmesh,

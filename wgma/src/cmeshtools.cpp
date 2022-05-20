@@ -367,39 +367,6 @@ cmeshtools::CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
 }
 
 
-int
-cmeshtools::FindPMLNeighbourMaterial(
-  TPZAutoPointer<TPZGeoMesh> gmesh,const int pmlId,
-  const std::set<int> &volmats,
-  const REAL boundPosX, const REAL boundPosY)
-{
-  TPZGeoEl * closestEl = nullptr;
-  REAL dist = 1e16;
-  for(auto &currentEl : gmesh->ElementVec()){
-    if ( !currentEl ||
-         currentEl->NSubElements() > 0  ||
-         currentEl->Dimension() != 2 ||
-         volmats.count(currentEl->MaterialId()) == 0) continue;
-    TPZVec<REAL> qsi(2,-1);
-    const int largerSize = currentEl->NSides() - 1;
-    currentEl->CenterPoint(largerSize, qsi);
-    TPZVec<REAL> xCenter(3,-1);
-    currentEl->X(qsi, xCenter);
-    const REAL currentDist = (xCenter[0]-boundPosX)*(xCenter[0]-boundPosX) +
-      (xCenter[1]-boundPosY)*(xCenter[1]-boundPosY);
-    if(currentDist < dist){
-      dist = currentDist;
-      closestEl = currentEl;
-    }
-  }
-
-  if(!closestEl){
-    PZError<<"Could not find pml neighbour, aborting...."<<std::endl;
-    DebugStop();
-  }
-  return closestEl->MaterialId();
-}
-
 void
 cmeshtools::CountActiveWgma2DEqs(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
                                  const std::set<int64_t> &boundConnects,
