@@ -63,27 +63,6 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
                            PhysicalData &data);
 
   /**
-     @brief Creates the computational mesh used for the scattering analysis of planar waveguides.
-     The mesh will be a H1 conforming approximation space and it will approximate
-     either Ex or Hx, depending on whether TE/TM modes are approximated.
-     @note The computational domain is in the xy-plane, even though physically it
-     corresponds to the yz-plane.
-     @param[in] gmesh geometrical mesh
-     @param[in] mode whether to solve for TE or TM modes
-     @param[in] pOrder polynomial order
-     @param[in] data information regarding domain's regions
-     @param[in] sources contains the functions that will excite the waveguide
-     @param[in] lambda operational wavelength
-     @param[in] scale geometric scaling (characteristic length) for better floating point precision
-  */
-  TPZAutoPointer<TPZCompMesh>
-  CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
-                    const planarwg::mode mode, int pOrder,
-                    PhysicalData &data,
-                    std::vector<bc::source> sources,
-                    const STATE lambda, const REAL scale);
-
-  /**
      @brief Adds a rectangular PML region to a computational mesh.
      All the other mesh regions (excluding BCs) should have been previously inserted,
      so the function can identify to which region the PML is associated.
