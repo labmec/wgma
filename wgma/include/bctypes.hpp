@@ -2,15 +2,12 @@
 #define _BCTYPES_HPP_
 #include <ostream>
 
-#include <TPZMatTypes.h>
-
 namespace wgma{
   namespace bc{
     //! Enum describing boundary condition types
     enum class type {
       PEC,     //!< Perfect electric conductor (dirichlet)
       PMC,     //!< Perfect magnetic conductor (neumann)
-      SOURCE,  //!< Source BC (for scattering problems)
       PERIODIC //!< Periodic BC (must come in pairs)
     };
 
@@ -20,10 +17,8 @@ namespace wgma{
         return 0;
       case type::PMC:
         return 1;
-      case type::SOURCE:
-        return 2;
       case type::PERIODIC:
-        return 3;
+        return 2;
       }
     }
 
@@ -31,9 +26,7 @@ namespace wgma{
       switch(t){
       case type::PEC: return "PEC";
       case type::PMC: return "PMC";
-      case type::SOURCE: return "SOURCE";
-      case type::PERIODIC:
-        return "PERIODIC";
+      case type::PERIODIC: return "PERIODIC";
       }
     }
 
@@ -49,12 +42,6 @@ namespace wgma{
       int volid{-100};
       explicit data(int i, type tp, int v = 0) : id(i), t(tp), volid(v) {}
       data() {}
-    };
-    //! Data structure for creating sources for scattering problems
-    struct source{
-      int id;//< material identifier
-      ForcingFunctionBCType<CSTATE> func;//function
-      int porder{-1};//< suggested polynomial order for integration
     };
     
   };
