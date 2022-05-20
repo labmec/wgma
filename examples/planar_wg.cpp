@@ -31,7 +31,8 @@ directional mesh refinement.
    n strip = 1.55
    n air = 1
 */
-ForcingFunctionBCType<CSTATE> GetSourceFunc(const REAL scale, const REAL lambda);
+std::pair<wgma::scattering::srcfunc, CSTATE>
+GetSourceFunc(const REAL scale, const REAL lambda);
 
 int main(int argc, char *argv[]) {
 #ifdef PZ_LOG
@@ -48,12 +49,13 @@ int main(int argc, char *argv[]) {
   matmap["air"] = std::make_pair<CSTATE,CSTATE>(1.,1.);
   matmap["core"] = std::make_pair<CSTATE,CSTATE>(1.55*1.55,1.);
   std::map<std::string,wgma::bc::type> bcmap;
-  bcmap["gamma_1"] = wgma::bc::type::SOURCE;
-  bcmap["gamma_2"] = wgma::bc::type::SOURCE;
-  bcmap["gamma_3"] = wgma::bc::type::SOURCE;
-  bcmap["gamma_4"] = wgma::bc::type::SOURCE;
-  bcmap["gamma_5"] = wgma::bc::type::SOURCE;
   bcmap["bound"] = wgma::bc::type::PEC;
+  std::set<std::string> srclist;
+  srclist.insert("gamma_1");
+  srclist.insert("gamma_2");
+  srclist.insert("gamma_3");
+  srclist.insert("gamma_4");
+  srclist.insert("gamma_5");
   // operational wavelength
   constexpr STATE lambda{1.55e-6};
   /*
@@ -144,33 +146,34 @@ int main(int argc, char *argv[]) {
                                           data);
 
 
-  std::vector<wgma::bc::source> sources;
+  
+  auto mysource = GetSourceFunc(scale,lambda);
 
+  auto beta = mysource.second;
+  
+  wgma::scattering::Source1D sources;
+  sources.func = mysource.first;
+  
   {
-    auto mysource = GetSourceFunc(scale,lambda);
-    
     //let us iterate through all 1D materials read by gmsh
     for(auto gmshbc : gmshmats[1]){
       const auto bcname = gmshbc.first;
-      if(bcmap.find(bcname) != bcmap.end()){
-        const auto type = bcmap.at(bcname);
-        if(type == wgma::bc::type::SOURCE){
-          wgma::bc::source src;
-          src.id = gmshbc.second;
-          src.func = mysource;
-          sources.push_back(src);
-        }
+      if(srclist.find(bcname) != srclist.end()){
+        sources.id.insert(gmshbc.second);
       }
     }
   }
+
   
+    
   auto cmesh =
-    wgma::cmeshtools::CMeshScattering2D(gmesh, mode, pOrder,
+    wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder,
                                         data, sources, lambda,scale);
 
+  wgma::scattering::SetPropagationConstant(cmesh, beta);
 
-  auto an = wgma::ScatteringAnalysis(cmesh, nThreads,
-                                     optimizeBandwidth, filterBoundaryEqs);
+  auto an = wgma::scattering::Analysis(cmesh, nThreads,
+                                       optimizeBandwidth, filterBoundaryEqs);
 
   an.Run();
 
@@ -179,7 +182,8 @@ int main(int argc, char *argv[]) {
 }
 
 
-ForcingFunctionBCType<CSTATE> GetSourceFunc(const REAL scale, const REAL lambda)
+std::pair<wgma::scattering::srcfunc, CSTATE>
+GetSourceFunc(const REAL scale, const REAL lambda)
 {
   /*
     The following source was calculated for
@@ -199,19 +203,18 @@ ForcingFunctionBCType<CSTATE> GetSourceFunc(const REAL scale, const REAL lambda)
   const STATE beta = k0 * nev;
   
   
-  ForcingFunctionBCType<CSTATE> sourcefunc =
+  wgma::scattering::srcfunc sourcefunc =
     [d, kx, gammax, beta](const TPZVec<REAL> &loc,
-                          TPZVec<CSTATE> &rhsVal,
-                          TPZFMatrix<CSTATE> &matVal){
-    
+                          CSTATE &val,
+                          TPZVec<CSTATE> &deriv){
       const auto x = loc[1];
       const auto xabs = std::abs(x);
       if(xabs < d){
-        rhsVal[0] = cos(kx*x);
+        val = cos(kx*x);
       }else{
-        rhsVal[0] = cos(kx*d)*exp(-gammax*(xabs-d));
+        val = cos(kx*d)*exp(-gammax*(xabs-d));
       }
-      rhsVal[1] = beta ;
+      deriv = {0,0,0};
     };
-  return sourcefunc;
+  return std::make_pair(sourcefunc,beta);
 }
