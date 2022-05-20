@@ -18,9 +18,9 @@ For the scattering analysis of planar waveguides, the implementation follows fro
 
 The wgma library is currently organised in the following namespaces
 
-- `wgma` : main namespace. Contains the `WGAnalysis` class for managing the 
-modal analysis of waveguides and the `ScatteringAnalysis` class, 
-for analysis of planar waveguides under excitation from a prescribed source
+- `wganalysis` : namespace for modal analysis of waveguides. 
+  Contains the `Wgma2D` class for managing the modal analysis
+of waveguides with 2D cross-section.
 - `gmeshtools`: auxiliary routines for creating structured curved meshes, reading `.msh`
 files and directional *h*-refinement
 - `cmeshtools`: auxiliary routines for dealing with computational meshes and PML

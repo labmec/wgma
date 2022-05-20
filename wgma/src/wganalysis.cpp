@@ -10,61 +10,21 @@
 #include <TPZSimpleTimer.h>
 #include <pzbuildmultiphysicsmesh.h>
 
-namespace wgma::modal_analysis{
-  WGAnalysis::WGAnalysis(const TPZVec<TPZAutoPointer<TPZCompMesh>> &meshvec,
-                         const int n_threads, const bool reorder_eqs,
-                         const bool filter_bound) : m_filter_bound(filter_bound){
-    if(meshvec.size() != 3){
-      std::cerr<<__PRETTY_FUNCTION__
-               <<"\nThree computational meshes are required."
-               <<"Aborting...\n";
-      exit(-1);
-    }
-    //gets the multiphysics mesh (main mesh)
-    m_cmesh_mf = meshvec[0];
-    m_cmesh_h1 = meshvec[TPZWaveguideModalAnalysis::H1Index()];
-    m_cmesh_hcurl = meshvec[TPZWaveguideModalAnalysis::HCurlIndex()];
+namespace wgma::wganalysis{
   
-    m_an = new TPZEigenAnalysis(m_cmesh_mf, reorder_eqs);
-
-    TPZAutoPointer<TPZStructMatrix> strmtrx =
-      new TPZSpStructMatrix<CSTATE>(m_cmesh_mf);
-
-    strmtrx->SetNumThreads(n_threads);
-    
-    TPZVec<int64_t> activeEquations;
   
-    
-    
-    if(filter_bound){
-      int n_dofs_before = m_cmesh_mf->NEquations();
-      std::set<int64_t> boundConnects;
-      wgma::cmeshtools::FilterBoundaryEquations(m_cmesh_mf, activeEquations,
-                                                boundConnects);
-      CountActiveWgma2DEqs(meshvec,boundConnects,m_n_dofs_mf,
-                           m_n_dofs_h1,m_n_dofs_hcurl);
-      std::cout<<"neq(before): "<<n_dofs_before
-               <<"\tneq(after): "<<m_n_dofs_mf<<std::endl;
-      strmtrx->EquationFilter().SetActiveEquations(activeEquations);
-    }else{
-      std::set<int64_t> boundConnects;
-      CountActiveWgma2DEqs(meshvec,boundConnects,m_n_dofs_mf,
-                           m_n_dofs_h1,m_n_dofs_hcurl);
-    }
-    m_an->SetStructuralMatrix(strmtrx);
-  }
-    
-  void WGAnalysis::SetSolver(const TPZEigenSolver<CSTATE> & solv){
+  void Wgma::SetSolver(const TPZEigenSolver<CSTATE> & solv){
     m_an->SetSolver(solv);
   }
     
-  TPZEigenSolver<CSTATE> & WGAnalysis::GetSolver() const{
+  TPZEigenSolver<CSTATE> & Wgma::GetSolver() const{
     return m_an->EigenSolver<CSTATE>();
   }
 
-  void WGAnalysis::Run(bool compute_eigenvectors){
+  void Wgma::Run(bool compute_eigenvectors){
     m_an->SetComputeEigenvectors(compute_eigenvectors);
-    auto *solv = m_an->Solver();
+    TPZEigenSolver<CSTATE> *solv =
+      dynamic_cast<TPZEigenSolver<CSTATE>*>(m_an->Solver());
     if(!solv){
       std::cerr<<__PRETTY_FUNCTION__
                <<"\nA solver has not been set.\n"
@@ -73,18 +33,7 @@ namespace wgma::modal_analysis{
       exit(-1);
     }
 
-    auto *krylov_solver =
-      dynamic_cast<TPZKrylovEigenSolver<CSTATE>*> (solv);      
-    if(krylov_solver && krylov_solver->KrylovInitialVector().Rows() == 0){
-      /**this is to ensure that the eigenvector subspace is orthogonal to
-         the spurious solutions associated with et = 0 ez != 0*/
-      TPZFMatrix<CSTATE> initVec(m_n_dofs_mf, 1, 0.);
-      const auto firstHCurl = m_n_dofs_h1 * TPZWaveguideModalAnalysis::HCurlIndex();
-      for (int i = 0; i < m_n_dofs_hcurl; i++) {
-        initVec(firstHCurl + i, 0) = 1;
-      }
-      krylov_solver->SetKrylovInitialVector(initVec);
-    }
+    AdjustSolver(solv);
     
     {//scope for timer
       std::cout<<"Assembling..."<<std::flush;
@@ -116,7 +65,100 @@ namespace wgma::modal_analysis{
     }
   }
 
-  void WGAnalysis::PostProcess(std::string filename,
+
+  Wgma2D::Wgma2D(const TPZVec<TPZAutoPointer<TPZCompMesh>> &meshvec,
+                 const int n_threads, const bool reorder_eqs,
+                 const bool filter_bound)
+  {
+    
+    m_filter_bound = filter_bound;
+    if(meshvec.size() != 3){
+      std::cerr<<__PRETTY_FUNCTION__
+               <<"\nThree computational meshes are required."
+               <<"Aborting...\n";
+      exit(-1);
+    }
+    //gets the multiphysics mesh (main mesh)
+    m_cmesh_mf = meshvec[0];
+    m_cmesh_h1 = meshvec[TPZWaveguideModalAnalysis::H1Index()];
+    m_cmesh_hcurl = meshvec[TPZWaveguideModalAnalysis::HCurlIndex()];
+  
+    m_an = new TPZEigenAnalysis(m_cmesh_mf, reorder_eqs);
+
+    TPZAutoPointer<TPZStructMatrix> strmtrx =
+      new TPZSpStructMatrix<CSTATE>(m_cmesh_mf);
+
+    strmtrx->SetNumThreads(n_threads);
+    
+  
+    
+    
+    if(m_filter_bound){
+      TPZVec<int64_t> activeEquations;
+      int n_dofs_before = m_cmesh_mf->NEquations();
+      wgma::cmeshtools::FilterBoundaryEquations(m_cmesh_mf, activeEquations,
+                                                m_bound_cons);
+      CountActiveEqs(m_n_dofs_mf,m_n_dofs_h1,m_n_dofs_hcurl);
+      std::cout<<"neq(before): "<<n_dofs_before
+               <<"\tneq(after): "<<m_n_dofs_mf<<std::endl;
+      strmtrx->EquationFilter().SetActiveEquations(activeEquations);
+    }
+    CountActiveEqs(m_n_dofs_mf,m_n_dofs_h1,m_n_dofs_hcurl);
+    m_an->SetStructuralMatrix(strmtrx);
+  }
+
+  void Wgma2D::AdjustSolver(TPZEigenSolver<CSTATE> *solver){
+    auto *krylov_solver =
+      dynamic_cast<TPZKrylovEigenSolver<CSTATE>*> (solver);      
+    if(krylov_solver && krylov_solver->KrylovInitialVector().Rows() == 0){
+      /**this is to ensure that the eigenvector subspace is orthogonal to
+         the spurious solutions associated with et = 0 ez != 0*/
+      TPZFMatrix<CSTATE> initVec(m_n_dofs_mf, 1, 0.);
+      const auto firstHCurl = m_n_dofs_h1 * TPZWaveguideModalAnalysis::HCurlIndex();
+      for (int i = 0; i < m_n_dofs_hcurl; i++) {
+        initVec(firstHCurl + i, 0) = 1;
+      }
+      krylov_solver->SetKrylovInitialVector(initVec);
+    }
+  }
+  
+  void
+  Wgma2D::CountActiveEqs(int &neq,int &nH1Equations, int &nHCurlEquations)
+  {
+    auto &cmesh = m_cmesh_mf;
+    neq = nH1Equations = nHCurlEquations = 0;
+    auto &cmeshHCurl = m_cmesh_hcurl;
+    auto &cmeshH1 = m_cmesh_h1;
+    auto &boundConnects = m_bound_cons;
+    
+    for (int iCon = 0; iCon < cmesh->NConnects(); iCon++) {
+      bool isH1;
+      if (boundConnects.find(iCon) == boundConnects.end()) {
+        if (cmesh->ConnectVec()[iCon].HasDependency())
+          continue;
+        int seqnum = cmesh->ConnectVec()[iCon].SequenceNumber();
+        int blocksize = cmesh->Block().Size(seqnum);
+        if (TPZWaveguideModalAnalysis::H1Index() == 0 && iCon < cmeshH1->NConnects()) {
+          isH1 = true;
+        } else if (TPZWaveguideModalAnalysis::H1Index() == 1 && iCon >= cmeshHCurl->NConnects()) {
+          isH1 = true;
+        } else {
+          isH1 = false;
+        }
+        for (int ieq = 0; ieq < blocksize; ieq++) {
+          neq++;
+          isH1 == true ? nH1Equations++ : nHCurlEquations++;
+        }
+      }
+    }
+    std::cout << "------\tactive eqs\t-------" << std::endl;
+    std::cout << "# H1 equations: " << nH1Equations << std::endl;
+    std::cout << "# HCurl equations: " << nHCurlEquations << std::endl;
+    std::cout << "# equations: " << neq << std::endl;
+    std::cout << "------\t----------\t-------" << std::endl;
+    return;
+  }
+  void Wgma2D::PostProcess(std::string filename,
                                const int vtk_res,
                                const bool print_real_part){
     if(!m_an->ComputeEigenvectors()){
@@ -176,7 +218,7 @@ namespace wgma::modal_analysis{
     std::cout<<std::endl;
   }
   
-  void WGAnalysis::WriteToCsv(std::string filename, STATE lambda){
+  void Wgma2D::WriteToCsv(std::string filename, STATE lambda){
     const int nev = m_evalues.size();
     if(nev < 1){
       std::cout<<"There are no eigenvalues to write to .csv"<<std::endl;
@@ -374,43 +416,4 @@ namespace wgma::modal_analysis{
   
   }
 
-  void
-  CountActiveWgma2DEqs(TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec,
-                       const std::set<int64_t> &boundConnects,
-                       int &neq,
-                       int &nH1Equations, int &nHCurlEquations)
-  {
-    auto cmesh = meshVec[0];
-    neq = nH1Equations = nHCurlEquations = 0;
-    auto cmeshHCurl = meshVec[1];
-    auto cmeshH1 = meshVec[2];
-  
-    for (int iCon = 0; iCon < cmesh->NConnects(); iCon++) {
-      bool isH1;
-      if (boundConnects.find(iCon) == boundConnects.end()) {
-        if (cmesh->ConnectVec()[iCon].HasDependency())
-          continue;
-        int seqnum = cmesh->ConnectVec()[iCon].SequenceNumber();
-        int blocksize = cmesh->Block().Size(seqnum);
-        if (TPZWaveguideModalAnalysis::H1Index() == 0 && iCon < cmeshH1->NConnects()) {
-          isH1 = true;
-        } else if (TPZWaveguideModalAnalysis::H1Index() == 1 && iCon >= cmeshHCurl->NConnects()) {
-          isH1 = true;
-        } else {
-          isH1 = false;
-        }
-        for (int ieq = 0; ieq < blocksize; ieq++) {
-          neq++;
-          isH1 == true ? nH1Equations++ : nHCurlEquations++;
-        }
-      }
-    }
-    std::cout << "------\tactive eqs\t-------" << std::endl;
-    std::cout << "# H1 equations: " << nH1Equations << std::endl;
-    std::cout << "# HCurl equations: " << nHCurlEquations << std::endl;
-    std::cout << "# equations: " << neq << std::endl;
-    std::cout << "------\t----------\t-------" << std::endl;
-    return;
-  }
-  
 };
