@@ -22,7 +22,7 @@ directional mesh refinement.
 #include <TPZKrylovEigenSolver.h>        //for TPZKrylovEigenSolver
 #include <pzintel.h>
 #include <pzmultiphysicselement.h>
-#include <Electromagnetics/TPZWaveguideModalAnalysis.h>
+#include <Electromagnetics/TPZWgma.h>
 #include <pzbuildmultiphysicsmesh.h>
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
 
@@ -178,8 +178,8 @@ int main(int argc, char *argv[]) {
     TPZVec<TPZCompMesh*> atomicmeshes = {meshVec[1].operator->(),
       meshVec[2].operator->()};
 
-    constexpr int h1index = TPZWaveguideModalAnalysis::H1Index();
-    constexpr int hcurlindex = TPZWaveguideModalAnalysis::HCurlIndex();
+    constexpr int h1index = TPZWgma::H1Index();
+    constexpr int hcurlindex = TPZWgma::HCurlIndex();
     /*
       In order to ensure De Rham compatibility, we need to have
       h1 order = hcurl order +1.

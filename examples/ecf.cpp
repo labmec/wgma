@@ -21,7 +21,7 @@ and generates dispersion curves
 #include <TPZKrylovEigenSolver.h>        //for TPZKrylovEigenSolver
 #include <pzintel.h>
 #include <pzmultiphysicselement.h>
-#include <Electromagnetics/TPZWaveguideModalAnalysis.h>
+#include <Electromagnetics/TPZWgma.h>
 #include <pzbuildmultiphysicsmesh.h>
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
 #include <pzshapecube.h>
