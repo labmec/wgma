@@ -313,14 +313,20 @@ namespace wgma::wganalysis{
 
   void WgmaPeriodic2D::PostProcess(std::string filename, const int vtk_res)
   {
-    
+    if(!m_an->ComputeEigenvectors()){
+      std::cout<<__PRETTY_FUNCTION__
+               <<"\nOnly eigenvalues were calculated.\n"
+               <<"Nothing to do here...\n";
+      return;
+    }
     ///vtk export
     TPZStack<std::string> scalnames, vecnames;
     scalnames.Push("Field_re");
     scalnames.Push("Field_abs");
     vecnames.Push("Deriv_re");
     vecnames.Push("Deriv_abs");
-    m_an->DefineGraphMesh(2,scalnames,vecnames,filename);
+    const std::string plotfile = filename+".vtk";
+    m_an->DefineGraphMesh(2,scalnames,vecnames,plotfile);
     const auto neqOriginal = m_evectors.Rows();
     TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
 
