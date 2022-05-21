@@ -5,8 +5,8 @@
 
 #include <TPZSpStructMatrix.h>
 #include <TPZKrylovEigenSolver.h>
-#include <Electromagnetics/TPZWaveguideModalAnalysis.h>
-#include <Electromagnetics/TPZPlanarWGModalAnalysis.h>
+#include <Electromagnetics/TPZWgma.h>
+#include <Electromagnetics/TPZPeriodicWgma.h>
 #include <TPZNullMaterial.h>
 #include <TPZSimpleTimer.h>
 #include <pzbuildmultiphysicsmesh.h>
@@ -90,8 +90,8 @@ namespace wgma::wganalysis{
     }
     //gets the multiphysics mesh (main mesh)
     m_cmesh_mf = meshvec[0];
-    m_cmesh_h1 = meshvec[TPZWaveguideModalAnalysis::H1Index()];
-    m_cmesh_hcurl = meshvec[TPZWaveguideModalAnalysis::HCurlIndex()];
+    m_cmesh_h1 = meshvec[TPZWgma::H1Index()];
+    m_cmesh_hcurl = meshvec[TPZWgma::HCurlIndex()];
   
     m_an = new TPZEigenAnalysis(m_cmesh_mf, reorder_eqs);
 
@@ -124,7 +124,7 @@ namespace wgma::wganalysis{
       /**this is to ensure that the eigenvector subspace is orthogonal to
          the spurious solutions associated with et = 0 ez != 0*/
       TPZFMatrix<CSTATE> initVec(m_n_dofs_mf, 1, 0.);
-      const auto firstHCurl = m_n_dofs_h1 * TPZWaveguideModalAnalysis::HCurlIndex();
+      const auto firstHCurl = m_n_dofs_h1 * TPZWgma::HCurlIndex();
       for (int i = 0; i < m_n_dofs_hcurl; i++) {
         initVec(firstHCurl + i, 0) = 1;
       }
@@ -148,9 +148,9 @@ namespace wgma::wganalysis{
           continue;
         int seqnum = cmesh->ConnectVec()[iCon].SequenceNumber();
         int blocksize = cmesh->Block().Size(seqnum);
-        if (TPZWaveguideModalAnalysis::H1Index() == 0 && iCon < cmeshH1->NConnects()) {
+        if (TPZWgma::H1Index() == 0 && iCon < cmeshH1->NConnects()) {
           isH1 = true;
-        } else if (TPZWaveguideModalAnalysis::H1Index() == 1 && iCon >= cmeshHCurl->NConnects()) {
+        } else if (TPZWgma::H1Index() == 1 && iCon >= cmeshHCurl->NConnects()) {
           isH1 = true;
         } else {
           isH1 = false;
@@ -179,8 +179,10 @@ namespace wgma::wganalysis{
     }
 
     TPZStack<std::string> scalnames, vecnames;
-    scalnames.Push("Ez");
-    vecnames.Push("Et");
+    scalnames.Push("Ez_real");
+    scalnames.Push("Ez_abs");
+    vecnames.Push("Et_real");
+    vecnames.Push("Et_abs");
     const std::string plotfile = filename+".vtk";
     constexpr int dim{2};
     m_an->DefineGraphMesh(dim, scalnames, vecnames,plotfile);
@@ -213,10 +215,9 @@ namespace wgma::wganalysis{
       for(auto mat : m_cmesh_mf->MaterialVec()){
         auto id = mat.first;
         auto matPtr =
-          dynamic_cast<TPZWaveguideModalAnalysis *>(m_cmesh_mf->FindMaterial(id));
+          dynamic_cast<TPZWgma *>(m_cmesh_mf->FindMaterial(id));
         if(!matPtr) continue;
         matPtr->SetKz(currentKz);
-        matPtr->SetPrintFieldRealPart(print_real_part);
       }
       std::cout<<"\rPost processing step "<<iSol+1<<" out of "<<ev.size()
                <<"(kz = "<<currentKz<<")"<<std::flush;
@@ -302,7 +303,7 @@ namespace wgma::wganalysis{
   {
     for(auto [id, mat] : m_cmesh->MaterialVec()){
         auto *mat_modal =
-          dynamic_cast<TPZPlanarWGModalAnalysis*>(mat);
+          dynamic_cast<TPZPeriodicWgma*>(mat);
         if(mat_modal){
           mat_modal->SetBeta(beta);
         }
@@ -457,7 +458,7 @@ namespace wgma::wganalysis{
     TPZAutoPointer<TPZCompMesh> cmeshMF =
       new TPZCompMesh(gmesh,isComplex);
     for(auto [matid, er, ur] : data.matinfovec){
-      auto *matWG = new TPZWaveguideModalAnalysis(matid, er, ur, lambda, scale);
+      auto *matWG = new TPZWgma(matid, er, ur, lambda, scale);
       cmeshMF->InsertMaterialObject(matWG);
     }
   
@@ -468,7 +469,7 @@ namespace wgma::wganalysis{
       const auto alphay = pml.alphay;
       const auto type = pml.t;
       cmeshtools::AddRectangularPMLRegion<
-        TPZWaveguideModalAnalysis
+        TPZWgma
         >(id, alphax, alphay, type, volmats, gmesh, cmeshMF);
     }
   
@@ -489,8 +490,8 @@ namespace wgma::wganalysis{
     cmeshMF->CleanUpUnconnectedNodes();
 
     TPZManVector<TPZCompMesh*,3> meshVecIn(2);
-    meshVecIn[TPZWaveguideModalAnalysis::H1Index()] = cmeshH1.operator->();
-    meshVecIn[TPZWaveguideModalAnalysis::HCurlIndex()] = cmeshHCurl.operator->();
+    meshVecIn[TPZWgma::H1Index()] = cmeshH1.operator->();
+    meshVecIn[TPZWgma::HCurlIndex()] = cmeshHCurl.operator->();
 
   
     TPZBuildMultiphysicsMesh::AddElements(meshVecIn, cmeshMF.operator->());
@@ -503,8 +504,8 @@ namespace wgma::wganalysis{
 
     TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec(3,nullptr);
     meshVec[0] = cmeshMF;
-    meshVec[1 + TPZWaveguideModalAnalysis::H1Index()] = cmeshH1;
-    meshVec[1 + TPZWaveguideModalAnalysis::HCurlIndex()] = cmeshHCurl;
+    meshVec[1 + TPZWgma::H1Index()] = cmeshH1;
+    meshVec[1 + TPZWgma::HCurlIndex()] = cmeshHCurl;
     return meshVec;
   
   }
@@ -527,18 +528,18 @@ namespace wgma::wganalysis{
     // insert volumetric mats
     std::set<int> volmats;
     std::set<int> allmats;
-    TPZPlanarWGModalAnalysis::ModeType matmode;
+    TPZPeriodicWgma::ModeType matmode;
     switch (mode) {
     case wgma::planarwg::mode::TE:
-      matmode = TPZPlanarWGModalAnalysis::ModeType::TE;
+      matmode = TPZPeriodicWgma::ModeType::TE;
       break;
     case wgma::planarwg::mode::TM:
-      matmode = TPZPlanarWGModalAnalysis::ModeType::TM;
+      matmode = TPZPeriodicWgma::ModeType::TM;
       break;
     }
     for (auto [id, er, ur] : data.matinfovec) {
       auto *mat =
-        new TPZPlanarWGModalAnalysis(id, dim, er, ur, lambda, matmode, scale);
+        new TPZPeriodicWgma(id, dim, er, ur, lambda, matmode, scale);
       cmeshH1->InsertMaterialObject(mat);
       // for pml
       volmats.insert(id);
@@ -551,7 +552,7 @@ namespace wgma::wganalysis{
       const auto alphax = pml.alphax;
       const auto alphay = pml.alphay;
       const auto type = pml.t;
-      wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWGModalAnalysis>(
+      wgma::cmeshtools::AddRectangularPMLRegion<TPZPeriodicWgma>(
         id, alphax, alphay, type, volmats, gmesh, cmeshH1);
       allmats.insert(id);
     }

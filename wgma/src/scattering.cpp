@@ -5,8 +5,8 @@
 
 #include <TPZSpStructMatrix.h>
 #include <pzstepsolver.h>
-#include <Electromagnetics/TPZPlanarWGScattering.h>
-#include <Electromagnetics/TPZPlanarWGScatteringSrc.h>
+#include <Electromagnetics/TPZPlanarWgScatt.h>
+#include <Electromagnetics/TPZPlanarWgScattSrc.h>
 #include <TPZSimpleTimer.h>
 #include <pzcompelwithmem.h>
 #include <pzaxestools.h>
@@ -94,7 +94,7 @@ namespace wgma::scattering{
   }
 
 
-  void LoadPrescribedSource(TPZPlanarWGScatteringSrc *mat,
+  void LoadPrescribedSource(TPZPlanarWgScattSrc *mat,
                             const TPZVec<int64_t> &mem_indices,
                             const TPZIntPoints &intrule,
                             TPZCompEl *cel,
@@ -120,7 +120,7 @@ namespace wgma::scattering{
   }
 
   template<int CELDIM>
-  void LoadModalAnalysisSource(TPZPlanarWGScatteringSrc *mat,
+  void LoadModalAnalysisSource(TPZPlanarWgScattSrc *mat,
                                const TPZVec<int64_t> &mem_indices,
                                const TPZIntPoints &intrule,
                                TPZInterpolationSpace *cel,
@@ -211,7 +211,7 @@ namespace wgma::scattering{
       if(!has_src){continue;}
       
       auto mat =
-        dynamic_cast<TPZPlanarWGScatteringSrc *>(cel->Material());
+        dynamic_cast<TPZPlanarWgScattSrc *>(cel->Material());
       
       assert(mat);
 
@@ -298,17 +298,17 @@ namespace wgma::scattering{
     //volumetric mats - pml
     std::set<int> realvolmats;
     
-    TPZPlanarWGScattering::ModeType matmode;
+    TPZPlanarWgScatt::ModeType matmode;
     switch(mode){
     case wgma::planarwg::mode::TE:
-      matmode = TPZPlanarWGScattering::ModeType::TE;
+      matmode = TPZPlanarWgScatt::ModeType::TE;
       break;
     case wgma::planarwg::mode::TM:
-      matmode = TPZPlanarWGScattering::ModeType::TM;
+      matmode = TPZPlanarWgScatt::ModeType::TM;
       break;
     }
     for(auto [id,er,ur] : data.matinfovec){
-      auto *mat = new TPZPlanarWGScattering(id,er,ur,lambda,matmode,scale);
+      auto *mat = new TPZPlanarWgScatt(id,er,ur,lambda,matmode,scale);
       scatt_cmesh->InsertMaterialObject(mat);
       //for pml
       realvolmats.insert(id);
@@ -321,7 +321,7 @@ namespace wgma::scattering{
       const auto alphax = pml.alphax;
       const auto alphay = pml.alphay;
       const auto type = pml.t;
-      wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWGScattering>
+      wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgScatt>
         (id, alphax, alphay, type, realvolmats, gmesh, scatt_cmesh);
       volmats.insert(id);
       allmats.insert(id);
@@ -388,7 +388,7 @@ namespace wgma::scattering{
       const auto src_volid = res.value();
       for(auto [id,er,ur] : data.matinfovec){
         if(id == src_volid){
-          auto srcMat = new TPZPlanarWGScatteringSrc(src_id,er,ur,lambda,matmode,scale);
+          auto srcMat = new TPZPlanarWgScattSrc(src_id,er,ur,lambda,matmode,scale);
           scatt_cmesh->InsertMaterialObject(srcMat);
         }
       }
@@ -419,7 +419,7 @@ namespace wgma::scattering{
     std::setprecision(ss);
     for(auto [_,mat] : cmesh->MaterialVec()){
       auto scatt_mat =
-        dynamic_cast<TPZPlanarWGScatteringSrc*>(mat);
+        dynamic_cast<TPZPlanarWgScattSrc*>(mat);
       if(scatt_mat){
         scatt_mat->SetBeta(beta);
       }

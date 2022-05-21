@@ -141,6 +141,7 @@ namespace wgma::wganalysis{
      Since it is a non-linear eigenvalue in beta it is supposed
      to be solved iteratively.
      See pcwg example for usage.
+     @note It will always search just for one eigenvalue.
    */
   class WgmaPeriodic2D : public Wgma{
   public:
@@ -195,7 +196,7 @@ namespace wgma::wganalysis{
     //! Current value of propagation constant
     CSTATE m_beta{0};
   };
-
+  
   /**
      @brief Creates the computational meshes used for approximating the waveguide EVP in two dimensions.
      Three meshes will be created: one for the H1 approximation space, one for the
