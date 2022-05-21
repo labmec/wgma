@@ -6,12 +6,17 @@
 #include <TPZSpStructMatrix.h>
 #include <TPZKrylovEigenSolver.h>
 #include <Electromagnetics/TPZWaveguideModalAnalysis.h>
+#include <Electromagnetics/TPZPlanarWGModalAnalysis.h>
 #include <TPZNullMaterial.h>
 #include <TPZSimpleTimer.h>
 #include <pzbuildmultiphysicsmesh.h>
+#include <pzelctemp.h>
+
+#include <cassert>
 
 namespace wgma::wganalysis{
-  
+
+  Wgma::~Wgma(){}
   
   void Wgma::SetSolver(const TPZEigenSolver<CSTATE> & solv){
     m_an->SetSolver(solv);
@@ -66,6 +71,11 @@ namespace wgma::wganalysis{
   }
 
 
+  TPZVec<CSTATE> Wgma::GetEigenvalues() const
+  {
+    return m_evalues;
+  }
+  
   Wgma2D::Wgma2D(const TPZVec<TPZAutoPointer<TPZCompMesh>> &meshvec,
                  const int n_threads, const bool reorder_eqs,
                  const bool filter_bound)
@@ -257,6 +267,89 @@ namespace wgma::wganalysis{
     file.close();
   }
 
+
+  WgmaPeriodic2D::WgmaPeriodic2D(TPZAutoPointer<TPZCompMesh> cmesh,
+                                 const int n_threads, const bool reorder_eqs,
+                                 const bool filter_bound) : m_cmesh(cmesh)
+  {
+    m_filter_bound = filter_bound;
+    
+    m_an = new TPZEigenAnalysis(m_cmesh, reorder_eqs);
+
+    TPZAutoPointer<TPZStructMatrix> strmtrx =
+      new TPZSpStructMatrix<CSTATE>(m_cmesh);
+
+    strmtrx->SetNumThreads(n_threads);
+    auto ndofs = m_cmesh->NEquations();
+    if(m_filter_bound){
+      TPZVec<int64_t> activeEquations;
+      const auto ndofs_before = m_cmesh->NEquations();
+      std::set<int64_t> boundConnects;
+    
+      wgma::cmeshtools::FilterBoundaryEquations(m_cmesh, activeEquations,
+                                                boundConnects);
+      ndofs = activeEquations.size();
+      std::cout<<"neq(before): "<<ndofs_before
+               <<"\tneq(after): "<<ndofs<<std::endl;
+      strmtrx->EquationFilter().SetActiveEquations(activeEquations);
+    }else{
+      std::cout<<"neq: "<<ndofs<<std::endl;
+    }
+    m_an->SetStructuralMatrix(strmtrx);
+  }
+
+  void WgmaPeriodic2D::SetBeta(const CSTATE beta)
+  {
+    for(auto [id, mat] : m_cmesh->MaterialVec()){
+        auto *mat_modal =
+          dynamic_cast<TPZPlanarWGModalAnalysis*>(mat);
+        if(mat_modal){
+          mat_modal->SetBeta(beta);
+        }
+      }
+    m_beta = beta;
+  }
+
+  void WgmaPeriodic2D::PostProcess(std::string filename, const int vtk_res)
+  {
+    
+    ///vtk export
+    TPZStack<std::string> scalnames, vecnames;
+    scalnames.Push("Field_re");
+    scalnames.Push("Field_abs");
+    vecnames.Push("Deriv_re");
+    vecnames.Push("Deriv_abs");
+    m_an->DefineGraphMesh(2,scalnames,vecnames,filename);
+    const auto neqOriginal = m_evectors.Rows();
+    TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
+
+    m_evectors.GetSub(0, 0, neqOriginal, 1, evector);
+    m_an->LoadSolution(evector);
+    m_an->PostProcess(vtk_res);
+  }
+  
+  void WgmaPeriodic2D::WriteToCsv(std::string filename, STATE lambda)
+  {
+    PZError<<__PRETTY_FUNCTION__
+           <<"\nnot yet implemented...\n";
+  }
+  
+  void WgmaPeriodic2D::CountActiveEqs(int &neq)
+  {
+    auto eq_filt = m_an->StructMatrix()->EquationFilter();
+    if(eq_filt.IsActive()){
+      neq = eq_filt.NActiveEquations();
+    }else{
+      neq = m_cmesh->NEquations();
+    }
+  }
+  
+  void WgmaPeriodic2D::AdjustSolver(TPZEigenSolver<CSTATE> *solv)
+  {
+    solv->SetTarget(m_beta*m_beta);
+  }
+  
+
   TPZVec<TPZAutoPointer<TPZCompMesh>>
   CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
               cmeshtools::PhysicalData &data,
@@ -416,4 +509,127 @@ namespace wgma::wganalysis{
   
   }
 
+  TPZAutoPointer<TPZCompMesh>
+  CMeshWgmaPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
+                    const wgma::planarwg::mode mode, int pOrder,
+                    wgma::cmeshtools::PhysicalData &data,
+                    std::map<int64_t,int64_t> periodic_els, const STATE lambda,
+                    const REAL scale)
+  {
+  
+    static constexpr bool isComplex{true};
+    static constexpr int dim{2};
+    TPZAutoPointer<TPZCompMesh> cmeshH1 = new TPZCompMesh(gmesh, isComplex);
+    cmeshH1->SetDimModel(dim);
+
+    const int nvolmats = data.matinfovec.size();
+
+    // insert volumetric mats
+    std::set<int> volmats;
+    std::set<int> allmats;
+    TPZPlanarWGModalAnalysis::ModeType matmode;
+    switch (mode) {
+    case wgma::planarwg::mode::TE:
+      matmode = TPZPlanarWGModalAnalysis::ModeType::TE;
+      break;
+    case wgma::planarwg::mode::TM:
+      matmode = TPZPlanarWGModalAnalysis::ModeType::TM;
+      break;
+    }
+    for (auto [id, er, ur] : data.matinfovec) {
+      auto *mat =
+        new TPZPlanarWGModalAnalysis(id, dim, er, ur, lambda, matmode, scale);
+      cmeshH1->InsertMaterialObject(mat);
+      // for pml
+      volmats.insert(id);
+      //for assembling only desired materials
+      allmats.insert(id);
+    }
+
+    for (auto pml : data.pmlvec) {
+      const auto id = pml.id;
+      const auto alphax = pml.alphax;
+      const auto alphay = pml.alphay;
+      const auto type = pml.t;
+      wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWGModalAnalysis>(
+        id, alphax, alphay, type, volmats, gmesh, cmeshH1);
+      allmats.insert(id);
+    }
+
+    TPZFNMatrix<1, CSTATE> val1(1, 1, 1);
+    TPZManVector<CSTATE, 1> val2(1, 0.);
+
+    /**let us associate each boundary with a given material.
+       this is important for the source boundary*/
+    for(auto &bc : data.bcvec){
+      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, volmats);
+      if(!res.has_value()){
+        std::cout<<__PRETTY_FUNCTION__
+                 <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
+      }
+      bc.volid = res.value();
+    }
+
+    // for(auto bc : data.bcvec){
+    //   std::cout<<"bc "<<bc.id<<" mat "<<bc.volid<<std::endl;
+    // }
+
+  
+    for (auto bc : data.bcvec) {
+      const int bctype = wgma::bc::to_int(bc.t);
+      const int id = bc.id;
+      const int volmatid = bc.volid;
+      auto *volmat =
+        dynamic_cast<TPZMaterialT<CSTATE> *>(cmeshH1->FindMaterial(volmatid));
+      auto *bcmat = volmat->CreateBC(volmat, id, bctype, val1, val2);
+      cmeshH1->InsertMaterialObject(bcmat);
+      allmats.insert(id);
+    }
+
+  
+  
+
+    cmeshH1->SetAllCreateFunctionsContinuous();
+    cmeshH1->SetDefaultOrder(pOrder);
+    cmeshH1->AutoBuild(allmats);
+
+  
+    //let us copy the connects
+    for(auto [dep, indep] : periodic_els){
+      //geometric elements
+      auto *dep_gel = gmesh->Element(dep);
+      const auto *indep_gel = gmesh->Element(indep);
+      //computational element
+      //we need interpolatedelement for SideConnectLocId
+      auto *indep_cel =
+        dynamic_cast<TPZInterpolatedElement*>(indep_gel->Reference());
+      auto *dep_cel =
+        dynamic_cast<TPZInterpolatedElement*>(dep_gel->Reference());
+      //number of connects
+      const auto n_dep_con = dep_cel->NConnects();
+      const auto n_indep_con = indep_cel->NConnects();
+      //just to be sure
+      assert(n_dep_con == n_indep_con);
+
+      //now we create dependencies between connects
+      for(auto ic = 0; ic < n_indep_con; ic++){
+        const auto indep_ci = indep_cel->ConnectIndex(ic);
+        const auto dep_ci = dep_cel->ConnectIndex(ic);
+
+        auto &dep_con = dep_cel->Connect(ic);
+        const auto ndof = dep_con.NDof(cmeshH1);
+        if(ndof==0) {continue;}
+        constexpr int64_t ipos{0};
+        constexpr int64_t jpos{0};
+      
+        TPZFMatrix<REAL> mat(ndof,ndof);
+        mat.Identity();
+        dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
+      } 
+    }
+    cmeshH1->CleanUpUnconnectedNodes();
+    cmeshH1->ExpandSolution();
+    return cmeshH1;
+  }
+  
 };
