@@ -569,12 +569,14 @@ namespace wgma::wganalysis{
     /**let us associate each boundary with a given material.
        this is important for the source boundary*/
     for(auto &bc : data.bcvec){
-      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, volmats);
+      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, allmats);
       if(!res.has_value()){
         std::cout<<__PRETTY_FUNCTION__
-                 <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
+                 <<"\nError: could not find neighbour of bc "<<bc.id<<std::endl;
+        DebugStop();
+      }else{
+        bc.volid = res.value();
       }
-      bc.volid = res.value();
     }
 
     // for(auto bc : data.bcvec){
