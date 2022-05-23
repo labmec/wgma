@@ -59,6 +59,7 @@ cmeshtools::SetupGmshMaterialData(
           pmlvec[pos].alphax = alphaPMLx;
           pmlvec[pos].alphay = alphaPMLy;
           pmlvec[pos].t = pmltypes[ipml];
+          pmlvec[pos].name = name;
           found = true;
           break;
         }

@@ -69,6 +69,7 @@ namespace wgma{
       STATE alphax{0};
       STATE alphay{0};
       int id{-100};
+      std::string name{"no_name"};//<name from the region associated with PML
       explicit data(int i, type tp, STATE ax, STATE ay) :
         id(i), t(tp), alphax(ax), alphay(ay) {}
       data() = default;
