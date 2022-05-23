@@ -410,7 +410,7 @@ namespace wgma::wganalysis{
       bc.volid = res.value();
     }
   
-    TPZFNMatrix<1, CSTATE> val1(1, 1, 1);
+    TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
     TPZManVector<CSTATE,1> val2(1, 0.);
     for(auto bc : bcDataVec){
       const int bctype = wgma::bc::to_int(bc.t);
@@ -563,7 +563,7 @@ namespace wgma::wganalysis{
       allmats.insert(id);
     }
 
-    TPZFNMatrix<1, CSTATE> val1(1, 1, 1);
+    TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
     TPZManVector<CSTATE, 1> val2(1, 0.);
 
     /**let us associate each boundary with a given material.
