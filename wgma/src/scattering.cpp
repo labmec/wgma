@@ -297,6 +297,8 @@ namespace wgma::scattering{
     std::set<int> volmats;
     //volumetric mats - pml
     std::set<int> realvolmats;
+    //we keep track of PML neighbours because we might need it for sources
+    std::map<int,int> pml_neighs;
     
     TPZPlanarWgScatt::ModeType matmode;
     switch(mode){
@@ -321,10 +323,11 @@ namespace wgma::scattering{
       const auto alphax = pml.alphax;
       const auto alphay = pml.alphay;
       const auto type = pml.t;
-      wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgScatt>
+      const auto neigh = wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgScatt>
         (id, alphax, alphay, type, realvolmats, gmesh, scatt_cmesh);
       volmats.insert(id);
       allmats.insert(id);
+      pml_neighs[id] = neigh;
     }
 
   
@@ -384,8 +387,17 @@ namespace wgma::scattering{
                <<std::endl;
         DebugStop();
       }
-  
-      const auto src_volid = res.value();
+      
+      const auto src_volid = [res,pml_neighs](){
+        if(pml_neighs.count(res.value())){
+          //pmlmat
+          return pml_neighs.at(res.value());
+        }else{
+          //volmat
+          return res.value();
+        }
+      }();
+      
       for(auto [id,er,ur] : data.matinfovec){
         if(id == src_volid){
           auto srcMat = new TPZPlanarWgScattSrc(src_id,er,ur,lambda,matmode,scale);
