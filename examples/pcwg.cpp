@@ -231,7 +231,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  beta = modal_an.GetEigenvalues()[0];
+  beta = std::sqrt(modal_an.GetEigenvalues()[0]);
+  
   /*********************
    * cmesh(scattering) *
 This is actually a combined computational mesh, i.e., two different
