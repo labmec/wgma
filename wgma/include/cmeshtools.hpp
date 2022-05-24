@@ -79,7 +79,7 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
   template<class MATVOL>
   void
   AddRectangularPMLRegion(const int matId,
-                          const int alphax,const int alphay,
+                          const STATE alphax,const STATE alphay,
                           const wgma::pml::type type,
                           const std::set<int> &volmats,
                           TPZAutoPointer<TPZGeoMesh> gmesh,
