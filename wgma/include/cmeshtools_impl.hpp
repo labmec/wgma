@@ -10,7 +10,7 @@
 #include <TPZMatSingleSpace.h>
 #include <TPZMatCombinedSpaces.h>
 template<class MATVOL>
-void
+int
 wgma::cmeshtools::AddRectangularPMLRegion(const int matId,
                                     const STATE alphax, const STATE alphay,
                                     const wgma::pml::type type,
@@ -96,6 +96,6 @@ wgma::cmeshtools::AddRectangularPMLRegion(const int matId,
   if(attx) pmlMat->SetAttX(xBegin, alphax, dX);
   if(atty) pmlMat->SetAttY(yBegin, alphay, dY);
   cmesh->InsertMaterialObject(pmlMat);
-  
+  return neighMat->Id();
 }
 #endif
