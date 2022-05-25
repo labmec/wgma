@@ -34,8 +34,7 @@ TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(std::string_view filename,
                                                const REAL scale);
 
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
-SetupSolver(const int neigenpairs, const CSTATE target,
-            TPZEigenSort sorting, bool usingSLEPC);
+SetupSolver(const CSTATE target, TPZEigenSort sorting, bool usingSLEPC);
 
 
 int main(int argc, char *argv[]) {
@@ -79,7 +78,6 @@ int main(int argc, char *argv[]) {
   constexpr int nThreads{8};
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
-  constexpr int nEigenpairs = 1;
   constexpr bool usingSLEPC {true};
 
   /*********************
@@ -161,7 +159,7 @@ int main(int argc, char *argv[]) {
    * cmesh(modal analysis)  *
    **************************/
 
-  auto modal_cmesh = [&gmesh,&gmshmats,&periodic_els](){
+  auto modal_cmesh = [gmesh,&gmshmats,&periodic_els](){
     // setting up cmesh data
     wgma::cmeshtools::PhysicalData modal_data;
 
@@ -191,21 +189,20 @@ int main(int argc, char *argv[]) {
 
   //this is a non-linear problem on beta, we start with 0 as initial value
   CSTATE beta = 0;
-  auto solver = SetupSolver(nEigenpairs, beta, sortingRule, usingSLEPC);
-
-  modal_an.SetSolver(*solver);
 
   std::streamsize ss = std::cout.precision();
   
   std::cout.precision(std::numeric_limits<STATE>::max_digits10);
   STATE rel_error{0};
-  constexpr STATE tol = std::numeric_limits<STATE>::epsilon() * 100;
+  constexpr STATE tol = std::numeric_limits<STATE>::epsilon() * 1000;
 
   bool computeVectors{false};
   int nit = 0;
   do{
     CSTATE old_beta = beta;
     std::cout<<std::fixed<<"beta: "<<beta.real()<<" "<<beta.imag()<<std::endl;
+    auto solver = SetupSolver( beta*beta, sortingRule, usingSLEPC);
+    modal_an.SetSolver(*solver);
     modal_an.SetBeta(beta);
     modal_an.Run(computeVectors);
     beta = std::sqrt(modal_an.GetEigenvalues()[0]);
@@ -246,7 +243,7 @@ the combined mesh will just coordinate their interactions.
    *********************/
 
   
-  auto scatt_cmesh = [&gmesh,&gmshmats, &modal_cmesh](){
+  auto scatt_cmesh = [gmesh,&gmshmats, modal_cmesh](){
     //material that will represent our source
     constexpr auto srcMat{"gamma_2"};
     // setting up cmesh data
@@ -347,8 +344,7 @@ TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(std::string_view filename,
 #include <TPZKrylovEigenSolver.h>
 //utility functions
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
-SetupSolver(const int neigenpairs, const CSTATE target,
-            TPZEigenSort sorting, bool usingSLEPC)
+SetupSolver(const CSTATE target,TPZEigenSort sorting, bool usingSLEPC)
 {
 
 #ifndef WGMA_USING_SLEPC
@@ -360,7 +356,7 @@ SetupSolver(const int neigenpairs, const CSTATE target,
 #endif
 
   TPZAutoPointer<TPZEigenSolver<CSTATE>> solver{nullptr};
-
+  constexpr int neigenpairs{1};
   constexpr int krylovDim{50};
   if (usingSLEPC){
     using namespace wgma::slepc;
@@ -411,8 +407,8 @@ SetupSolver(const int neigenpairs, const CSTATE target,
     TPZSTShiftAndInvert<CSTATE> st;
     krylov_solver->SetSpectralTransform(st);
     krylov_solver->SetTarget(target);
-    krylov_solver->SetKrylovDim(krylovDim);
-    krylov_solver->SetNEigenpairs(neigenpairs);
+    krylov_solver->SetKrylovDim(10);
+    krylov_solver->SetNEigenpairs(1);
     krylov_solver->SetAsGeneralised(true);
     
     solver = krylov_solver;
