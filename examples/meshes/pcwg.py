@@ -37,7 +37,7 @@ def create_bound_box(d_box, a, lc_big, lc_small):
     return [p_box, l_box, ll_box, s_box]
 
 
-def create_modal_box(p_box, a, lc_big,lc_small):
+def create_modal_box(p_box, a, lc_big, lc_small):
     p_modal_box = []
     p_modal_box.append(gmsh.model.occ.add_point(0, 11*a, 0, lc_big))
     p_modal_box.append(gmsh.model.occ.add_point(0, a/2+7*a, 0, lc_small))
@@ -140,7 +140,7 @@ def create_circle(data: CircleData, elsize: float):
     return [gmsh.model.occ.add_plane_surface([ll_circ]), circle_line_id]
 
 
-def add_circ_regions(circdata,tags,regions):
+def add_circ_regions(circdata, tags, regions):
     new_physical_id = 0
     for _, groups in enumerate(tags):
         if not groups:
@@ -148,7 +148,7 @@ def add_circ_regions(circdata,tags,regions):
         for _, id in groups.items():
             new_physical_id += id
 
-    tags1d = tags[1]    
+    tags1d = tags[1]
     for circ in circdata:
         name = "circ"+str(new_physical_id)
         assert(name not in regions)
@@ -156,10 +156,11 @@ def add_circ_regions(circdata,tags,regions):
         regions[name] = [circ.lineid]
         circ.matid = new_physical_id
         new_physical_id += 1
-        
+
+
 def generate_physical_ids(tags, domains):
     for dim, groups in enumerate(tags):
-        if not groups: # empty dict
+        if not groups:  # empty dict
             continue
         for name, tag in groups.items():
             assert(name in domains)
@@ -167,15 +168,13 @@ def generate_physical_ids(tags, domains):
             gmsh.model.add_physical_group(dim, regions, tag)
             gmsh.model.set_physical_name(dim, tag, name)
 
-scale = 10**6
-um = 10**-6
 
-um *= scale
+um = 1
 
 a = 0.58*um
 d = 0.36*a
 d_pml = 5*a
-eli = d
+eli = d/3
 elo = 2*eli
 nrows = 15
 ncols = nrows
@@ -212,9 +211,9 @@ elsizetable[11] = [0, 0, 0, 0, elo, elo, elo,
                    eli, eli, 0, eli, eli, elo, elo, elo]
 elsizetable[10] = [elo, elo, elo, elo, elo, elo,
                    elo, eli, eli, 0, eli, eli, elo, elo, elo]
-elsizetable[9] = [elo, elo, elo, elo, elo, elo,
+elsizetable[9] = [eli, elo, elo, elo, elo, elo,
                   elo, eli, eli, 0, eli, eli, elo, elo, elo]
-elsizetable[8] = [elo, elo, elo, elo, elo, elo,
+elsizetable[8] = [eli, elo, elo, elo, elo, elo,
                   elo, eli, eli, 0, eli, eli, elo, elo, elo]
 elsizetable[7] = [eli, eli, eli, eli, eli, eli,
                   eli, eli, eli, 0, eli, eli, elo, elo, elo]
@@ -225,18 +224,17 @@ elsizetable[4] = [eli, eli, eli, eli, eli, eli,
                   eli, eli, eli, eli, eli, elo, elo, elo, elo]
 elsizetable[3] = [eli, eli, eli, eli, eli, eli,
                   eli, eli, eli, eli, eli, elo, elo, elo, elo]
-elsizetable[2] = [elo, elo, elo, elo, elo, elo,
+elsizetable[2] = [eli, elo, elo, elo, elo, elo,
                   elo, elo, elo, elo, elo, elo, elo, elo, elo]
-elsizetable[1] = [elo, elo, elo, elo, elo, elo,
+elsizetable[1] = [eli, elo, elo, elo, elo, elo,
                   elo, elo, elo, elo, elo, elo, elo, elo, elo]
-elsizetable[0] = [elo, elo, elo, elo, elo, elo,
+elsizetable[0] = [eli, elo, elo, elo, elo, elo,
                   elo, elo, elo, elo, elo, elo, elo, elo, elo]
 
 
 gmsh.initialize()
 gmsh.option.set_number("Geometry.Tolerance", 10**-12)
 gmsh.option.set_number("Geometry.MatchMeshTolerance", 10**-12)
-gmsh.option.set_number("Mesh.ScalingFactor", 1./scale)
 # Next we add a new model named "t1" (if gmsh.model.add() is not called a new
 # unnamed model will be created on the fly, if necessary):
 gmsh.model.add("pcwg")
@@ -247,15 +245,16 @@ gmsh.logger.start()
 # points of the main domain
 
 # creates "main domain": section NOT used for modal analysis
-[p_box, l_box, ll_box, s_box] = create_bound_box(d_box, a, elo,eli)
+[p_box, l_box, ll_box, s_box] = create_bound_box(d_box, a, elo, eli)
 # creates section of domain used for modal analysis
-[p_modal_box, l_modal_box, ll_modal_box, s_modal_box] = create_modal_box(p_box, a, elo,eli)
+[p_modal_box, l_modal_box, ll_modal_box,
+    s_modal_box] = create_modal_box(p_box, a, elo, eli)
 # # creates PMLs regions
-[p_pml_xm, l_pml_xm, ll_pml_xm, s_pml_xm,
- p_pml_yp, l_pml_yp, ll_pml_yp, s_pml_yp] = create_pml(d_pml, a, p_modal_box, l_modal_box, p_box, l_box, elo)
+[p_pml_xm, l_pml_xm, ll_pml_xm, s_pml_xm, p_pml_yp, l_pml_yp, ll_pml_yp,
+ s_pml_yp] = create_pml(d_pml, a, p_modal_box, l_modal_box, p_box, l_box, elo)
 
 
-#first we create the circles in the first region
+# first we create the circles in the first region
 all_circles_data = []
 s_modal_circles = []
 for i in range(nrows):
@@ -266,13 +265,13 @@ for i in range(nrows):
         newcirc.zc = 0
         newcirc.radius = d/2
         elsize = elsizetable[i][0]
-        assert(elsize>10**-3)
+        assert(elsize > 10**-3)
         [s_circ, c_id] = create_circle(newcirc, elsize)
         s_modal_circles.append(s_circ)
         newcirc.lineid = c_id
         all_circles_data.append(newcirc)
 
-#now all the remaining ones
+# now all the remaining ones
 s_circles = []
 for i in range(nrows):
     for j in range(ncols):
@@ -283,7 +282,7 @@ for i in range(nrows):
             newcirc.zc = 0
             newcirc.radius = d/2
             elsize = elsizetable[i][j]
-            assert(elsize>10**-3)
+            assert(elsize > 10**-3)
             c_id = 0
             [s_circ, c_id] = create_circle(newcirc, elsize)
             s_circles.append(s_circ)
@@ -292,7 +291,7 @@ for i in range(nrows):
 
 gmsh.model.occ.synchronize()
 
-#boolean difference to get the holes
+# boolean difference to get the holes
 dim = 2
 cut_modal_circles = [(2, circ) for circ in s_modal_circles]
 new_modal_boxes = gmsh.model.occ.cut(
@@ -307,55 +306,60 @@ new_boxes = [t[1] for t in new_boxes]
 
 gmsh.model.occ.synchronize()
 
-#let us split the dirichlet bcs
+# let us split the dirichlet bcs
 dim = 2
 all_domains = gmsh.model.get_entities(dim)
-all_bounds = gmsh.model.get_boundary(all_domains, combined=True, oriented=False, recursive=False)
+all_bounds = gmsh.model.get_boundary(
+    all_domains, combined=True, oriented=False, recursive=False)
 
-#now we split the boundaries (the modal analysis must have its own)
-modal_bounds = gmsh.model.get_boundary([(dim,new_modal_boxes[0])],combined=False,oriented=False,recursive=False);
+# now we split the boundaries (the modal analysis must have its own)
+modal_bounds = gmsh.model.get_boundary(
+    [(dim, new_modal_boxes[0])],
+    combined=False, oriented=False, recursive=False)
 
-modal_dirichlet = gmsh.model.occ.intersect(all_bounds,modal_bounds,removeObject=False,removeTool=False)[0]
+modal_dirichlet = gmsh.model.occ.intersect(
+    all_bounds, modal_bounds, removeObject=False, removeTool=False)[0]
 
-scattering_dirichlet = gmsh.model.occ.cut(all_bounds,modal_bounds,removeObject=True,removeTool=False)[0]
+scattering_dirichlet = gmsh.model.occ.cut(
+    all_bounds, modal_bounds, removeObject=True, removeTool=False)[0]
 
 dim = 1
 modal_dirichlet = [b[1] for b in modal_dirichlet]
 scattering_dirichlet = [b[1] for b in scattering_dirichlet]
 
-#create physical domains
+# create physical domains
 domain_tags_0d = {}
 
 domain_tags_2d = {"air_1": 1,
-              "Si_1": 2,
-              "air_2": 3,
-              "Si_2": 4,
-              "pml_xm":5,
-              "pml_yp":6
-              }
+                  "Si_1": 2,
+                  "air_2": 3,
+                  "Si_2": 4,
+                  "pml_xm": 5,
+                  "pml_yp": 6
+                  }
 
-domain_tags_1d = {"gamma_1":7,
-              "gamma_2":8,
-              "modal_bound":9,
-              "scatt_bound":10}
+domain_tags_1d = {"gamma_1": 7,
+                  "gamma_2": 8,
+                  "modal_bound": 9,
+                  "scatt_bound": 10}
 
-domain_tags = [domain_tags_0d,domain_tags_1d,domain_tags_2d]
+domain_tags = [domain_tags_0d, domain_tags_1d, domain_tags_2d]
 
 
 domain_regions = {"air_1": new_modal_boxes,
                   "Si_1": s_modal_circles,
                   "air_2": new_boxes,
                   "Si_2": s_circles,
-                  "pml_xm":[s_pml_xm],
-                  "pml_yp":[s_pml_yp],
-                  "gamma_1":[l_modal_box[1],l_modal_box[2],
-                             l_modal_box[3],l_modal_box[4],
-                             l_modal_box[5]],
-                  "gamma_2":[l_box[4], l_box[5], l_box[6], l_box[7], l_box[8]],
-                  "modal_bound":modal_dirichlet,
-                  "scatt_bound":scattering_dirichlet}
-        
-add_circ_regions(all_circles_data,domain_tags,domain_regions)
+                  "pml_xm": [s_pml_xm],
+                  "pml_yp": [s_pml_yp],
+                  "gamma_1": [l_modal_box[1], l_modal_box[2],
+                              l_modal_box[3], l_modal_box[4],
+                              l_modal_box[5]],
+                  "gamma_2": [l_box[4], l_box[5], l_box[6], l_box[7], l_box[8]],
+                  "modal_bound": modal_dirichlet,
+                  "scatt_bound": scattering_dirichlet}
+
+add_circ_regions(all_circles_data, domain_tags, domain_regions)
 
 generate_physical_ids(domain_tags, domain_regions)
 
@@ -368,18 +372,17 @@ if __name__ == "__main__":
     os.chdir(dname)
 
     with open('pcwg_circdata.csv', 'w', encoding='UTF8') as f:
-        factor = 10**6/scale
         writer = csv.writer(f)
         header = ["xc(um)", "yc(um)", "zc(um)", "radius(um)", "matid"]
         writer.writerow(header)
         for circ in all_circles_data:
-            row = [circ.xc*factor, circ.yc*factor,
-                   circ.zc*factor, circ.radius*factor, circ.matid]
+            row = [circ.xc, circ.yc,
+                   circ.zc, circ.radius, circ.matid]
             # write the header
             writer.writerow(row)
 
     gmsh.write("pcwg.msh")
-    
+
 if '-nopopup' not in sys.argv:
     gmsh.fltk.run()
 gmsh.finalize()

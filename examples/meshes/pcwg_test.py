@@ -165,12 +165,10 @@ def generate_physical_ids(tags, domains):
             gmsh.model.set_physical_name(dim, tag, name)
 
 
-scale = 10**6
-
 a = 0.58
 d = 0.36*a
-d_pml = 5*a
-eli = d
+d_pml = 10*a
+eli = d/2
 elo = 2*eli
 nrows = 11
 ncols = nrows
@@ -193,33 +191,32 @@ drawtable[1] = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 drawtable[0] = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 
 elsizetable = [[] for _ in range(nrows)]
-elsizetable[10] = [elo, elo, elo, elo, elo, elo,
-                   elo, elo, elo, elo, elo, elo, elo, elo, elo]
-elsizetable[9] = [elo, elo, elo, elo, elo, elo,
-                  elo, elo, elo, elo, elo, elo, elo, elo, elo]
-elsizetable[8] = [elo, elo, elo, elo, elo, elo,
-                  elo, elo, elo, elo, elo, elo, elo, elo, elo]
-elsizetable[7] = [elo, elo, elo, elo, elo, elo,
-                  elo, elo, elo, elo, elo, elo, elo, elo, elo]
-elsizetable[6] = [eli, eli, eli, eli, eli, eli,
-                  eli, eli, eli, eli, eli, eli, eli, eli, eli]
+elsizetable[10] = [
+    eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli]
+elsizetable[9] = [
+    eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli]
+elsizetable[8] = [
+    eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli]
+elsizetable[7] = [
+    eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli]
+elsizetable[6] = [
+    eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli]
 elsizetable[5] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-elsizetable[4] = [eli, eli, eli, eli, eli, eli,
-                  eli, eli, eli, eli, eli, eli, eli, eli, eli]
-elsizetable[3] = [eli, eli, eli, eli, eli, eli,
-                  eli, eli, eli, eli, eli, eli, eli, eli, eli]
-elsizetable[2] = [eli, eli, eli, eli, eli, eli,
-                  eli, eli, eli, eli, eli, eli, eli, eli, eli]
-elsizetable[1] = [eli, eli, eli, eli, eli, eli,
-                  eli, eli, eli, eli, eli, eli, eli, eli, eli]
-elsizetable[0] = [eli, eli, eli, eli, eli, eli,
-                  eli, eli, eli, eli, eli, eli, eli, eli, eli]
+elsizetable[4] = [
+    eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli]
+elsizetable[3] = [
+    eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli]
+elsizetable[2] = [
+    eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli]
+elsizetable[1] = [
+    eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli]
+elsizetable[0] = [
+    eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli, eli]
 
 
 gmsh.initialize()
 gmsh.option.set_number("Geometry.Tolerance", 10**-14)
 gmsh.option.set_number("Geometry.MatchMeshTolerance", 10**-14)
-gmsh.option.set_number("Mesh.ScalingFactor", 1./scale)
 # Next we add a new model named "t1" (if gmsh.model.add() is not called a new
 # unnamed model will be created on the fly, if necessary):
 gmsh.model.add("pcwg")
@@ -229,7 +226,7 @@ gmsh.model.add("pcwg")
 gmsh.logger.start()
 # points of the main domain
 
-ncells = 2
+ncells = 1
 # creates "main domain": section NOT used for modal analysis
 [p_box, l_box, ll_box, s_box] = create_bound_box(d_box, a, elo, eli, ncells)
 # creates section of domain used for modal analysis
@@ -359,13 +356,12 @@ if __name__ == "__main__":
     os.chdir(dname)
     filename = "pcwg_test"
     with open(filename+'_circdata.csv', 'w', encoding='UTF8') as f:
-        factor = 10**6/scale
         writer = csv.writer(f)
         header = ["xc(um)", "yc(um)", "zc(um)", "radius(um)", "matid"]
         writer.writerow(header)
         for circ in all_circles_data:
-            row = [circ.xc*factor, circ.yc*factor,
-                   circ.zc*factor, circ.radius*factor, circ.matid]
+            row = [circ.xc, circ.yc,
+                   circ.zc, circ.radius, circ.matid]
             # write the header
             writer.writerow(row)
 

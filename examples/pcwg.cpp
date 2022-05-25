@@ -49,9 +49,10 @@ int main(int argc, char *argv[]) {
    ***********************/
   
   // lattice constant (distance between pillars)
-  constexpr STATE lattice{0.58e-6};
+  constexpr STATE lattice{0.58};
   // operational wavelength
 
+  // the meshes were designed in micrometers, so lambda has to follow
   constexpr STATE lambda{lattice / 0.35};
   /*
     Given the small dimensions of the domain, scaling it can help in
@@ -68,7 +69,7 @@ int main(int argc, char *argv[]) {
    *  fem options   *
    ******************/
   // polynomial order to be used in the approximation
-  constexpr int pOrder{1};
+  constexpr int pOrder{2};
 
   /******************
    * solver options *
@@ -198,7 +199,7 @@ int main(int argc, char *argv[]) {
   
   std::cout.precision(std::numeric_limits<STATE>::max_digits10);
   STATE rel_error{0};
-  constexpr STATE tol = std::numeric_limits<STATE>::epsilon() * 10000;
+  constexpr STATE tol = std::numeric_limits<STATE>::epsilon() * 100;
 
   bool computeVectors{false};
   int nit = 0;
@@ -324,7 +325,7 @@ TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(std::string_view filename,
   line = getNextLineAndSplitIntoTokens(read);
   // we expect xc, yc, zc, r (in um), and matid
   TPZVec<wgma::gmeshtools::ArcData> arcs;
-  const auto factor = 1e-6 / scale;
+  const auto factor = 1./scale;
   while (line.size() == 5) {
     wgma::gmeshtools::ArcData arc;
 
