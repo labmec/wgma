@@ -208,9 +208,9 @@ $PhysicalNames
 1 253 "circ253"
 1 254 "circ254"
 2 1 "air_1"
-2 2 "Si_1"
+2 2 "GaAs_1"
 2 3 "air_2"
-2 4 "Si_2"
+2 4 "GaAs_2"
 2 5 "pml_xm"
 2 6 "pml_yp"
 $EndPhysicalNames

@@ -167,7 +167,7 @@ int main(int argc, char *argv[]) {
 
     std::map<std::string, std::pair<CSTATE, CSTATE>> modal_mats;
     modal_mats["air_1"] = std::make_pair<CSTATE, CSTATE>(1., 1.);
-    modal_mats["Si_1"] = std::make_pair<CSTATE, CSTATE>(3.4 * 3.4, 1.);
+    modal_mats["GaAs_1"] = std::make_pair<CSTATE, CSTATE>(3.4 * 3.4, 1.);
     std::map<std::string, wgma::bc::type> modal_bcs;
     modal_bcs["gamma_1"] = wgma::bc::type::PERIODIC;
     modal_bcs["gamma_2"] = wgma::bc::type::PERIODIC;
@@ -254,8 +254,8 @@ the combined mesh will just coordinate their interactions.
     std::map<std::string, std::pair<CSTATE, CSTATE>> scatt_mats;
     scatt_mats["air_1"] = std::make_pair<CSTATE, CSTATE>(1., 1.);
     scatt_mats["air_2"] = std::make_pair<CSTATE, CSTATE>(1., 1.);
-    scatt_mats["Si_1"] = std::make_pair<CSTATE, CSTATE>(3.4 * 3.4, 1.);
-    scatt_mats["Si_2"] = std::make_pair<CSTATE, CSTATE>(3.4 * 3.4, 1.);
+    scatt_mats["GaAs_1"] = std::make_pair<CSTATE, CSTATE>(3.4 * 3.4, 1.);
+    scatt_mats["GaAs_2"] = std::make_pair<CSTATE, CSTATE>(3.4 * 3.4, 1.);
     std::map<std::string, wgma::bc::type> scatt_bcs;
     scatt_bcs["modal_bound"] = wgma::bc::type::PEC;
     scatt_bcs["scatt_bound"] = wgma::bc::type::PEC;

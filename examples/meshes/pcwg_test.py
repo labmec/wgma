@@ -315,9 +315,9 @@ scattering_dirichlet = [b[1] for b in scattering_dirichlet]
 domain_tags_0d = {}
 
 domain_tags_2d = {"air_1": 1,
-                  "Si_1": 2,
+                  "GaAs_1": 2,
                   "air_2": 3,
-                  "Si_2": 4,
+                  "GaAs_2": 4,
                   "pml_xm": 5,
                   "pml_xp": 6
                   }
@@ -331,9 +331,9 @@ domain_tags = [domain_tags_0d, domain_tags_1d, domain_tags_2d]
 
 
 domain_regions = {"air_1": new_modal_boxes,
-                  "Si_1": s_modal_circles,
+                  "GaAs_1": s_modal_circles,
                   "air_2": new_boxes,
-                  "Si_2": s_circles,
+                  "GaAs_2": s_circles,
                   "pml_xm": [s_pml_xm],
                   "pml_xp": [s_pml_yp],
                   "gamma_1": [l_modal_box[1], l_modal_box[2],
