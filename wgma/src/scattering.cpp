@@ -273,6 +273,12 @@ namespace wgma::scattering{
         }
       }
     }
+
+    if(!prescribed_source){
+      gmesh->ResetReference();
+      //the geometric mesh now points back to the scattering mesh
+      scatt_cmesh->LoadReferences();
+    }
   }
   
   TPZAutoPointer<TPZCompMesh>
