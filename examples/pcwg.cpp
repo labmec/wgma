@@ -26,8 +26,9 @@ J. Lightwave Technol. 20, 463- (2002)
 #include <pzlog.h>          //for TPZLogger
 
 
-
-
+#include <Electromagnetics/TPZPlanarWgScatt.h>
+#include <Electromagnetics/TPZMatPML.h>
+#include <regex>//for string search
 
 // Sets geometric info regarding all the circles in the mesh
 TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(std::string_view filename,
@@ -91,7 +92,7 @@ int main(int argc, char *argv[]) {
   // path for output files
   const std::string path {"res_pcwg/"};
   // common prefix for both meshes and output files
-  const std::string basisName{"pcwg"};
+  const std::string basisName{"pcwg_test"};
   // prefix for exported files
   const std::string prefix{path+basisName};
   //just to make sure we will output results
@@ -113,7 +114,16 @@ int main(int argc, char *argv[]) {
     conditioning.
    */
   constexpr bool filterBoundaryEqs{true};
+  /*
+    Whether to use a non-linear representation for arcs
+   */
+  constexpr bool arc3D{true};
 
+  /*
+    whether periodic PMLs are set and thus require
+    manual construction
+   */
+  constexpr bool periodicPML{true};
   /*********
    * begin *
    *********/
@@ -143,9 +153,11 @@ int main(int argc, char *argv[]) {
                                                       gmshmats,periodic_els,
                                                       verbosity_lvl);
 
-  auto arcdata = SetUpArcData(arcfile, scale);
+  if(arc3D){
+    auto arcdata = SetUpArcData(arcfile, scale);
 
-  wgma::gmeshtools::SetExactArcRepresentation(gmesh, arcdata);
+    wgma::gmeshtools::SetExactArcRepresentation(gmesh, arcdata);
+  }
 
   // print wgma_gmesh to .txt and .vtk format
   if (printGMesh) {
@@ -183,9 +195,6 @@ int main(int argc, char *argv[]) {
   /*************************
    * solve(modal analysis) *
    *************************/
-  wgma::wganalysis::WgmaPeriodic2D
-    modal_an(modal_cmesh, nThreads,
-             optimizeBandwidth, filterBoundaryEqs);
 
   //this is a non-linear problem on beta, we start with 0 as initial value
   CSTATE beta = 0;
@@ -194,17 +203,24 @@ int main(int argc, char *argv[]) {
   
   std::cout.precision(std::numeric_limits<STATE>::max_digits10);
   STATE rel_error{0};
-  constexpr STATE tol = std::numeric_limits<STATE>::epsilon() * 1000;
+  constexpr STATE tol = std::numeric_limits<STATE>::epsilon()*10;
 
   bool computeVectors{false};
+  auto solver = SetupSolver( beta*beta, sortingRule, usingSLEPC);
+
+  wgma::wganalysis::WgmaPeriodic2D
+    modal_an(modal_cmesh, nThreads,
+             optimizeBandwidth, filterBoundaryEqs);
+  
   int nit = 0;
   do{
     CSTATE old_beta = beta;
     std::cout<<std::fixed<<"beta: "<<beta.real()<<" "<<beta.imag()<<std::endl;
-    auto solver = SetupSolver( beta*beta, sortingRule, usingSLEPC);
+    solver->SetTarget(beta*beta);
     modal_an.SetSolver(*solver);
     modal_an.SetBeta(beta);
     modal_an.Run(computeVectors);
+    
     beta = std::sqrt(modal_an.GetEigenvalues()[0]);
     const auto beta_abs = std::abs(beta);
     const auto old_beta_abs = std::abs(old_beta);
@@ -215,8 +231,14 @@ int main(int argc, char *argv[]) {
   }while(rel_error > tol);
   std::setprecision(ss);
   std::cout<<"finished in "<<nit<<" iterations"<<std::endl;
-  computeVectors = true;
-  modal_an.Run(computeVectors);
+
+  {
+    computeVectors = true;
+    solver->SetTarget(beta*beta);
+    modal_an.SetSolver(*solver);
+    modal_an.SetBeta(beta);
+    modal_an.Run(computeVectors);
+  }
 
   
 
@@ -230,22 +252,17 @@ int main(int argc, char *argv[]) {
   }
 
   beta = std::sqrt(modal_an.GetEigenvalues()[0]);
+  modal_an.LoadSolution(0);
+  
   
   /*********************
    * cmesh(scattering) *
-This is actually a combined computational mesh, i.e., two different
-meshes acting together. 
-one mesh (modal_cmesh) carries the modal analysis solution to be used as
-a source, and its elements only exist where the modal analysis was performed.
-the other mesh is responsible for creating the h1 elements in the whole domain
-and for carrying the weak formulation
-the combined mesh will just coordinate their interactions.
    *********************/
 
   
-  auto scatt_cmesh = [gmesh,&gmshmats, modal_cmesh](){
+  auto scatt_cmesh = [gmesh,&gmshmats, beta, modal_cmesh](){
     //material that will represent our source
-    constexpr auto srcMat{"gamma_2"};
+    constexpr auto srcMat{"gamma_s"};
     // setting up cmesh data
     wgma::cmeshtools::PhysicalData scatt_data;
     std::map<std::string, std::pair<CSTATE, CSTATE>> scatt_mats;
@@ -257,7 +274,7 @@ the combined mesh will just coordinate their interactions.
     scatt_bcs["modal_bound"] = wgma::bc::type::PEC;
     scatt_bcs["scatt_bound"] = wgma::bc::type::PEC;
 
-    constexpr STATE alphaPML {15};
+    constexpr STATE alphaPML {2.0};
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs, alphaPML,
                                             alphaPML, scatt_data);
     //get id of source material
@@ -265,8 +282,48 @@ the combined mesh will just coordinate their interactions.
     wgma::scattering::SourceWgma src;
     src.id = {srcId};
     src.modal_cmesh = modal_cmesh;
-    return wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder, scatt_data,src,
-                                               lambda,scale);
+    auto pmlvec = scatt_data.pmlvec;
+    if constexpr(periodicPML){
+      scatt_data.pmlvec.resize(0);//we add them separately
+    }
+    auto cmesh =  wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder, scatt_data,src,
+                                                      lambda,scale);
+
+    if constexpr(periodicPML){
+      std::set<int> pmlmats;
+      for(auto [type,alphax,alphay,id,name] : pmlvec){
+        const REAL dX = 5*lattice * (1./scale);
+        const REAL xBegin = [](wgma::pml::type t) -> REAL{
+          if(t == wgma::pml::type::xp){
+            return 11 * lattice * (1./scale);
+          }else{
+            return 0;
+          }
+        }(type);
+
+        const std::string gaas{"GaAs"};
+        const auto rx = std::regex{gaas, std::regex_constants::icase };
+        const bool isGaAs = std::regex_search(name, rx);
+        const int neighId = [isGaAs,gmshmats](){
+          if(isGaAs){
+            return gmshmats[2].at("GaAs_1");
+          }else{
+            return gmshmats[2].at("air_1");
+          }
+        }();
+        TPZPlanarWgScatt *neighMat
+          = dynamic_cast<TPZPlanarWgScatt *>(cmesh->FindMaterial(neighId));
+        auto *pmlMat = new TPZSingleSpacePML<TPZPlanarWgScatt>(id, *neighMat);
+        pmlMat->SetAttX(xBegin, alphax, dX);
+        cmesh->InsertMaterialObject(pmlMat);
+        pmlmats.insert(id);
+      }
+      cmesh->SetAllCreateFunctionsContinuous();
+      cmesh->SetDefaultOrder(pOrder);
+      cmesh->AutoBuild(pmlmats);
+      cmesh->CleanUpUnconnectedNodes();
+    }
+    return cmesh;
   }();
 
   wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
