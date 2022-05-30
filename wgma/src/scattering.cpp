@@ -81,9 +81,11 @@ namespace wgma::scattering{
 
 
     TPZStack<std::string> scalnames, vecnames;
-    scalnames.Push("Field_re");
+    scalnames.Push("Field_real");
+    scalnames.Push("Field_imag");
     scalnames.Push("Field_abs");
-    vecnames.Push("Deriv_re");
+    vecnames.Push("Deriv_real");
+    vecnames.Push("Deriv_imag");
     vecnames.Push("Deriv_abs");
     const std::string plotfile = filename+".vtk";
     constexpr int dim{2};
@@ -158,13 +160,13 @@ namespace wgma::scattering{
         //let us take the derivatives to the global coordinates
         if constexpr(CELDIM==2){
           TPZFNMatrix<3,CSTATE> dsol(CELDIM, 1, 0.);
-          for(auto ix = 0; ix < CELDIM; ix++){dsol(ix,0) = data.dsol[0][ix];}
+          for(auto ix = 0; ix < CELDIM; ix++){dsol(ix,0) = data.dsol[0].GetVal(ix,0);}
           TPZFNMatrix<3,CSTATE> dsolx(3, 1, 0.);
       
           TPZAxesTools<CSTATE>::Axes2XYZ(dsol, dsolx, data.axes);
 
-
-          for(auto ix = 0; ix < 3; ix++){ptsol.dsol[ix] = dsolx(ix,0);}
+          CSTATE im {0,1};
+          for(auto ix = 0; ix < 3; ix++){ptsol.dsol[ix] = dsolx.GetVal(ix,0);}
         }//otherwise the normal derivative is zero
       
         (*(mat->GetMemory()))[mem_indices[ipt]] = ptsol;

@@ -321,9 +321,11 @@ namespace wgma::wganalysis{
     }
     ///vtk export
     TPZStack<std::string> scalnames, vecnames;
-    scalnames.Push("Field_re");
+    scalnames.Push("Field_real");
+    scalnames.Push("Field_imag");
     scalnames.Push("Field_abs");
-    vecnames.Push("Deriv_re");
+    vecnames.Push("Deriv_real");
+    vecnames.Push("Deriv_imag");
     vecnames.Push("Deriv_abs");
     const std::string plotfile = filename+".vtk";
     m_an->DefineGraphMesh(2,scalnames,vecnames,plotfile);
