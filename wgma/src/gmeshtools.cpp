@@ -842,10 +842,9 @@ void wgma::gmeshtools::DirectionalRefinement(TPZAutoPointer<TPZGeoMesh> gmesh,
     We initialise now the database of refinement patterns
   */
 
-  const auto dim = gmesh->Dimension();
-  for(auto ix = 1; ix <=dim; ix++){
-    gRefDBase.InitializeRefPatterns(ix);
-  }
+  const auto maxdim = gmesh->Dimension();
+  gRefDBase.InitializeRefPatterns(maxdim);
+  
     
   for(int iref = 0; iref < nrefs; iref++){
     const int nels = gmesh->NElements();
