@@ -547,7 +547,7 @@ namespace wgma::wganalysis{
     }
     for (auto [id, er, ur] : data.matinfovec) {
       auto *mat =
-        new TPZPeriodicWgma(id, dim, er, ur, lambda, matmode, scale);
+        new TPZPeriodicWgma(id, er, ur, lambda, matmode, scale);
       cmeshH1->InsertMaterialObject(mat);
       // for pml
       volmats.insert(id);
