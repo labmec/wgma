@@ -388,16 +388,19 @@ namespace wgma::wganalysis{
 
 
     std::set<int> volmats;
+    std::set<int> realvolmats;
     for(auto regioninfo : data.matinfovec){
       auto matid = std::get<0>(regioninfo);
       auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
       cmeshH1->InsertMaterialObject(dummyMat);
+      realvolmats.insert(matid);
       volmats.insert(matid);
     }
   
     for(auto pml : pmlDataVec){
       const auto matid = pml.id;
       auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+      volmats.insert(matid);
       cmeshH1->InsertMaterialObject(dummyMat);
     }
 
@@ -480,7 +483,7 @@ namespace wgma::wganalysis{
       const auto type = pml.t;
       cmeshtools::AddRectangularPMLRegion<
         TPZWgma
-        >(id, alphax, alphay, type, volmats, gmesh, cmeshMF);
+        >(id, alphax, alphay, type, realvolmats, gmesh, cmeshMF);
     }
   
     for(auto bc : bcDataVec){

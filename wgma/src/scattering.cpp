@@ -345,20 +345,12 @@ namespace wgma::scattering{
     /**let us associate each boundary with a given material.
        this is important for the source boundary*/
     for(auto &bc : data.bcvec){
-      for(auto *gel : gmesh->ElementVec()){
-        if(gel->MaterialId() == bc.id){
-          const auto maxside = gel->NSides() - 1;
-          bc.volid = gel->Neighbour(maxside).Element()->MaterialId();
-          break;
-        }
+      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, volmats);
+      if(!res.has_value()){
+        std::cout<<__PRETTY_FUNCTION__
+                 <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
       }
-    }
-
-    // for(auto bc : data.bcvec){
-    //   std::cout<<"bc "<<bc.id<<" mat "<<bc.volid<<std::endl;
-    // }
-  
-    for(auto bc : data.bcvec){
+      bc.volid = res.value();
       const int bctype = wgma::bc::to_int(bc.t);
       const int id = bc.id;
       const int volmatid = bc.volid;
