@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
     This scale factor is often referred to as characteristic length
     of the domain.
   */
-  constexpr REAL scale{lambda/2*M_PI};
+  constexpr REAL scale{lambda/(2*M_PI)};
 
 
   /******************
