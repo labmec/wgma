@@ -324,9 +324,11 @@ namespace wgma::wganalysis{
     scalnames.Push("Field_real");
     scalnames.Push("Field_imag");
     scalnames.Push("Field_abs");
+    scalnames.Push("Field_phase"); 
     vecnames.Push("Deriv_real");
     vecnames.Push("Deriv_imag");
     vecnames.Push("Deriv_abs");
+    vecnames.Push("Deriv_phase"); 
     const std::string plotfile = filename+".vtk";
     m_an->DefineGraphMesh(2,scalnames,vecnames,plotfile);
     const auto neqOriginal = m_evectors.Rows();
