@@ -71,6 +71,23 @@ namespace wgma::wganalysis{
   }
 
 
+  void Wgma::LoadSolution(const int isol)
+  {
+    if(!m_an->ComputeEigenvectors()){
+      std::cout<<__PRETTY_FUNCTION__
+               <<"\nOnly eigenvalues were calculated.\n"
+               <<"Nothing to do here...\n";
+      return;
+    }
+    if(isol > m_evalues.size()){
+      std::cout<<__PRETTY_FUNCTION__
+               <<"\nThe solution "<<isol<<" was requested but\n"
+               <<"only  "<<m_evalues.size()<<" eigenvectors\n"
+               <<"were calculated. Aborting...\n";
+      DebugStop();
+    }
+  }
+  
   TPZVec<CSTATE> Wgma::GetEigenvalues() const
   {
     return m_evalues;
@@ -168,6 +185,45 @@ namespace wgma::wganalysis{
     std::cout << "------\t----------\t-------" << std::endl;
     return;
   }
+
+
+  void Wgma2D::LoadSolution(const int isol)
+  {
+    Wgma::LoadSolution(isol);
+    const auto neqOriginal = m_evectors.Rows();
+    TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
+    
+    auto &ev = m_evalues;
+    auto &eigenvectors = m_evectors;
+    
+    const auto nev = ev.size();
+
+    TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshVecPost(2);
+    meshVecPost[0] = m_cmesh_h1;
+    meshVecPost[1] = m_cmesh_hcurl;
+  
+    const CSTATE currentKz = [&ev,isol](){
+      auto tmp = std::sqrt(-1.0*ev[isol]);
+      constexpr auto epsilon = std::numeric_limits<STATE>::epsilon()/
+        (10*std::numeric_limits<STATE>::digits10);
+      //let us discard extremely small imag parts
+      if (tmp.imag() < epsilon)
+        {tmp = tmp.real();}
+      return tmp;
+    }();
+    eigenvectors.GetSub(0, isol, neqOriginal, 1, evector);
+    for(auto mat : m_cmesh_mf->MaterialVec()){
+      auto id = mat.first;
+      auto matPtr =
+        dynamic_cast<TPZWgma *>(m_cmesh_mf->FindMaterial(id));
+      if(!matPtr) continue;
+      matPtr->SetKz(currentKz);
+    }
+    m_an->LoadSolution(evector);
+    TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshVecPost, m_cmesh_mf);
+  }
+
+  
   void Wgma2D::PostProcess(std::string filename,
                                const int vtk_res,
                                const bool print_real_part){
@@ -202,28 +258,10 @@ namespace wgma::wganalysis{
     std::cout<<"Post processing..."<<std::endl;
   
     for (int iSol = 0; iSol < ev.size(); iSol++) {
-      const CSTATE currentKz = [&ev,iSol](){
-        auto tmp = std::sqrt(-1.0*ev[iSol]);
-        constexpr auto epsilon = std::numeric_limits<STATE>::epsilon()/
-          (10*std::numeric_limits<STATE>::digits10);
-        //let us discard extremely small imag parts
-        if (tmp.imag() < epsilon)
-          {tmp = tmp.real();}
-        return tmp;
-      }();
-      eigenvectors.GetSub(0, iSol, neqOriginal, 1, evector);
-      for(auto mat : m_cmesh_mf->MaterialVec()){
-        auto id = mat.first;
-        auto matPtr =
-          dynamic_cast<TPZWgma *>(m_cmesh_mf->FindMaterial(id));
-        if(!matPtr) continue;
-        matPtr->SetKz(currentKz);
-      }
+      auto currentKz = std::sqrt(-1.0*ev[iSol]);
       std::cout<<"\rPost processing step "<<iSol+1<<" out of "<<ev.size()
                <<"(kz = "<<currentKz<<")"<<std::flush;
-      m_an->LoadSolution(evector);
-      TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshVecPost, m_cmesh_mf);
-      m_an->PostProcess(vtk_res);
+      LoadSolution(iSol);
     }
     std::cout<<"\nFinished post processing"<<std::endl;
     std::cout<<std::endl;
@@ -330,13 +368,27 @@ namespace wgma::wganalysis{
     vecnames.Push("Deriv_abs");
     vecnames.Push("Deriv_phase"); 
     const std::string plotfile = filename+".vtk";
-    m_an->DefineGraphMesh(2,scalnames,vecnames,plotfile);
+    static constexpr int dim{2};
+    m_an->DefineGraphMesh(dim, scalnames, vecnames,plotfile);
+
     const auto neqOriginal = m_evectors.Rows();
     TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
-
-    m_evectors.GetSub(0, 0, neqOriginal, 1, evector);
-    m_an->LoadSolution(evector);
-    m_an->PostProcess(vtk_res);
+    
+    auto &ev = m_evalues;
+    auto &eigenvectors = m_evectors;
+    
+    const auto nev = ev.size();;
+  
+    std::cout<<"Post processing..."<<std::endl;
+  
+    for (int iSol = 0; iSol < ev.size(); iSol++) {
+      const auto beta = sqrt(ev[iSol]);
+      std::cout<<"\rPost processing step "<<iSol+1<<" out of "<<ev.size()
+               <<"\n(beta = "<<beta<<")"<<std::flush;
+      LoadSolution(iSol);
+      m_an->PostProcess(vtk_res);
+    }
+    std::cout<<std::endl;
   }
   
   void WgmaPeriodic2D::WriteToCsv(std::string filename, STATE lambda)
@@ -358,6 +410,23 @@ namespace wgma::wganalysis{
   void WgmaPeriodic2D::AdjustSolver(TPZEigenSolver<CSTATE> *solv)
   {
     solv->SetTarget(m_beta*m_beta);
+  }
+
+  void WgmaPeriodic2D::LoadSolution(const int isol)
+  {
+    Wgma::LoadSolution(isol);
+    
+    const auto neqOriginal = m_evectors.Rows();
+    TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
+    
+    auto &ev = m_evalues;
+    auto &eigenvectors = m_evectors;
+    
+    const auto nev = ev.size();
+
+    const auto beta = ev[isol];
+    eigenvectors.GetSub(0, isol, neqOriginal, 1, evector);
+    m_an->LoadSolution(evector);
   }
   
 

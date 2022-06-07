@@ -39,6 +39,14 @@ namespace wgma::wganalysis{
        @param [in] compute_eigenvectors whether to compute eigenvectors (or just eigenvalues)
      */
     void Run(bool compute_eigenvectors);
+
+    /*
+      @brief Loads the isol-th solution (eigenvector) in the computational mesh.
+      This method is specially useful if the solution from the modal analysis
+      will be used in another FEM scheme (as a source, for instance).
+      @note Derived classes should call base class function first.
+     */
+    virtual void LoadSolution(const int isol) = 0;
     /*
       @brief Gets calculated eigenvalues
      */
@@ -102,6 +110,14 @@ namespace wgma::wganalysis{
      */
     void PostProcess(std::string filename, const int vtk_res = 0, const bool print_real_part=true);
 
+    /*
+      @brief Loads the isol-th solution (eigenvector) in the computational mesh.
+      This method is specially useful if the solution from the modal analysis
+      will be used in another FEM scheme (as a source, for instance).
+      @note Derived classes should call base class function first.
+     */
+    void LoadSolution(const int isol) override;
+
     /**
        @brief Export eigenvalues to in a csv format and append it to a file.
        The following values are exported:
@@ -161,6 +177,14 @@ namespace wgma::wganalysis{
 
     //! Sets propagation constant to be used in the material
     void SetBeta(const CSTATE beta);
+
+    /*
+      @brief Loads the isol-th solution (eigenvector) in the computational mesh.
+      This method is specially useful if the solution from the modal analysis
+      will be used in another FEM scheme (as a source, for instance).
+      @note Derived classes should call base class function first.
+     */
+    void LoadSolution(const int isol) override;
     
     /**
        @brief Post-process the solution in .vtk format
