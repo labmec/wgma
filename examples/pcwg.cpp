@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
   // path for output files
   const std::string path {"res_pcwg/"};
   // common prefix for both meshes and output files
-  const std::string basisName{"pcwg_test"};
+  const std::string basisName{"pcwg"};
   // prefix for exported files
   const std::string prefix{path+basisName};
   //just to make sure we will output results
