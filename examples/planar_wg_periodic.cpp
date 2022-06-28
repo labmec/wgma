@@ -179,10 +179,12 @@ int main(int argc, char *argv[]) {
     constexpr auto pattern{"modal"};
     auto rx = std::regex{ pattern,std::regex_constants::icase };
     for(auto & pml : modal_data.pmlvec){
-      if(std::regex_search(pml.name, rx)){
-        modal_pmls.push_back(pml);
-        std::cout<<"inserting pml "<<pml.name<<" in modal analysis"<<std::endl;
+      for(auto name : pml.names){
+        if(std::regex_search(name, rx)){
+          std::cout<<"inserting pml "<<name<<" in modal analysis"<<std::endl;
+        }
       }
+      modal_pmls.push_back(pml);
     }
 
     modal_data.pmlvec = modal_pmls;
