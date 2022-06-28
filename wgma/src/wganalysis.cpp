@@ -467,10 +467,11 @@ namespace wgma::wganalysis{
     }
   
     for(auto pml : pmlDataVec){
-      const auto matid = pml.id;
-      auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
-      volmats.insert(matid);
-      cmeshH1->InsertMaterialObject(dummyMat);
+      for(auto matid : pml.ids){
+        auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+        volmats.insert(matid);
+        cmeshH1->InsertMaterialObject(dummyMat);
+      }
     }
 
 
@@ -516,9 +517,10 @@ namespace wgma::wganalysis{
       cmeshHCurl->InsertMaterialObject(dummyMat);
     }
     for(auto pml : pmlDataVec){
-      const auto dummyMatid = pml.id;
-      auto *dummyMat = new TPZNullMaterial<CSTATE>(dummyMatid,dim,nState);
-      cmeshHCurl->InsertMaterialObject(dummyMat);
+      for(auto matid : pml.ids){
+        auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+        cmeshHCurl->InsertMaterialObject(dummyMat);
+      }
     }
 
   
@@ -546,13 +548,9 @@ namespace wgma::wganalysis{
   
     //insert PML regions
     for(auto pml : pmlDataVec){
-      const auto id = pml.id;
-      const auto alphax = pml.alphax;
-      const auto alphay = pml.alphay;
-      const auto type = pml.t;
       cmeshtools::AddRectangularPMLRegion<
         TPZWgma
-        >(id, alphax, alphay, type, realvolmats, gmesh, cmeshMF);
+        >(pml, realvolmats, gmesh, cmeshMF);
     }
   
     for(auto bc : bcDataVec){
@@ -630,13 +628,11 @@ namespace wgma::wganalysis{
     }
 
     for (auto pml : data.pmlvec) {
-      const auto id = pml.id;
-      const auto alphax = pml.alphax;
-      const auto alphay = pml.alphay;
-      const auto type = pml.t;
       wgma::cmeshtools::AddRectangularPMLRegion<TPZPeriodicWgma>(
-        id, alphax, alphay, type, volmats, gmesh, cmeshH1);
-      allmats.insert(id);
+        pml, volmats, gmesh, cmeshH1);
+      for( auto id : pml.ids){
+        allmats.insert(id);
+      }
     }
 
     TPZFNMatrix<1, CSTATE> val1(1, 1, 0);

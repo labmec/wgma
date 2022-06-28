@@ -327,15 +327,13 @@ namespace wgma::scattering{
     }
   
     for(auto pml : data.pmlvec){
-      const auto id = pml.id;
-      const auto alphax = pml.alphax;
-      const auto alphay = pml.alphay;
-      const auto type = pml.t;
-      const auto neigh = wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgScatt>
-        (id, alphax, alphay, type, realvolmats, gmesh, scatt_cmesh);
-      volmats.insert(id);
-      allmats.insert(id);
-      pml_neighs[id] = neigh;
+      const auto neighs = wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgScatt>
+        (pml, realvolmats, gmesh, scatt_cmesh);
+      for(auto id : pml.ids){
+        volmats.insert(id);
+        allmats.insert(id);
+        pml_neighs[id] = neighs.at(id);
+      }
     }
 
   

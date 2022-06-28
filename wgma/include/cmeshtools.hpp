@@ -64,24 +64,27 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
 
   /**
      @brief Adds a rectangular PML region to a computational mesh.
-     All the other mesh regions (excluding BCs) should have been previously inserted,
-     so the function can identify to which region the PML is associated.
+     This PML region will consist of the same width and attenuation parameter,
+     but can be composed of multiple regions (as in periodic meshes).
+     If data.neigh has not been set, neighbours will be automatically identified.
+     Therefore, all the other mesh regions (excluding BCs) should have been
+     previously inserted, so the function can identify to which region 
+     the each of the PML regions is associated.
+
      @tparam MATVOL material from which the PML inherits
-     @param[in] matId pml material identifier.
+     @param[in] matId PML materials identifiers.
      @param[in] alphax attenuation constant in the x-direction.
      @param[in] alphay attenuation constant in the y-direction.
      @param[in] type pml type.
      @param[in] volmats identifiers of valid mesh regions for pml neighbours
      @param[in] gmesh the geometric mesh.
      @param[in] cmesh the computational mesh.
-     @return identifier of PML neighbour
+     @return identifier of all PML neighbours
      @note This method calls FindPMLNeighbourMaterial internally.
   */
   template<class MATVOL>
-  int
-  AddRectangularPMLRegion(const int matId,
-                          const STATE alphax,const STATE alphay,
-                          const wgma::pml::type type,
+  std::map<int,int>
+  AddRectangularPMLRegion(const wgma::pml::data data,
                           const std::set<int> &volmats,
                           TPZAutoPointer<TPZGeoMesh> gmesh,
                           TPZAutoPointer<TPZCompMesh> cmesh);

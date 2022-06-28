@@ -56,11 +56,11 @@ cmeshtools::SetupGmshMaterialData(
         const bool test = std::regex_search(name, rx);
         if(test){
           pmlvec.resize(pos+1);
-          pmlvec[pos].id = id;
+          pmlvec[pos].ids = {id};
           pmlvec[pos].alphax = alphaPMLx;
           pmlvec[pos].alphay = alphaPMLy;
           pmlvec[pos].t = pmltypes[ipml];
-          pmlvec[pos].name = name;
+          pmlvec[pos].names = {name};
           found = true;
           break;
         }
