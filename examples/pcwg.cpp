@@ -38,6 +38,11 @@ TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const CSTATE target, TPZEigenSort sorting, bool usingSLEPC);
 
 
+//Combine PML regions if using periodic PMLs
+std::vector<wgma::pml::data>
+CombinePMLRegions(const TPZVec<std::map<std::string, int>> &gmshmats,
+                  const std::vector<wgma::pml::data> &orig_pmlvec);
+
 int main(int argc, char *argv[]) {
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
@@ -119,11 +124,6 @@ int main(int argc, char *argv[]) {
    */
   constexpr bool arc3D{true};
 
-  /*
-    whether periodic PMLs are set and thus require
-    manual construction
-   */
-  constexpr bool periodicPML{true};
   /*********
    * begin *
    *********/
@@ -282,48 +282,19 @@ int main(int argc, char *argv[]) {
     wgma::scattering::SourceWgma src;
     src.id = {srcId};
     src.modal_cmesh = modal_cmesh;
-    auto pmlvec = scatt_data.pmlvec;
-    if constexpr(periodicPML){
-      scatt_data.pmlvec.resize(0);//we add them separately
+
+    bool periodicPML{false};
+    for(auto const& [name, value]: gmshmats[2]){
+      const std::string gaas{"pml_GaAs"};
+      const auto rx = std::regex{gaas, std::regex_constants::icase };
+      periodicPML = periodicPML || std::regex_search(name, rx);
     }
-    auto cmesh =  wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder, scatt_data,src,
+    if(periodicPML){
+      scatt_data.pmlvec = CombinePMLRegions(gmshmats,scatt_data.pmlvec);
+    }
+
+    return wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder, scatt_data,src,
                                                       lambda,scale);
-
-    if constexpr(periodicPML){
-      std::set<int> pmlmats;
-      for(auto [type,alphax,alphay,id,name] : pmlvec){
-        const REAL dX = 5*lattice * (1./scale);
-        const REAL xBegin = [](wgma::pml::type t) -> REAL{
-          if(t == wgma::pml::type::xp){
-            return 11 * lattice * (1./scale);
-          }else{
-            return 0;
-          }
-        }(type);
-
-        const std::string gaas{"GaAs"};
-        const auto rx = std::regex{gaas, std::regex_constants::icase };
-        const bool isGaAs = std::regex_search(name, rx);
-        const int neighId = [isGaAs,gmshmats](){
-          if(isGaAs){
-            return gmshmats[2].at("GaAs_1");
-          }else{
-            return gmshmats[2].at("air_1");
-          }
-        }();
-        TPZPlanarWgScatt *neighMat
-          = dynamic_cast<TPZPlanarWgScatt *>(cmesh->FindMaterial(neighId));
-        auto *pmlMat = new TPZSingleSpacePML<TPZPlanarWgScatt>(id, *neighMat);
-        pmlMat->SetAttX(xBegin, alphax, dX);
-        cmesh->InsertMaterialObject(pmlMat);
-        pmlmats.insert(id);
-      }
-      cmesh->SetAllCreateFunctionsContinuous();
-      cmesh->SetDefaultOrder(pOrder);
-      cmesh->AutoBuild(pmlmats);
-      cmesh->CleanUpUnconnectedNodes();
-    }
-    return cmesh;
   }();
 
   wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
@@ -414,7 +385,7 @@ SetupSolver(const CSTATE target,TPZEigenSort sorting, bool usingSLEPC)
 
   TPZAutoPointer<TPZEigenSolver<CSTATE>> solver{nullptr};
   constexpr int neigenpairs{1};
-  constexpr int krylovDim{50};
+  constexpr int krylovDim{3};
   if (usingSLEPC){
     using namespace wgma::slepc;
     /*
@@ -464,7 +435,7 @@ SetupSolver(const CSTATE target,TPZEigenSort sorting, bool usingSLEPC)
     TPZSTShiftAndInvert<CSTATE> st;
     krylov_solver->SetSpectralTransform(st);
     krylov_solver->SetTarget(target);
-    krylov_solver->SetKrylovDim(10);
+    krylov_solver->SetKrylovDim(3);
     krylov_solver->SetNEigenpairs(1);
     krylov_solver->SetAsGeneralised(true);
     
@@ -473,4 +444,37 @@ SetupSolver(const CSTATE target,TPZEigenSort sorting, bool usingSLEPC)
   
   solver->SetEigenSorting(sorting);
   return solver;
+}
+
+std::vector<wgma::pml::data>
+CombinePMLRegions(const TPZVec<std::map<std::string, int>> &gmshmats,
+                  const std::vector<wgma::pml::data> &orig_pmlvec)
+{
+  std::vector<wgma::pml::data>  pmlvec;
+  for(const auto &pml : orig_pmlvec){
+    const std::string air{"pml_air"};
+    const auto rx = std::regex{air, std::regex_constants::icase };
+    
+    const bool found_air = std::regex_search(*(pml.names.begin()), rx);
+    if(found_air){
+      wgma::pml::data new_pml;
+      new_pml = pml;
+      //add first neighbour
+      new_pml.neigh[*(pml.ids.begin())] = gmshmats[2].at("air_1");
+      //now we search for the corresponding GaAs pml
+      const std::string gaas{"pml_GaAs"};
+      const auto rx = std::regex{gaas, std::regex_constants::icase };
+
+      for(const auto &other_pmls : orig_pmlvec){
+        const bool found_type = other_pmls.t == new_pml.t;
+        const bool found_gaas = std::regex_search(*(other_pmls.names.begin()), rx);
+        if(found_type && found_gaas){
+          new_pml.ids.insert(*(other_pmls.ids.begin()));
+          new_pml.neigh[*(other_pmls.ids.begin())] = gmshmats[2].at("GaAs_1");
+        }
+      }
+      pmlvec.push_back(new_pml);
+    }
+  }
+  return pmlvec;
 }
