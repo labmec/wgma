@@ -125,9 +125,6 @@ cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
         cmesh->MaterialVec()[cel->Reference()->MaterialId()]);
     if (mat && mat->Type() == 0) {//check for dirichlet bcs
       std::set<int64_t> boundConnectsEl;
-      std::set<int64_t> depBoundConnectsEl;
-      std::set<int64_t> indepBoundConnectsEl;
-      cel->BuildConnectList(indepBoundConnectsEl, depBoundConnectsEl);
       cel->BuildConnectList(boundConnectsEl);
       for(auto val : boundConnectsEl){
         if (boundConnects.find(val) == boundConnects.end()) {
@@ -136,24 +133,27 @@ cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
       }
     }
   }
+
+  //certainly we have less equations than this, but we will avoid repeated resizes
+  activeEquations.Resize(cmesh->NEquations());
+  int neq = 0;
   for (int iCon = 0; iCon < cmesh->NConnects(); iCon++) {
     if (boundConnects.find(iCon) == boundConnects.end()) {
       TPZConnect &con = cmesh->ConnectVec()[iCon];
-      if (con.HasDependency())
-        continue;
+      const auto hasdep = con.HasDependency();
       const auto seqnum = con.SequenceNumber();
-      if(seqnum < 0) { continue; }
       const auto pos = cmesh->Block().Position(seqnum);
       const auto blocksize = cmesh->Block().Size(seqnum);
-      if (blocksize == 0){ continue; }
-
-      const auto vs = activeEquations.size();
-      activeEquations.Resize(vs + blocksize);
+      
+      if(hasdep || seqnum < 0 || !blocksize) { continue; }
+      const auto vs = neq;
       for (auto ieq = 0; ieq < blocksize; ieq++) {
         activeEquations[vs + ieq] = pos + ieq;
       }
+      neq += blocksize;
     }
   }
+  activeEquations.Resize(neq);
 }
 
 void cmeshtools::RemovePeriodicity(TPZAutoPointer<TPZCompMesh> cmesh)
