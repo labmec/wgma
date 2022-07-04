@@ -287,7 +287,8 @@ int main(int argc, char *argv[]) {
   wgma::cmeshtools::RemovePeriodicity(modal_cmesh);
 
   const std::string scatt_file = prefix+"_scatt";
-  scatt_an.PostProcess(scatt_file, vtkRes);
+  std::set<std::string_view> empty;//print all relevant ouo
+  scatt_an.PostProcess(scatt_file, empty, vtkRes);
   
 }
 

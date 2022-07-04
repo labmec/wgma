@@ -303,16 +303,23 @@ int main(int argc, char *argv[]) {
    *********************/  
 
 
-  auto scatt_an = wgma::scattering::Analysis(scatt_cmesh, nThreads,
-                                       optimizeBandwidth, filterBoundaryEqs);
+  {
+    TPZSimpleTimer tscatt("Scattering");
+    auto scatt_an = wgma::scattering::Analysis(scatt_cmesh, nThreads,
+                                               optimizeBandwidth, filterBoundaryEqs);
 
-  scatt_an.Run();
-  //otherwise it will crash on destructor
-  wgma::cmeshtools::RemovePeriodicity(modal_cmesh);
+    scatt_an.Run();
+    //otherwise it will crash on destructor
+    wgma::cmeshtools::RemovePeriodicity(modal_cmesh);
 
-  const std::string scatt_file = prefix+"_scatt";
-  scatt_an.PostProcess(scatt_file, vtkRes);
-  
+    const std::string scatt_file = prefix+"_scatt";
+    std::set<std::string_view> vars = {
+      // "Field_real",
+      // "Field_imag",
+      "Field_abs"};
+    TPZSimpleTimer tpostprocess("Post processing");
+    scatt_an.PostProcess(scatt_file, vars, vtkRes);
+  }
 }
 
 
