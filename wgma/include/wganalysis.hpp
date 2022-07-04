@@ -35,10 +35,19 @@ namespace wgma::wganalysis{
     */
     TPZEigenSolver<CSTATE> & GetSolver() const;
     /**
+       @brief Assemble one of the FEM matrices (usefull for nlin problems) 
+     */
+    void Assemble(TPZEigenAnalysis::Mat mat);
+    /**
        @brief Run the analysis
        @param [in] compute_eigenvectors whether to compute eigenvectors (or just eigenvalues)
      */
     void Run(bool compute_eigenvectors);
+    /**
+       @brief Solve the eigen problem
+       @param [in] compute_eigenvectors whether to compute eigenvectors (or just eigenvalues)
+     */
+    void Solve(bool compute_eigenvectors);
 
     /*
       @brief Loads the isol-th solution (eigenvector) in the computational mesh.

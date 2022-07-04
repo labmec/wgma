@@ -27,6 +27,14 @@ namespace wgma::wganalysis{
   }
 
   void Wgma::Run(bool compute_eigenvectors){
+
+    std::cout<<"Assembling..."<<std::flush;
+    {
+      TPZSimpleTimer assemble("Assemble");
+      m_an->Assemble();
+    }
+    std::cout<<"\rAssembled!"<<std::endl;
+    
     m_an->SetComputeEigenvectors(compute_eigenvectors);
     TPZEigenSolver<CSTATE> *solv =
       dynamic_cast<TPZEigenSolver<CSTATE>*>(m_an->Solver());
@@ -39,20 +47,36 @@ namespace wgma::wganalysis{
     }
 
     AdjustSolver(solv);
+    Solve(compute_eigenvectors);
     
-    {//scope for timer
-      std::cout<<"Assembling..."<<std::flush;
-      TPZSimpleTimer assemble("Assemble");
-      m_an->Assemble();
-      std::cout<<"\rAssembled!"<<std::endl;
-    }
-    {//scope for timer
-      TPZSimpleTimer solv("Solve");
-      std::cout<<"Solving..."<<std::flush;
-      m_an->Solve();
-      std::cout<<"\rSolved!"<<std::endl;
+  }
+
+  void Wgma::Assemble(TPZEigenAnalysis::Mat mat){
+    std::cout<<"Assembling..."<<std::flush;
+    TPZSimpleTimer assemble("Assemble");
+    m_an->AssembleMat(mat);
+    std::cout<<"\rAssembled!"<<std::endl;
+  }
+  
+  void Wgma::Solve(bool compute_eigenvectors){
+    m_an->SetComputeEigenvectors(compute_eigenvectors);
+    TPZEigenSolver<CSTATE> *solv =
+      dynamic_cast<TPZEigenSolver<CSTATE>*>(m_an->Solver());
+    if(!solv){
+      std::cerr<<__PRETTY_FUNCTION__
+               <<"\nA solver has not been set.\n"
+               <<"Check documentation of TPZKrylovEigenSolver"
+               <<"\nor wgma::slepc::EPSHandler\nAborting..."<<std::endl;
+      exit(-1);
     }
 
+    AdjustSolver(solv);
+
+    TPZSimpleTimer tsolv("Solve");
+    std::cout<<"Solving..."<<std::flush;
+    m_an->Solve();
+    std::cout<<"\rSolved!"<<std::endl;
+    
     m_evalues = m_an->GetEigenvalues();
 
     std::ios cout_state(nullptr);
@@ -69,7 +93,6 @@ namespace wgma::wganalysis{
       m_evectors = m_an->GetEigenvectors();
     }
   }
-
 
   void Wgma::LoadSolution(const int isol)
   {
