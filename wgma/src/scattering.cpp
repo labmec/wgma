@@ -63,7 +63,6 @@ namespace wgma::scattering{
   }
 
   void Analysis::Run(){
-    TPZSimpleTimer total("Total");
     {
       TPZSimpleTimer assemble("Assemble");
       //assembles the system
@@ -77,16 +76,29 @@ namespace wgma::scattering{
   }
 
   void Analysis::PostProcess(std::string filename,
-                               const int vtk_res){
-
+                             std::set<std::string_view> vars,
+                             const int vtk_res){
 
     TPZStack<std::string> scalnames, vecnames;
-    scalnames.Push("Field_real");
-    scalnames.Push("Field_imag");
-    scalnames.Push("Field_abs");
-    vecnames.Push("Deriv_real");
-    vecnames.Push("Deriv_imag");
-    vecnames.Push("Deriv_abs");
+    if(vars.empty()){
+      for(const auto &scal : ScalNames){
+        scalnames.Push(std::string(scal));
+      }
+      for(const auto &vec : VecNames){
+        vecnames.Push(std::string(vec));
+      }
+    }else{
+      for(const auto &scal : ScalNames){
+        if(vars.count(scal)){
+          scalnames.Push(std::string(scal));
+        }
+      }
+      for(const auto &vec : VecNames){
+        if(vars.count(vec)){
+          vecnames.Push(std::string(vec));
+        }
+      }
+    }
     const std::string plotfile = filename+".vtk";
     constexpr int dim{2};
     m_an->DefineGraphMesh(dim, scalnames, vecnames,plotfile);
