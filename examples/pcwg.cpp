@@ -213,34 +213,45 @@ int main(int argc, char *argv[]) {
              optimizeBandwidth, filterBoundaryEqs);
   
   int nit = 0;
-  do{
-    CSTATE old_beta = beta;
-    std::cout<<std::fixed<<"beta: "<<beta.real()<<" "<<beta.imag()<<std::endl;
-    solver->SetTarget(beta*beta);
-    modal_an.SetSolver(*solver);
-    modal_an.SetBeta(beta);
-    modal_an.Run(computeVectors);
-    
-    beta = std::sqrt(modal_an.GetEigenvalues()[0]);
-    const auto beta_abs = std::abs(beta);
-    const auto old_beta_abs = std::abs(old_beta);
-    rel_error = std::abs(beta_abs-old_beta_abs)/std::max(beta_abs,old_beta_abs);
-    std::cout<<std::fixed<<"beta_abs: "<<beta_abs<<" old_beta_abs: "<<old_beta_abs<<std::endl;
-    std::cout<<std::fixed<<"error: "<<rel_error<<" tol: "<<tol<<std::endl;
-    nit++;
-  }while(rel_error > tol);
-  std::setprecision(ss);
-  std::cout<<"finished in "<<nit<<" iterations"<<std::endl;
 
   {
+    TPZSimpleTimer modal_analysis("Modal analysis");
+
+    solver->SetTarget(beta*beta);
+    modal_an.SetSolver(*solver);
+    modal_an.Assemble(TPZEigenAnalysis::Mat::B);
+
+    auto matB = modal_an.GetSolver().MatrixB();
+  
+    do{
+      CSTATE old_beta = beta;
+      std::cout<<std::fixed<<"beta: "<<beta.real()<<" "<<beta.imag()<<std::endl;
+      solver->SetTarget(beta*beta);
+      modal_an.SetSolver(*solver);
+      modal_an.SetBeta(beta);
+      modal_an.Assemble(TPZEigenAnalysis::Mat::A);
+      modal_an.GetSolver().SetMatrixB(matB);
+      modal_an.Solve(computeVectors);
+      beta = std::sqrt(modal_an.GetEigenvalues()[0]);
+      const auto beta_abs = std::abs(beta);
+      const auto old_beta_abs = std::abs(old_beta);
+      rel_error = std::abs(beta_abs-old_beta_abs)/std::max(beta_abs,old_beta_abs);
+      std::cout<<std::fixed<<"beta_abs: "<<beta_abs<<" old_beta_abs: "<<old_beta_abs<<std::endl;
+      std::cout<<std::fixed<<"error: "<<rel_error<<" tol: "<<tol<<std::endl;
+      nit++;
+    }while(rel_error > tol);
+    std::setprecision(ss);
+    std::cout<<"finished in "<<nit<<" iterations"<<std::endl;
+
     computeVectors = true;
     solver->SetTarget(beta*beta);
     modal_an.SetSolver(*solver);
     modal_an.SetBeta(beta);
-    modal_an.Run(computeVectors);
+    modal_an.Assemble(TPZEigenAnalysis::Mat::A);
+    modal_an.GetSolver().SetMatrixB(matB);
+    modal_an.Solve(computeVectors);
   }
 
-  
 
   {
     TPZSimpleTimer postProc("Post processing");
