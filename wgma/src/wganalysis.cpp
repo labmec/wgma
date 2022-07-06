@@ -285,6 +285,7 @@ namespace wgma::wganalysis{
       std::cout<<"\rPost processing step "<<iSol+1<<" out of "<<ev.size()
                <<"(kz = "<<currentKz<<")"<<std::flush;
       LoadSolution(iSol);
+      m_an->PostProcess(vtk_res);
     }
     std::cout<<"\nFinished post processing"<<std::endl;
     std::cout<<std::endl;
