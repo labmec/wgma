@@ -12,6 +12,7 @@ and generates dispersion curves
 #include "gmeshtools.hpp"
 #include "pmltypes.hpp"
 #include "slepcepshandler.hpp"
+#include <util.hpp>
 //pz includes
 #include <MMeshType.h>                   //for MMeshType
 #include <pzcmesh.h>                     //for TPZCompMesh
@@ -24,7 +25,7 @@ and generates dispersion curves
 #include <Electromagnetics/TPZWgma.h>
 #include <pzbuildmultiphysicsmesh.h>
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
-#include <pzshapecube.h>
+#include <TPZVTKGenerator.h>
 
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const int neigenpairs, const CSTATE target,
@@ -53,16 +54,22 @@ int main(int argc, char *argv[]) {
   //whether to print the geometric mesh in .txt and .vtk formats
   constexpr bool printGMesh{false};
   //whether to export the solution as a .vtk file
-  constexpr bool exportVtk{false};
+  constexpr bool exportVtk{true};
   //whether to export the eigenvalues in .csv format
   constexpr bool exportCsv{true};
-  //prefix for exported files
-  const std::string prefix{"ecf"};
+  // path for output files
+  const std::string path {"res_ecf/"};
+  // common prefix for both meshes and output files
+  const std::string basisName{"ecf"};
+  // prefix for exported files
+  const std::string prefix{path+basisName};
+  //just to make sure we will output results
+  wgma::util::CreatePath(wgma::util::ExtractPath(prefix));
   //whether to use SLEPC
   bool usingSLEPC{true};
 
   
-  constexpr int nlambdas{100};
+  constexpr int nlambdas{1};
   constexpr STATE minlambda{5e-7};
   constexpr STATE maxlambda{5e-6};
   constexpr STATE deltalambda{(maxlambda-minlambda)/nlambdas};
@@ -204,9 +211,27 @@ void RunSimulation(const STATE lambda, const int nEigenpairs, const int pOrder, 
 
   const std::string plotfile = prefix+"_field_";
 
-  TPZSimpleTimer postProc("Post processing");
-  
-  analysis.PostProcess(plotfile, vtkRes, printRealPart);
+  {
+    
+    TPZSimpleTimer tpostprocess("Post processing(new)");
+    TPZVec<std::string> fvars = {
+      "Ez_real",
+      "Ez_abs",
+      "Et_real",
+      "Et_abs"};
+    auto vtk = TPZVTKGenerator(meshVec[0], fvars, plotfile, vtkRes);
+    auto ev = analysis.GetEigenvalues();
+    for (int isol = 0; isol < ev.size(); isol++) {
+      auto currentKz = std::sqrt(-1.0*ev[isol]);
+      std::cout<<"\rPost processing step "<<isol+1<<" out of "<<ev.size()
+               <<"(kz = "<<currentKz<<")"<<std::flush;
+      analysis.LoadSolution(isol);
+      //since only the solution has changed (no element/geometry change)
+      //we dont need to compute the vtk points again, just the field values
+      constexpr bool samenodes{true};
+      vtk.Do(samenodes);
+    }
+  }
   return;
 }
 
