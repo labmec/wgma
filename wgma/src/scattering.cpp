@@ -75,38 +75,6 @@ namespace wgma::scattering{
     }
   }
 
-  void Analysis::PostProcess(std::string filename,
-                             std::set<std::string_view> vars,
-                             const int vtk_res){
-
-    TPZStack<std::string> scalnames, vecnames;
-    if(vars.empty()){
-      for(const auto &scal : ScalNames){
-        scalnames.Push(std::string(scal));
-      }
-      for(const auto &vec : VecNames){
-        vecnames.Push(std::string(vec));
-      }
-    }else{
-      for(const auto &scal : ScalNames){
-        if(vars.count(scal)){
-          scalnames.Push(std::string(scal));
-        }
-      }
-      for(const auto &vec : VecNames){
-        if(vars.count(vec)){
-          vecnames.Push(std::string(vec));
-        }
-      }
-    }
-    const std::string plotfile = filename+".vtk";
-    constexpr int dim{2};
-    m_an->DefineGraphMesh(dim, scalnames, vecnames,plotfile);
-    m_an->PostProcess(vtk_res);
-    std::cout<<"\nFinished post processing"<<std::endl;
-    std::cout<<std::endl;
-  }
-
 
   void LoadPrescribedSource(TPZPlanarWgScattSrc *mat,
                             const TPZVec<int64_t> &mem_indices,

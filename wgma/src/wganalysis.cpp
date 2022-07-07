@@ -246,47 +246,6 @@ namespace wgma::wganalysis{
     m_an->LoadSolution(evector);
     TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshVecPost, m_cmesh_mf);
   }
-
-  
-  void Wgma2D::PostProcess(std::string filename,
-                               const int vtk_res,
-                               const bool print_real_part){
-    if(!m_an->ComputeEigenvectors()){
-      std::cout<<__PRETTY_FUNCTION__
-               <<"\nOnly eigenvalues were calculated.\n"
-               <<"Nothing to do here...\n";
-      return;
-    }
-
-    TPZStack<std::string> scalnames, vecnames;
-    scalnames.Push("Ez_real");
-    scalnames.Push("Ez_abs");
-    vecnames.Push("Et_real");
-    vecnames.Push("Et_abs");
-    const std::string plotfile = filename+".vtk";
-    constexpr int dim{2};
-    m_an->DefineGraphMesh(dim, scalnames, vecnames,plotfile);
-
-    const auto neqOriginal = m_evectors.Rows();
-    TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
-    
-    auto &ev = m_evalues;
-    auto &eigenvectors = m_evectors;
-    
-    const auto nev = ev.size();
-  
-    std::cout<<"Post processing..."<<std::endl;
-  
-    for (int iSol = 0; iSol < nev; iSol++) {
-      auto currentKz = std::sqrt(-1.0*ev[iSol]);
-      std::cout<<"\rPost processing step "<<iSol+1<<" out of "<<ev.size()
-               <<"(kz = "<<currentKz<<")"<<std::flush;
-      LoadSolution(iSol);
-      m_an->PostProcess(vtk_res);
-    }
-    std::cout<<"\nFinished post processing"<<std::endl;
-    std::cout<<std::endl;
-  }
   
   void Wgma2D::WriteToCsv(std::string filename, STATE lambda){
     const int nev = m_evalues.size();
@@ -368,48 +327,6 @@ namespace wgma::wganalysis{
         }
       }
     m_beta = beta;
-  }
-
-  void WgmaPeriodic2D::PostProcess(std::string filename, const int vtk_res)
-  {
-    if(!m_an->ComputeEigenvectors()){
-      std::cout<<__PRETTY_FUNCTION__
-               <<"\nOnly eigenvalues were calculated.\n"
-               <<"Nothing to do here...\n";
-      return;
-    }
-    ///vtk export
-    TPZStack<std::string> scalnames, vecnames;
-    scalnames.Push("Field_real");
-    scalnames.Push("Field_imag");
-    scalnames.Push("Field_abs");
-    scalnames.Push("Field_phase"); 
-    vecnames.Push("Deriv_real");
-    vecnames.Push("Deriv_imag");
-    vecnames.Push("Deriv_abs");
-    vecnames.Push("Deriv_phase"); 
-    const std::string plotfile = filename+".vtk";
-    static constexpr int dim{2};
-    m_an->DefineGraphMesh(dim, scalnames, vecnames,plotfile);
-
-    const auto neqOriginal = m_evectors.Rows();
-    TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
-    
-    auto &ev = m_evalues;
-    auto &eigenvectors = m_evectors;
-    
-    const auto nev = ev.size();;
-  
-    std::cout<<"Post processing..."<<std::endl;
-  
-    for (int iSol = 0; iSol < ev.size(); iSol++) {
-      const auto beta = sqrt(ev[iSol]);
-      std::cout<<"\rPost processing step "<<iSol+1<<" out of "<<ev.size()
-               <<"\n(beta = "<<beta<<")"<<std::flush;
-      LoadSolution(iSol);
-      m_an->PostProcess(vtk_res);
-    }
-    std::cout<<std::endl;
   }
   
   void WgmaPeriodic2D::WriteToCsv(std::string filename, STATE lambda)
