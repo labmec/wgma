@@ -130,8 +130,8 @@ namespace wgma::wganalysis{
     }
     //gets the multiphysics mesh (main mesh)
     m_cmesh_mf = meshvec[0];
-    m_cmesh_h1 = meshvec[TPZWgma::H1Index()];
-    m_cmesh_hcurl = meshvec[TPZWgma::HCurlIndex()];
+    m_cmesh_h1 = meshvec[1 + TPZWgma::H1Index()];
+    m_cmesh_hcurl = meshvec[1 + TPZWgma::HCurlIndex()];
   
     m_an = new TPZEigenAnalysis(m_cmesh_mf, reorder_eqs);
 
@@ -152,8 +152,9 @@ namespace wgma::wganalysis{
       std::cout<<"neq(before): "<<n_dofs_before
                <<"\tneq(after): "<<m_n_dofs_mf<<std::endl;
       strmtrx->EquationFilter().SetActiveEquations(activeEquations);
+    }else{
+      CountActiveEqs(m_n_dofs_mf,m_n_dofs_h1,m_n_dofs_hcurl);
     }
-    CountActiveEqs(m_n_dofs_mf,m_n_dofs_h1,m_n_dofs_hcurl);
     m_an->SetStructuralMatrix(strmtrx);
   }
 
@@ -273,14 +274,10 @@ namespace wgma::wganalysis{
     auto &eigenvectors = m_evectors;
     
     const auto nev = ev.size();
-
-    TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshVecPost(2);
-    meshVecPost[0] = m_cmesh_h1;
-    meshVecPost[1] = m_cmesh_hcurl;
   
     std::cout<<"Post processing..."<<std::endl;
   
-    for (int iSol = 0; iSol < ev.size(); iSol++) {
+    for (int iSol = 0; iSol < nev; iSol++) {
       auto currentKz = std::sqrt(-1.0*ev[iSol]);
       std::cout<<"\rPost processing step "<<iSol+1<<" out of "<<ev.size()
                <<"(kz = "<<currentKz<<")"<<std::flush;
