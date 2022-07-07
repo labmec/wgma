@@ -87,6 +87,7 @@ wgma::gmeshtools::CreateStructuredMesh(
 
 
   TPZAutoPointer<TPZGeoMesh> gmesh{new TPZGeoMesh()};
+  gmesh->SetDimension(2);
   
   const auto nEdges = edgesVec.size();
   ///Stores edge points for all edges
