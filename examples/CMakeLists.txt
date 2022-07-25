@@ -33,11 +33,3 @@ add_pz_target(
   FILES meshes/pcwg_test.msh meshes/pcwg_test_circdata.csv
   )
 target_link_libraries(pcwg PUBLIC wgma)
-
-
-add_pz_target(
-  NAME planar_wg_periodic
-  SOURCES planar_wg_periodic.cpp
-  FILES meshes/periodic_test.msh
-  )
-target_link_libraries(planar_wg_periodic PUBLIC wgma)
