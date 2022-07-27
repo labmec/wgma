@@ -35,3 +35,9 @@
 build
 .ccls-cache
 compile_commands.json
+
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
