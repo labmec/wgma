@@ -27,8 +27,6 @@ J. Lightwave Technol. 20, 463- (2002)
 #include <pzlog.h>          //for TPZLogger
 #include <TPZVTKGenerator.h>
 
-#include <Electromagnetics/TPZPlanarWgScatt.h>
-#include <Electromagnetics/TPZMatPML.h>
 #include <regex>//for string search
 
 // Sets geometric info regarding all the circles in the mesh
@@ -335,14 +333,7 @@ int main(int argc, char *argv[]) {
     wgma::cmeshtools::RemovePeriodicity(modal_cmesh);
 
     const std::string scatt_file = prefix+"_scatt";
-    // {
-    //   TPZSimpleTimer tpostprocess("Post processing(old)");
-    //   std::set<std::string_view> vars = {
-    //     // "Field_real",
-    //     // "Field_imag",
-    //     "Field_abs"};
-    //   scatt_an.PostProcess(scatt_file, vars, vtkRes);
-    // }
+    
     {
       TPZSimpleTimer tpostprocess("Post processing(new)");
       TPZVec<std::string> fvars = {
@@ -353,7 +344,6 @@ int main(int argc, char *argv[]) {
       vtk.Do();
     }
   }
-  // wgma::slepc::EPSHandler<CSTATE>::FinalizeSLEPc();
 }
 
 
