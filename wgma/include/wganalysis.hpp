@@ -154,13 +154,10 @@ namespace wgma::wganalysis{
   };
 
   /**
-     @brief Performs modal analysis of periodic planar waveguides.
-     Since it is a non-linear eigenvalue in beta it is supposed
-     to be solved iteratively.
-     See pcwg example for usage.
-     @note It will always search just for one eigenvalue.
+     @brief Base class for performing modal analysis of planar waveguides.
+     See slab_disc example for usage.
    */
-  class WgmaPeriodic2D : public Wgma{
+  class WgmaPlanar : public Wgma{
   public:
     /**
        @brief Creates the analysis module based on a given set
@@ -170,14 +167,9 @@ namespace wgma::wganalysis{
        @param [in] reorder_eqs whether the equations are reordered for optimising bandwidth
        @param [in] filter_bound whether to impose homogeneous dirichlet BCs by removing the equations
     */
-    WgmaPeriodic2D(TPZAutoPointer<TPZCompMesh> cmesh,
-                   const int n_threads, const bool reorder_eqs=true,
-                   const bool filter_bound=true);
-
-    
-
-    //! Sets propagation constant to be used in the material
-    void SetBeta(const CSTATE beta);
+    WgmaPlanar(TPZAutoPointer<TPZCompMesh> cmesh,
+               const int n_threads, const bool reorder_eqs=true,
+               const bool filter_bound=true);
 
     /*
       @brief Loads the isol-th solution (eigenvector) in the computational mesh.
@@ -205,12 +197,41 @@ namespace wgma::wganalysis{
 
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
     void CountActiveEqs(int &neq);
-  private:
-    void AdjustSolver(TPZEigenSolver<CSTATE> *solv) override;
+  protected:
     //! Computational mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};
     //! Total number of dofs
     int m_n_dof{-1};
+  };
+
+    /**
+     @brief Performs modal analysis of periodic planar waveguides.
+     Since it is a non-linear eigenvalue in beta it is supposed
+     to be solved iteratively.
+     See pcwg example for usage.
+     @note It will always search just for one eigenvalue.
+   */
+  class WgmaPeriodic2D : public WgmaPlanar{
+  public:
+    /**
+       @brief Creates the analysis module based on a given set
+       of computational meshes as returned by cmeshtools::CMeshWgma2D
+       @param [in] n_threads Number of threads to be used in the analysis
+       @param [in] meshvec Vector containing the computational meshes
+       @param [in] reorder_eqs whether the equations are reordered for optimising bandwidth
+       @param [in] filter_bound whether to impose homogeneous dirichlet BCs by removing the equations
+    */
+    WgmaPeriodic2D(TPZAutoPointer<TPZCompMesh> cmesh,
+                   const int n_threads, const bool reorder_eqs=true,
+                   const bool filter_bound=true) :
+      WgmaPlanar(cmesh,n_threads,reorder_eqs,filter_bound) {}
+
+    
+
+    //! Sets propagation constant to be used in the material
+    void SetBeta(const CSTATE beta);
+  private:
+    void AdjustSolver(TPZEigenSolver<CSTATE> *solv) override;
     //! Current value of propagation constant
     CSTATE m_beta{0};
   };
@@ -229,6 +250,21 @@ namespace wgma::wganalysis{
   CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
               cmeshtools::PhysicalData &data,
               const STATE lambda, const REAL &scale);
+
+  /**
+     @brief Creates the computational meshes used for approximating the waveguide EVP in one dimension, for planar waveguides.
+     @param[in] gmesh geometrical mesh
+     @param[in] mode whether to solve for TE or TM modes
+     @param[in] pOrder polynomial order
+     @param[in] data information regarding domain's regions
+     @param[in] lambda operational wavelength
+     @param[in] scale geometric scaling (characteristic length) for better floating point precision
+  */
+  TPZAutoPointer<TPZCompMesh>
+  CMeshWgma1D(TPZAutoPointer<TPZGeoMesh> gmesh,
+              wgma::planarwg::mode mode, int pOrder,
+              cmeshtools::PhysicalData &data,
+              const STATE lambda, const REAL scale);
 
   //creates computational mesh for modal analysis of periodic planar waveguides
   TPZAutoPointer<TPZCompMesh>

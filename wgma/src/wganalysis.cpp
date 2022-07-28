@@ -7,6 +7,7 @@
 #include <TPZKrylovEigenSolver.h>
 #include <Electromagnetics/TPZWgma.h>
 #include <Electromagnetics/TPZPeriodicWgma.h>
+#include <Electromagnetics/TPZPlanarWgma.h>
 #include <TPZNullMaterial.h>
 #include <TPZSimpleTimer.h>
 #include <pzbuildmultiphysicsmesh.h>
@@ -287,7 +288,7 @@ namespace wgma::wganalysis{
   }
 
 
-  WgmaPeriodic2D::WgmaPeriodic2D(TPZAutoPointer<TPZCompMesh> cmesh,
+  WgmaPlanar::WgmaPlanar(TPZAutoPointer<TPZCompMesh> cmesh,
                                  const int n_threads, const bool reorder_eqs,
                                  const bool filter_bound) : m_cmesh(cmesh)
   {
@@ -316,26 +317,14 @@ namespace wgma::wganalysis{
     }
     m_an->SetStructuralMatrix(strmtrx);
   }
-
-  void WgmaPeriodic2D::SetBeta(const CSTATE beta)
-  {
-    for(auto [id, mat] : m_cmesh->MaterialVec()){
-        auto *mat_modal =
-          dynamic_cast<TPZPeriodicWgma*>(mat);
-        if(mat_modal){
-          mat_modal->SetBeta(beta);
-        }
-      }
-    m_beta = beta;
-  }
   
-  void WgmaPeriodic2D::WriteToCsv(std::string filename, STATE lambda)
+  void WgmaPlanar::WriteToCsv(std::string filename, STATE lambda)
   {
     PZError<<__PRETTY_FUNCTION__
            <<"\nnot yet implemented...\n";
   }
   
-  void WgmaPeriodic2D::CountActiveEqs(int &neq)
+  void WgmaPlanar::CountActiveEqs(int &neq)
   {
     auto eq_filt = m_an->StructMatrix()->EquationFilter();
     if(eq_filt.IsActive()){
@@ -344,13 +333,7 @@ namespace wgma::wganalysis{
       neq = m_cmesh->NEquations();
     }
   }
-  
-  void WgmaPeriodic2D::AdjustSolver(TPZEigenSolver<CSTATE> *solv)
-  {
-    solv->SetTarget(m_beta*m_beta);
-  }
-
-  void WgmaPeriodic2D::LoadSolution(const int isol)
+  void WgmaPlanar::LoadSolution(const int isol)
   {
     Wgma::LoadSolution(isol);
     
@@ -366,7 +349,24 @@ namespace wgma::wganalysis{
     eigenvectors.GetSub(0, isol, neqOriginal, 1, evector);
     m_an->LoadSolution(evector);
   }
-  
+
+
+  void WgmaPeriodic2D::SetBeta(const CSTATE beta)
+  {
+    for(auto [id, mat] : m_cmesh->MaterialVec()){
+        auto *mat_modal =
+          dynamic_cast<TPZPeriodicWgma*>(mat);
+        if(mat_modal){
+          mat_modal->SetBeta(beta);
+        }
+      }
+    m_beta = beta;
+  }
+
+  void WgmaPeriodic2D::AdjustSolver(TPZEigenSolver<CSTATE> *solv)
+  {
+    solv->SetTarget(m_beta*m_beta);
+  }
 
   TPZVec<TPZAutoPointer<TPZCompMesh>>
   CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
@@ -528,6 +528,91 @@ namespace wgma::wganalysis{
   
   }
 
+  TPZAutoPointer<TPZCompMesh>
+  CMeshWgma1D(TPZAutoPointer<TPZGeoMesh> gmesh,
+              wgma::planarwg::mode mode, int pOrder,
+              wgma::cmeshtools::PhysicalData &data,
+              const STATE lambda, const REAL scale)
+  {
+  
+    static constexpr bool isComplex{true};
+    static constexpr int dim{1};
+    TPZAutoPointer<TPZCompMesh> cmeshH1 = new TPZCompMesh(gmesh, isComplex);
+    cmeshH1->SetDimModel(dim);
+
+    const int nvolmats = data.matinfovec.size();
+
+    // insert volumetric mats
+    std::set<int> volmats;
+    std::set<int> allmats;
+    TPZPeriodicWgma::ModeType matmode;
+    switch (mode) {
+    case wgma::planarwg::mode::TE:
+      matmode = TPZScalarField::ModeType::TE;
+      break;
+    case wgma::planarwg::mode::TM:
+      matmode = TPZScalarField::ModeType::TM;
+      break;
+    }
+    for (auto [id, er, ur] : data.matinfovec) {
+      auto *mat =
+        new TPZPlanarWgma(id, er, ur, lambda, matmode, scale);
+      cmeshH1->InsertMaterialObject(mat);
+      // for pml
+      volmats.insert(id);
+      //for assembling only desired materials
+      allmats.insert(id);
+    }
+
+    if(data.pmlvec.size() > 0){
+      PZError<<__PRETTY_FUNCTION__
+             <<"\nerror: PMLs in 1D domains are not supported yet. Aborting..."
+             <<std::endl;
+      DebugStop();
+    }
+    
+
+    TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
+    TPZManVector<CSTATE, 1> val2(1, 0.);
+
+    /**let us associate each boundary with a given material.
+       this is important for the source boundary*/
+    for(auto &bc : data.bcvec){
+      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, allmats);
+      if(!res.has_value()){
+        std::cout<<__PRETTY_FUNCTION__
+                 <<"\nError: could not find neighbour of bc "<<bc.id<<std::endl;
+        DebugStop();
+      }else{
+        bc.volid = res.value();
+      }
+    }
+
+    // for(auto bc : data.bcvec){
+    //   std::cout<<"bc "<<bc.id<<" mat "<<bc.volid<<std::endl;
+    // }
+
+  
+    for (auto bc : data.bcvec) {
+      const int bctype = wgma::bc::to_int(bc.t);
+      const int id = bc.id;
+      const int volmatid = bc.volid;
+      auto *volmat =
+        dynamic_cast<TPZMaterialT<CSTATE> *>(cmeshH1->FindMaterial(volmatid));
+      auto *bcmat = volmat->CreateBC(volmat, id, bctype, val1, val2);
+      cmeshH1->InsertMaterialObject(bcmat);
+      allmats.insert(id);
+    }
+
+  
+  
+
+    cmeshH1->SetAllCreateFunctionsContinuous();
+    cmeshH1->SetDefaultOrder(pOrder);
+    cmeshH1->AutoBuild(allmats);
+    return cmeshH1;
+  }
+  
   TPZAutoPointer<TPZCompMesh>
   CMeshWgmaPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
                     const wgma::planarwg::mode mode, int pOrder,
