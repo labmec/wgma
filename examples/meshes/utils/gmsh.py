@@ -169,7 +169,7 @@ them into lists of tags and regions
         new_physical_id += 1
 
 
-def create_pml_corner(dimtag, direction: str, dpml: float):
+def create_pml_corner(dimtag, direction: str, dpml):
     """
     Creates a pml extending a given domain in a diagonal direction.
 
@@ -193,14 +193,21 @@ associating (pmltype,tag) with its neighbouring domain.
     direction: str
         Must be a combination of "xp"("xm") and "yp"("ym"). It dictates
 whether to attenuate in the positive (p) or negative (m) direction for a given axis.
-    dpml: float
-        PML length
+    dpml: list
+        PML length in each direction (can be float as well)
 
     """
 
     if type(dimtag) == list:
         assert(len(dimtag) == 1)
         dimtag = dimtag[0]
+
+    dim = dimtag[0]
+    if type(dpml) == float:
+        dpml = [dpml for _ in range(dim)]
+    else:
+        for ix in range(len(dpml), 3):
+            dpml.append(1)
 
     valid_dirs = ["xmym", "xmyp", "xpym", "xpyp"]
     direction = direction.lower()
@@ -214,7 +221,7 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
     # calc domain size in all directions
     minval = []
     maxval = []
-    widimtagh = []
+    width = []
     # calc orientation
     signvec = []
 
@@ -224,22 +231,22 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         'yp') else -1 if direction.count('ym') else 0)
     signvec.append(1 if direction.count(
         'zp') else -1 if direction.count('zm') else 0)
-
+    print(dpml)
     for ix in range(3):
         minv = min([xc[ix]for xc in mclist])
         maxv = max([xc[ix]for xc in mclist])
         minval.append(minv)
         maxval.append(maxv)
         if(signvec[ix] == 0):
-            widimtagh.append(dpml)
+            width.append(dpml[ix])
         else:
-            widimtagh.append(maxv-minv)
+            width.append(maxv-minv)
 
-    dirvec = [widimtagh[i]*signvec[i] for i in range(3)]
+    dirvec = [width[i]*signvec[i] for i in range(3)]
     # copy domain
     dcp = gmsh.model.occ.copy([dimtag])
     gmsh.model.occ.translate(dcp, dirvec[0], dirvec[1], dirvec[2])
-    dscale = [dpml/widimtagh[i] for i in range(3)]
+    dscale = [dpml[i]/width[i] for i in range(3)]
     dcenter = [maxval[i] if signvec[i] == 1 else minval[i]
                if signvec[i] == -1 else 0 for i in range(3)]
     gmsh.model.occ.dilate(dcp,
