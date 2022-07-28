@@ -104,6 +104,11 @@ namespace wgma::scattering{
                     wgma::scattering::SourceWgma> source,
                     const STATE lambda, const REAL scale);
 
+  /**
+     @brief Set the propagation constant value for the source of the scattering analysis.
+     @param[in] cmesh computational mesh of the scattering problem
+     @param[in] beta propagation constant
+  */
   void
   SetPropagationConstant(TPZAutoPointer<TPZCompMesh> cmesh,
                          const CSTATE beta);
