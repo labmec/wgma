@@ -33,3 +33,10 @@ add_pz_target(
   FILES meshes/pcwg_test.msh meshes/pcwg_test_circdata.csv
   )
 target_link_libraries(pcwg PUBLIC wgma)
+
+add_pz_target(
+  NAME slab_disc
+  SOURCES slab_disc.cpp
+  FILES meshes/slab_disc.msh
+  )
+target_link_libraries(slab_disc PUBLIC wgma)
