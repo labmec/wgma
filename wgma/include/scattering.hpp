@@ -36,7 +36,20 @@ namespace wgma::scattering{
     */
     TPZMatrixSolver<CSTATE> & GetSolver() const;
     /**
-       @brief Run the analysis
+       @brief Assembles the algebraic system
+     */
+    void Assemble();
+    /**
+       @brief Assembles the rhs of hte algebraic system
+       @param[in] identifiers of the materials to be assembled (source materials)
+     */
+    void AssembleRhs(std::set<int> matids);
+    /**
+       @brief Solves the algebraic system
+    */
+    void Solve();
+    /**
+       @brief Assembles and solves the algebraic system
      */
     void Run();
 

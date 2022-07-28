@@ -62,17 +62,28 @@ namespace wgma::scattering{
     return m_an->MatrixSolver<CSTATE>();
   }
 
+
+  void Analysis::Assemble(){
+    TPZSimpleTimer assemble("Assemble");
+    //assembles the system
+    m_an->Assemble();    
+  }
+  
+  void Analysis::AssembleRhs(std::set<int> matids){
+    auto matids_cp = m_an->StructMatrix()->MaterialIds();
+    m_an->StructMatrix()->SetMaterialIds(matids);
+    m_an->AssembleResidual();
+    m_an->StructMatrix()->SetMaterialIds(matids_cp);
+  }
+  
+  void Analysis::Solve(){
+    TPZSimpleTimer solve("Solve");
+    ///solves the system
+    m_an->Solve();
+  }
   void Analysis::Run(){
-    {
-      TPZSimpleTimer assemble("Assemble");
-      //assembles the system
-      m_an->Assemble();
-    }
-    {
-      TPZSimpleTimer solve("Solve");
-      ///solves the system
-      m_an->Solve();
-    }
+    Assemble();
+    Solve();
   }
 
 
