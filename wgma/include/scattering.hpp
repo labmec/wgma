@@ -93,18 +93,14 @@ namespace wgma::scattering{
      @brief Creates the computational mesh used for the scattering analysis of planar waveguides.
      The mesh will be a H1 conforming approximation space and it will approximate
      either Ex or Hx, depending on whether TE/TM modes are approximated.
-     The source can be provided by two different means:
-     either by 
-     - providing a computational mesh and a material identifier where
-     the solution will be evaluated
-     - providing an analytical source via wgma::scattering::source2D
+     For loading a source, see scattering::LoadSource and scattering::SetPropagationConstant. 
      @note The computational domain is in the xy-plane, even though physically it
      corresponds to the yz-plane.
      @param[in] gmesh geometrical mesh
      @param[in] mode whether to solve for TE or TM modes
      @param[in] pOrder polynomial order
      @param[in] data information regarding domain's regions
-     @param[in] source contains the function that will excite the waveguide
+     @param[in] source_ids contains the ids of the excitation source regions
      @param[in] lambda operational wavelength
      @param[in] scale geometric scaling (characteristic length) for better floating point precision
   */
@@ -112,9 +108,7 @@ namespace wgma::scattering{
   CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
                     const planarwg::mode mode, int pOrder,
                     cmeshtools::PhysicalData &data,
-                    std::variant<
-                    wgma::scattering::Source1D,
-                    wgma::scattering::SourceWgma> source,
+                    const std::set<int> source_ids,
                     const STATE lambda, const REAL scale);
 
   /**
@@ -130,7 +124,15 @@ namespace wgma::scattering{
      @brief Loads a source for the scattering analysis.
      The source can be either an analytical source or
      a source from the modal analysis.
+
+     The source can be provided by two different means:
+     either by 
+     - providing a computational mesh and a material identifier where
+     the solution will be evaluated
+     - providing an analytical source via wgma::scattering::source2D
+
      The value of the propagation constant beta is set by SetPropagationConstant.
+
      @param[in] scatt_cmesh computational mesh of the scattering problem
      @param[in] source source for the scattering problem
   */
