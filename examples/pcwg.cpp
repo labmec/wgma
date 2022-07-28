@@ -279,10 +279,13 @@ int main(int argc, char *argv[]) {
    * cmesh(scattering) *
    *********************/
 
+  //material that will represent our source
+  constexpr auto srcMat{"gamma_s"};
+  //get id of source material
+  const auto srcId = gmshmats[1].at(srcMat);
   
-  auto scatt_cmesh = [gmesh,&gmshmats, beta, modal_cmesh](){
-    //material that will represent our source
-    constexpr auto srcMat{"gamma_s"};
+  auto scatt_cmesh = [gmesh,&gmshmats, beta, srcId](){
+    
     // setting up cmesh data
     wgma::cmeshtools::PhysicalData scatt_data;
     std::map<std::string, std::pair<CSTATE, CSTATE>> scatt_mats;
@@ -297,13 +300,8 @@ int main(int argc, char *argv[]) {
     constexpr STATE alphaPML {2.0};
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs, alphaPML,
                                             alphaPML, scatt_data);
-    //get id of source material
-    const auto srcId = gmshmats[1].at(srcMat);
-    wgma::scattering::SourceWgma src;
-    src.id = {srcId};
-    src.modal_cmesh = modal_cmesh;
 
-    bool periodicPML{false};
+    bool periodicPML{true};
     for(auto const& [name, value]: gmshmats[2]){
       const std::string gaas{"pml_GaAs"};
       const auto rx = std::regex{gaas, std::regex_constants::icase };
@@ -313,10 +311,14 @@ int main(int argc, char *argv[]) {
       scatt_data.pmlvec = CombinePMLRegions(gmshmats,scatt_data.pmlvec);
     }
 
-    return wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder, scatt_data,src,
+    return wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder, scatt_data,{srcId},
                                                       lambda,scale);
   }();
 
+  wgma::scattering::SourceWgma src;
+  src.id = {srcId};
+  src.modal_cmesh = modal_cmesh;
+  wgma::scattering::LoadSource(scatt_cmesh, src);
   wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
   /*********************
    * solve(scattering) *  
