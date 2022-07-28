@@ -84,7 +84,7 @@ cmeshtools::SetupGmshMaterialData(
       }
     }else{
       if(matmap.find(name) == matmap.end()){//material not found
-        std::cout<<"error: mat "<<name<<" id "<<id<<" not found"
+        std::cout<<"info: mat "<<name<<" id "<<id<<" not found"
                  <<"\nSkipping..."<<std::endl;
       }else{
         const auto pos = matinfo.size();
