@@ -22,14 +22,25 @@ cmeshtools::SetupGmshMaterialData(
   const std::map<std::string,wgma::bc::type> &bcmap,
   const STATE alphaPMLx,
   const STATE alphaPMLy,
-  wgma::cmeshtools::PhysicalData &data)
+  wgma::cmeshtools::PhysicalData &data,
+  int dim)
 {
   auto &matinfo = data.matinfovec;
   auto &pmlvec = data.pmlvec;
   auto &bcvec = data.bcvec;
   pmlvec.resize(0);
-    
-  for(auto mat : gmshmats[2]){
+  
+  if(dim == -1){
+    //find maximum dim
+    for(int idim = 3; idim >=0; idim--){
+      if(!gmshmats[idim].empty()){
+        dim = idim;
+        break;
+      }
+    }
+  }
+  
+  for(auto mat : gmshmats[dim]){
     const std::string name = mat.first;
     const auto id = mat.second;
     constexpr auto pmlname{"pml"};
@@ -87,7 +98,7 @@ cmeshtools::SetupGmshMaterialData(
   }
   //bc materials
   {
-    for(auto bc : gmshmats[1]){
+    for(auto bc : gmshmats[dim-1]){
       const auto name = bc.first;
       const auto id = bc.second;
       /*sometimes we need 1d materials with a given id for other purposes,

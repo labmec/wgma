@@ -53,6 +53,7 @@ namespace wgma::cmeshtools{
    @param [in] alphaPMLx PML attenuation constant in the x direction
    @param [in] alphaPMLy PML attenuation constant in the y direction
    @param [out] data organised data for CMeshWgma2D routine
+   @param [in] maxdim maximum dimension to be considered. Leave default for automatic choice.
    @note The .msh file can be read with wgma::gmeshtools::ReadGmshMesh.
 */
 void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
@@ -60,7 +61,8 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
                            const std::map<std::string,wgma::bc::type> &bcmap,
                            const STATE alphaPMLx,
                            const STATE alphaPMLy,
-                           PhysicalData &data);
+                           PhysicalData &data,
+                           int maxdim=-1);
 
   /**
      @brief Adds a rectangular PML region to a computational mesh.
