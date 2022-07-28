@@ -209,17 +209,19 @@ namespace wgma::scattering{
         LoadPrescribedSource(mat, mem_indices, intrule,
                              cel,my_src);
       }else{
+        //1D geometric element
+          auto gel = cel->Reference();
         if(modal_dim == 1){
           //1d modal analysis
           TPZTransform<> dummy_t(1);
+          auto modal_cel = gel->Reference();
           auto dcel =
-            dynamic_cast<TPZInterpolationSpace*>(cel);
+            dynamic_cast<TPZInterpolationSpace*>(modal_cel);
           assert(dcel);
           LoadModalAnalysisSource<1>(mat, mem_indices, intrule, dcel, dummy_t);
         }else{
           //periodic modal analysis
-          //1D geometric element
-          auto gel = cel->Reference();
+          
           //1D element of modal analysis mesh
           TPZGeoElSide gelside(gel,gel->NSides()-1);
 
