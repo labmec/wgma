@@ -27,6 +27,14 @@ namespace wgma::wganalysis{
   }
 
   void Wgma::Run(bool compute_eigenvectors){
+
+    std::cout<<"Assembling..."<<std::flush;
+    {
+      TPZSimpleTimer assemble("Assemble");
+      m_an->Assemble();
+    }
+    std::cout<<"\rAssembled!"<<std::endl;
+    
     m_an->SetComputeEigenvectors(compute_eigenvectors);
     TPZEigenSolver<CSTATE> *solv =
       dynamic_cast<TPZEigenSolver<CSTATE>*>(m_an->Solver());
@@ -39,20 +47,36 @@ namespace wgma::wganalysis{
     }
 
     AdjustSolver(solv);
+    Solve(compute_eigenvectors);
     
-    {//scope for timer
-      std::cout<<"Assembling..."<<std::flush;
-      TPZSimpleTimer assemble("Assemble");
-      m_an->Assemble();
-      std::cout<<"\rAssembled!"<<std::endl;
-    }
-    {//scope for timer
-      TPZSimpleTimer solv("Solve");
-      std::cout<<"Solving..."<<std::flush;
-      m_an->Solve();
-      std::cout<<"\rSolved!"<<std::endl;
+  }
+
+  void Wgma::Assemble(TPZEigenAnalysis::Mat mat){
+    std::cout<<"Assembling..."<<std::flush;
+    TPZSimpleTimer assemble("Assemble");
+    m_an->AssembleMat(mat);
+    std::cout<<"\rAssembled!"<<std::endl;
+  }
+  
+  void Wgma::Solve(bool compute_eigenvectors){
+    m_an->SetComputeEigenvectors(compute_eigenvectors);
+    TPZEigenSolver<CSTATE> *solv =
+      dynamic_cast<TPZEigenSolver<CSTATE>*>(m_an->Solver());
+    if(!solv){
+      std::cerr<<__PRETTY_FUNCTION__
+               <<"\nA solver has not been set.\n"
+               <<"Check documentation of TPZKrylovEigenSolver"
+               <<"\nor wgma::slepc::EPSHandler\nAborting..."<<std::endl;
+      exit(-1);
     }
 
+    AdjustSolver(solv);
+
+    TPZSimpleTimer tsolv("Solve");
+    std::cout<<"Solving..."<<std::flush;
+    m_an->Solve();
+    std::cout<<"\rSolved!"<<std::endl;
+    
     m_evalues = m_an->GetEigenvalues();
 
     std::ios cout_state(nullptr);
@@ -69,7 +93,6 @@ namespace wgma::wganalysis{
       m_evectors = m_an->GetEigenvectors();
     }
   }
-
 
   void Wgma::LoadSolution(const int isol)
   {
@@ -467,10 +490,11 @@ namespace wgma::wganalysis{
     }
   
     for(auto pml : pmlDataVec){
-      const auto matid = pml.id;
-      auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
-      volmats.insert(matid);
-      cmeshH1->InsertMaterialObject(dummyMat);
+      for(auto matid : pml.ids){
+        auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+        volmats.insert(matid);
+        cmeshH1->InsertMaterialObject(dummyMat);
+      }
     }
 
 
@@ -516,9 +540,10 @@ namespace wgma::wganalysis{
       cmeshHCurl->InsertMaterialObject(dummyMat);
     }
     for(auto pml : pmlDataVec){
-      const auto dummyMatid = pml.id;
-      auto *dummyMat = new TPZNullMaterial<CSTATE>(dummyMatid,dim,nState);
-      cmeshHCurl->InsertMaterialObject(dummyMat);
+      for(auto matid : pml.ids){
+        auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+        cmeshHCurl->InsertMaterialObject(dummyMat);
+      }
     }
 
   
@@ -546,13 +571,9 @@ namespace wgma::wganalysis{
   
     //insert PML regions
     for(auto pml : pmlDataVec){
-      const auto id = pml.id;
-      const auto alphax = pml.alphax;
-      const auto alphay = pml.alphay;
-      const auto type = pml.t;
       cmeshtools::AddRectangularPMLRegion<
         TPZWgma
-        >(id, alphax, alphay, type, realvolmats, gmesh, cmeshMF);
+        >(pml, realvolmats, gmesh, cmeshMF);
     }
   
     for(auto bc : bcDataVec){
@@ -630,13 +651,11 @@ namespace wgma::wganalysis{
     }
 
     for (auto pml : data.pmlvec) {
-      const auto id = pml.id;
-      const auto alphax = pml.alphax;
-      const auto alphay = pml.alphay;
-      const auto type = pml.t;
       wgma::cmeshtools::AddRectangularPMLRegion<TPZPeriodicWgma>(
-        id, alphax, alphay, type, volmats, gmesh, cmeshH1);
-      allmats.insert(id);
+        pml, volmats, gmesh, cmeshH1);
+      for( auto id : pml.ids){
+        allmats.insert(id);
+      }
     }
 
     TPZFNMatrix<1, CSTATE> val1(1, 1, 0);

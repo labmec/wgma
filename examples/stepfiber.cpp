@@ -216,7 +216,7 @@ int main(int argc, char *argv[]) {
 
     for(int ipml = 0; ipml < nPML; ipml++){
       wgma::pml::data pml;
-      pml.id = matIdVec[matCount++];
+      pml.ids = {matIdVec[matCount++]};
       pml.alphax = alphaPML;
       pml.alphay = alphaPML;
       pml.t = pmlTypeVec[ipml];

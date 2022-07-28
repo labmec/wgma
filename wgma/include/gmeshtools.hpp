@@ -1,6 +1,8 @@
 #ifndef _GMESHTOOLS_HPP_
 #define _GMESHTOOLS_HPP_
 
+#include <pmltypes.hpp>
+
 #include <pzvec.h>
 #include <pzfmatrix.h>
 
@@ -122,6 +124,22 @@ namespace wgma::gmeshtools{
                            const int pmlId,
                            const std::set<int> &volmats,
                            const REAL boundPosX, const REAL boundPosY);
+
+  /**
+     @brief Finds the width of a given pml region
+     @param[in] gmesh geometrical mesh
+     @param[in] pmlId identifiers of pml region
+     @param[in] type attenuation direction of the PML
+     @param[out] boundPosX X coordinate of the PML interface with domain (for y-attenuating PMLS, X coordinate of the center of the PML)
+     @param[out] pmlWidthX PML width in the X direction (only for relevant types)
+     @param[out] boundPosY Y coordinate of the PML interface with domain (for x-attenuating PMLS, X coordinate of the center of the PML)
+     @param[out] pmlWidthY PML width in the Y direction (only for relevant types)
+  */
+  void
+  FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
+               const std::set<int> pmlId, const wgma::pml::type type,
+               REAL &boundPosX, REAL &pmlWidthX,
+               REAL &boundPosY, REAL &pmlWidthY);
   
   /**
      @brief Finds a valid neighbouring material for a given boundary material.

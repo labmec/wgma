@@ -10,92 +10,68 @@
 #include <TPZMatSingleSpace.h>
 #include <TPZMatCombinedSpaces.h>
 template<class MATVOL>
-int
-wgma::cmeshtools::AddRectangularPMLRegion(const int matId,
-                                    const STATE alphax, const STATE alphay,
-                                    const wgma::pml::type type,
-                                    const std::set<int> &volmats,
-                                    TPZAutoPointer<TPZGeoMesh> gmesh,
-                                    TPZAutoPointer<TPZCompMesh> cmesh)
+std::map<int,int>
+wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::data data,
+                                          const std::set<int> &volmats,
+                                          TPZAutoPointer<TPZGeoMesh> gmesh,
+                                          TPZAutoPointer<TPZCompMesh> cmesh)
 {
 
-  //let us find the (xmin,xmax) and (ymin,ymax) of the PML region
-  REAL xMax = -1e20, xMin = 1e20, yMax = -1e20, yMin = 1e20;
-  for (auto geo : gmesh->ElementVec()){
-    if (geo && geo->MaterialId() == matId) {
-      for (int iNode = 0; iNode < geo->NCornerNodes(); ++iNode) {
-        TPZManVector<REAL, 3> co(3);
-        geo->Node(iNode).GetCoordinates(co);
-        const REAL &xP = co[0];
-        const REAL &yP = co[1];
-        if (xP > xMax) {
-          xMax = xP;
+  REAL boundPosX{0}, boundPosY{0}, dX{0}, dY{0};
+
+
+  wgma::gmeshtools::FindPMLWidth(gmesh, data.ids, data.t,
+                                 boundPosX, dX, boundPosY, dY);
+  
+  
+
+  std::map<int,int> all_neighs;
+  for(auto id : data.ids){
+    //check if neighbour has been set already, otherwise find it
+    const int neigh_mat_id  = [&]{
+      if(data.neigh.count(id) == 0){
+        const auto neigh_mat_res =
+          gmeshtools::FindPMLNeighbourMaterial(gmesh, id, volmats, boundPosX, boundPosY);
+        if(neigh_mat_res.has_value() == false){
+          PZError<<__PRETTY_FUNCTION__
+                 <<"Could not find neighbouring material. Aborting...\n";
+          DebugStop();
         }
-        if (xP < xMin) {
-          xMin = xP;
-        }
-        if (yP > yMax) {
-          yMax = yP;
-        }
-        if (yP < yMin) {
-          yMin = yP;
-        }
+        return neigh_mat_res.value();
+      }else{
+        return data.neigh.at(id);
       }
+    }();
+    
+    all_neighs[id] = neigh_mat_id;
+    
+    auto *neighMat =
+      dynamic_cast<MATVOL*>(cmesh->FindMaterial(neigh_mat_id));
+    if(!neighMat){
+      PZError<<__PRETTY_FUNCTION__;
+      PZError<<"\n neighbouring material not found in mesh, aborting...."<<std::endl;
+      DebugStop();
     }
-  }
-
-
-  //now we compute xBegin, yBegin, attx, atty and d for the material ctor
-  const bool attx = wgma::pml::attx(type);
-  const bool atty = wgma::pml::atty(type);
   
-  REAL xBegin{-1}, yBegin{-1}, dX{-01101991.}, dY{-01101991.};
-  REAL boundPosX{-01101991.}, boundPosY{-01101991.};
-  if(attx){
-    const int xdir = wgma::pml::xinfo(type);
-    dX = xMax - xMin;
-    xBegin = xdir > 0 ? xMin : xMax;
-    boundPosX = xBegin;
-    boundPosY = (yMax + yMin)/2;
-  }
+    TPZMatPML<MATVOL> *pmlMat{nullptr};
+    if constexpr (std::is_base_of_v<TPZMatCombinedSpaces, MATVOL>){
+      pmlMat = new TPZCombinedSpacesPML<MATVOL>(id, *neighMat);
+    }else{
+      pmlMat = new TPZSingleSpacePML<MATVOL>(id, *neighMat);
+    }
 
-  if(atty){
-    const int ydir = wgma::pml::yinfo(type);
-    dY = yMax - yMin;
-    yBegin = ydir > 0 ? yMin : yMax;
-    boundPosX = (xMax + xMin)/2;
-    boundPosY = yBegin;
+    const bool attx = wgma::pml::attx(data.t);
+    const bool atty = wgma::pml::atty(data.t);
+  
+    if(attx) pmlMat->SetAttX(boundPosX, data.alphax, dX);
+    if(atty) pmlMat->SetAttY(boundPosY, data.alphay, dY);
+    cmesh->InsertMaterialObject(pmlMat);
   }
+  
 
-  if(attx && atty){
-    boundPosX = xBegin;
-    boundPosY = yBegin;
-  }
-  //find the neighbouring material
-  const auto neigh_mat_res =
-    gmeshtools::FindPMLNeighbourMaterial(gmesh, matId, volmats, boundPosX, boundPosY);
-
-  MATVOL *neighMat{nullptr};
-  if(neigh_mat_res.has_value()){
-    neighMat = dynamic_cast<MATVOL*>(
-      cmesh->FindMaterial(neigh_mat_res.value()));
-  }
+  
    
-  if(!neighMat){
-    PZError<<__PRETTY_FUNCTION__;
-    PZError<<"\n neighbouring material not found in mesh, aborting...."<<std::endl;
-    DebugStop();
-  }
-  
-  TPZMatPML<MATVOL> *pmlMat{nullptr};
-  if constexpr (std::is_base_of_v<TPZMatCombinedSpaces, MATVOL>){
-    pmlMat = new TPZCombinedSpacesPML<MATVOL>(matId, *neighMat);
-  }else{
-    pmlMat = new TPZSingleSpacePML<MATVOL>(matId, *neighMat);
-  }
-  if(attx) pmlMat->SetAttX(xBegin, alphax, dX);
-  if(atty) pmlMat->SetAttY(yBegin, alphay, dY);
-  cmesh->InsertMaterialObject(pmlMat);
-  return neighMat->Id();
+
+  return all_neighs;
 }
 #endif

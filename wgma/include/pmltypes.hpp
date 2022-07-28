@@ -2,6 +2,8 @@
 #define _PMLTYPES_HPP_
 
 #include <pzreal.h>
+#include <set>
+#include <map>
 
 namespace wgma{
   namespace pml{
@@ -63,15 +65,22 @@ namespace wgma{
       else return -1;
     }
 
-    //! Data structure for easier creation of PML regions
+    /** @brief Data structure for easier creation of PML regions.
+        For automatic setting of PML (finding neighbours), leave attribute
+        neigh empty and use only one id at a time.
+        For pseudo-PML regions (i.e., periodic meshes), use attribute
+        neigh for setting material properties for each PML region
+     */
     struct data{
       type t{type::xm};
       STATE alphax{0};
       STATE alphay{0};
-      int id{-100};
-      std::string name{"no_name"};//<name from the region associated with PML
-      explicit data(int i, type tp, STATE ax, STATE ay) :
-        id(i), t(tp), alphax(ax), alphay(ay) {}
+      std::set<int> ids{-100};
+      std::set<std::string> names{"no_name"};//<name from the region associated with PML
+      std::map<int,int> neigh{};
+      explicit data(std::set<int> i, type tp, STATE ax, STATE ay,
+                    std::map<int,int> n = {{}}) :
+        ids(i), t(tp), alphax(ax), alphay(ay), neigh(n) {}
       data() = default;
     };
   };

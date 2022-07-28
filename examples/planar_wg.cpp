@@ -178,7 +178,8 @@ int main(int argc, char *argv[]) {
   an.Run();
 
   const std::string plotfile = prefix+".vtk";
-  an.PostProcess(plotfile, vtkRes);
+  std::set<std::string_view> vars = {"Field_real", "Field_imag", "Field_abs"};
+  an.PostProcess(plotfile, vars, vtkRes);
 }
 
 
