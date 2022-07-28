@@ -153,14 +153,15 @@ namespace wgma::scattering{
       }
   }
   
-  void LoadSources(
+  void LoadSource(
     TPZAutoPointer<TPZCompMesh> scatt_cmesh,
     std::variant<
     wgma::scattering::Source1D,
-    wgma::scattering::SourceWgma> source,
-    const bool prescribed_source
+    wgma::scattering::SourceWgma> source
     )
   {
+    const bool prescribed_source =
+      std::holds_alternative<wgma::scattering::Source1D>(source);
     const std::set<int> src_id_set = [prescribed_source, &source](){
       if(prescribed_source){
         return std::get<wgma::scattering::Source1D>(source).id;
@@ -346,11 +347,12 @@ namespace wgma::scattering{
     scatt_cmesh->AutoBuild(allmats);
     scatt_cmesh->CleanUpUnconnectedNodes();
 
-    //check whether the solution is analytical or if it comes from modal analysis
-    const bool prescribed_source =
-      std::holds_alternative<wgma::scattering::Source1D>(source);
+    
 
-    const std::set<int> src_id_set = [prescribed_source, &source](){
+    const std::set<int> src_id_set = [&source](){
+      //check whether the solution is analytical or if it comes from modal analysis
+      const bool prescribed_source =
+        std::holds_alternative<wgma::scattering::Source1D>(source);
       if(prescribed_source){
         return std::get<wgma::scattering::Source1D>(source).id;
       }else{
@@ -394,7 +396,7 @@ namespace wgma::scattering{
 
 
     //now we load the source
-    LoadSources(scatt_cmesh, source, prescribed_source);
+    LoadSource(scatt_cmesh, source);
     return scatt_cmesh;
   }
 

@@ -112,6 +112,20 @@ namespace wgma::scattering{
   void
   SetPropagationConstant(TPZAutoPointer<TPZCompMesh> cmesh,
                          const CSTATE beta);
+
+  /**
+     @brief Loads a source for the scattering analysis.
+     The source can be either an analytical source or
+     a source from the modal analysis.
+     The value of the propagation constant beta is set by SetPropagationConstant.
+     @param[in] scatt_cmesh computational mesh of the scattering problem
+     @param[in] source source for the scattering problem
+  */
+  void
+  LoadSource(TPZAutoPointer<TPZCompMesh> cmesh,
+             std::variant<
+             wgma::scattering::Source1D,
+             wgma::scattering::SourceWgma> source);
 };
 
 #endif /* _SCATTERING_HPP_ */
