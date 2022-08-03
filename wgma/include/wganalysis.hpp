@@ -11,7 +11,7 @@ namespace wgma::wganalysis{
   /**
      @brief  Abstract base class responsible for managing the modal analysis of waveguides
   */
-  class Wgma{
+  class Wgma : private TPZEigenAnalysis{
   public:
     //! Default constructor
     Wgma() = default;
@@ -27,13 +27,19 @@ namespace wgma::wganalysis{
     virtual ~Wgma();
     //default dtor in the cpp file to ensure correct creation of vtable (https://stackoverflow.com/a/57504289/1870801)
     
-    //! Sets a custom eigensolver to be copied to underlying TPZWgma2D
-    void SetSolver(const TPZEigenSolver<CSTATE> &solv);
+    //! Sets a custom eigensolver to be copied to this instance
+    using TPZEigenAnalysis::SetSolver;
     /**
        @brief Gets a copy of the eigensolver for easier configuration
        @note A call to Wgma2D::SetSolver must be made afterwards.
     */
-    TPZEigenSolver<CSTATE> & GetSolver() const;
+    TPZEigenSolver<CSTATE> & GetSolver(){
+      return TPZEigenAnalysis::EigenSolver<CSTATE>();
+    }
+    /**
+       @brief Assemble both FEM matrices
+    */
+    using TPZEigenAnalysis::Assemble;
     /**
        @brief Assemble one of the FEM matrices (usefull for nlin problems) 
      */
@@ -59,7 +65,11 @@ namespace wgma::wganalysis{
     /*
       @brief Gets calculated eigenvalues
      */
-    TPZVec<CSTATE> GetEigenvalues() const;
+    using TPZEigenAnalysis::GetEigenvalues;
+    /*
+      @brief Gets calculated eigenvectors
+     */
+    using TPZEigenAnalysis::GetEigenvectors;
 
     /**
        @brief Export eigenvalues to in a csv format and append it to a file.
@@ -77,14 +87,12 @@ namespace wgma::wganalysis{
      */
     virtual void WriteToCsv(std::string filename, STATE lambda) = 0;
   protected:
+    using TPZAnalysis::SetCompMeshInit;
+    using TPZAnalysis::LoadSolution;
+    using TPZAnalysis::SetStructuralMatrix;
+    using TPZAnalysis::StructMatrix;
     //! Perform necessary adjustments on the eigensolver
     virtual void AdjustSolver(TPZEigenSolver<CSTATE> *solv) {}
-    //! Wgma2D instance
-    TPZAutoPointer<TPZEigenAnalysis> m_an{nullptr};
-    //! Calculated eigenvalues
-    TPZVec<CSTATE> m_evalues;
-    //! Calculated eigenvectors
-    TPZFMatrix<CSTATE> m_evectors;
     //! Whether the matrices have been assembled already
     bool m_assembled{false};
     //! Whether the equations have been filtered
@@ -138,6 +146,7 @@ namespace wgma::wganalysis{
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
     void CountActiveEqs(int &neq, int&nh1, int &nhcurl);
   private:
+    using Wgma::LoadSolution;
     void AdjustSolver(TPZEigenSolver<CSTATE> *solv) override;
     //! Combined computational mesh (hcurl and h1)
     TPZAutoPointer<TPZCompMesh> m_cmesh_mf{nullptr};
@@ -198,6 +207,7 @@ namespace wgma::wganalysis{
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
     void CountActiveEqs(int &neq);
   protected:
+    using Wgma::LoadSolution;
     //! Computational mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};
     //! Total number of dofs

@@ -18,27 +18,19 @@
 namespace wgma::wganalysis{
 
   Wgma::~Wgma(){}
-  
-  void Wgma::SetSolver(const TPZEigenSolver<CSTATE> & solv){
-    m_an->SetSolver(solv);
-  }
-    
-  TPZEigenSolver<CSTATE> & Wgma::GetSolver() const{
-    return m_an->EigenSolver<CSTATE>();
-  }
 
   void Wgma::Run(bool compute_eigenvectors){
 
     std::cout<<"Assembling..."<<std::flush;
     {
       TPZSimpleTimer assemble("Assemble");
-      m_an->Assemble();
+      Assemble();
     }
     std::cout<<"\rAssembled!"<<std::endl;
     
-    m_an->SetComputeEigenvectors(compute_eigenvectors);
+    TPZEigenAnalysis::SetComputeEigenvectors(compute_eigenvectors);
     TPZEigenSolver<CSTATE> *solv =
-      dynamic_cast<TPZEigenSolver<CSTATE>*>(m_an->Solver());
+      dynamic_cast<TPZEigenSolver<CSTATE>*>(this->Solver());
     if(!solv){
       std::cerr<<__PRETTY_FUNCTION__
                <<"\nA solver has not been set.\n"
@@ -55,14 +47,14 @@ namespace wgma::wganalysis{
   void Wgma::Assemble(TPZEigenAnalysis::Mat mat){
     std::cout<<"Assembling..."<<std::flush;
     TPZSimpleTimer assemble("Assemble");
-    m_an->AssembleMat(mat);
+    TPZEigenAnalysis::AssembleMat(mat);
     std::cout<<"\rAssembled!"<<std::endl;
   }
   
   void Wgma::Solve(bool compute_eigenvectors){
-    m_an->SetComputeEigenvectors(compute_eigenvectors);
+    TPZEigenAnalysis::SetComputeEigenvectors(compute_eigenvectors);
     TPZEigenSolver<CSTATE> *solv =
-      dynamic_cast<TPZEigenSolver<CSTATE>*>(m_an->Solver());
+      dynamic_cast<TPZEigenSolver<CSTATE>*>(this->Solver());
     if(!solv){
       std::cerr<<__PRETTY_FUNCTION__
                <<"\nA solver has not been set.\n"
@@ -75,48 +67,37 @@ namespace wgma::wganalysis{
 
     TPZSimpleTimer tsolv("Solve");
     std::cout<<"Solving..."<<std::flush;
-    m_an->Solve();
+    TPZEigenAnalysis::Solve();
     std::cout<<"\rSolved!"<<std::endl;
-    
-    m_evalues = m_an->GetEigenvalues();
 
     std::ios cout_state(nullptr);
     cout_state.copyfmt(std::cout);
     
     std::cout << std::setprecision(std::numeric_limits<STATE>::max_digits10);
 
-    for(auto &w : m_evalues){
+    for(auto &w : this->GetEigenvalues()){
       std::cout<<w<<std::endl;
     }
     std::cout.copyfmt(cout_state);
-    
-    if(m_an->ComputeEigenvectors()){
-      m_evectors = m_an->GetEigenvectors();
-    }
   }
 
   void Wgma::LoadSolution(const int isol)
   {
-    if(!m_an->ComputeEigenvectors()){
-      std::cout<<__PRETTY_FUNCTION__
-               <<"\nOnly eigenvalues were calculated.\n"
-               <<"Nothing to do here...\n";
+    const auto &ev = this->GetEigenvalues();
+    const auto &eigenvectors = this->GetEigenvectors();
+    
+    if(eigenvectors.Rows() == 0){
       return;
     }
-    if(isol > m_evalues.size()){
+    if(isol > ev.size()){
       std::cout<<__PRETTY_FUNCTION__
                <<"\nThe solution "<<isol<<" was requested but\n"
-               <<"only  "<<m_evalues.size()<<" eigenvectors\n"
+               <<"only  "<<ev.size()<<" eigenvectors\n"
                <<"were calculated. Aborting...\n";
       DebugStop();
     }
   }
-  
-  TPZVec<CSTATE> Wgma::GetEigenvalues() const
-  {
-    return m_evalues;
-  }
-  
+
   Wgma2D::Wgma2D(const TPZVec<TPZAutoPointer<TPZCompMesh>> &meshvec,
                  const int n_threads, const bool reorder_eqs,
                  const bool filter_bound)
@@ -133,8 +114,8 @@ namespace wgma::wganalysis{
     m_cmesh_mf = meshvec[0];
     m_cmesh_h1 = meshvec[1 + TPZWgma::H1Index()];
     m_cmesh_hcurl = meshvec[1 + TPZWgma::HCurlIndex()];
-  
-    m_an = new TPZEigenAnalysis(m_cmesh_mf, reorder_eqs);
+
+    this->SetCompMeshInit(m_cmesh_mf.operator->(), reorder_eqs);
 
     TPZAutoPointer<TPZStructMatrix> strmtrx =
       new TPZSpStructMatrix<CSTATE>(m_cmesh_mf);
@@ -156,7 +137,7 @@ namespace wgma::wganalysis{
     }else{
       CountActiveEqs(m_n_dofs_mf,m_n_dofs_h1,m_n_dofs_hcurl);
     }
-    m_an->SetStructuralMatrix(strmtrx);
+    this->SetStructuralMatrix(strmtrx);
   }
 
   void Wgma2D::AdjustSolver(TPZEigenSolver<CSTATE> *solver){
@@ -215,14 +196,14 @@ namespace wgma::wganalysis{
   void Wgma2D::LoadSolution(const int isol)
   {
     Wgma::LoadSolution(isol);
-    const auto neqOriginal = m_evectors.Rows();
+    
+    
+    const auto &ev = this->GetEigenvalues();
+    const auto &eigenvectors = this->GetEigenvectors();
+
+    const auto neqOriginal = eigenvectors.Rows();
     TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
     
-    auto &ev = m_evalues;
-    auto &eigenvectors = m_evectors;
-    
-    const auto nev = ev.size();
-
     TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshVecPost(2);
     meshVecPost[0] = m_cmesh_h1;
     meshVecPost[1] = m_cmesh_hcurl;
@@ -236,6 +217,7 @@ namespace wgma::wganalysis{
         {tmp = tmp.real();}
       return tmp;
     }();
+    
     eigenvectors.GetSub(0, isol, neqOriginal, 1, evector);
     for(auto mat : m_cmesh_mf->MaterialVec()){
       auto id = mat.first;
@@ -244,12 +226,13 @@ namespace wgma::wganalysis{
       if(!matPtr) continue;
       matPtr->SetKz(currentKz);
     }
-    m_an->LoadSolution(evector);
+    this->LoadSolution(evector);
     TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshVecPost, m_cmesh_mf);
   }
   
   void Wgma2D::WriteToCsv(std::string filename, STATE lambda){
-    const int nev = m_evalues.size();
+    const auto &ev = this->GetEigenvalues();
+    const int nev = ev.size();
     if(nev < 1){
       std::cout<<"There are no eigenvalues to write to .csv"<<std::endl;
       return;
@@ -274,8 +257,8 @@ namespace wgma::wganalysis{
     eigeninfo << std::fixed << lambda<<",";
     eigeninfo << nev<<",";
     for(int i = 0; i < nev ; i++){
-      eigeninfo<<std::fixed<<std::real(m_evalues[i])<<",";
-      eigeninfo<<std::fixed<<std::imag(m_evalues[i]);
+      eigeninfo<<std::fixed<<std::real(ev[i])<<",";
+      eigeninfo<<std::fixed<<std::imag(ev[i]);
       if(i != nev - 1 ) {
         eigeninfo << ",";
       }
@@ -294,7 +277,7 @@ namespace wgma::wganalysis{
   {
     m_filter_bound = filter_bound;
     
-    m_an = new TPZEigenAnalysis(m_cmesh, reorder_eqs);
+    this->SetCompMeshInit(m_cmesh.operator->(),reorder_eqs);
 
     TPZAutoPointer<TPZStructMatrix> strmtrx =
       new TPZSpStructMatrix<CSTATE>(m_cmesh);
@@ -315,7 +298,7 @@ namespace wgma::wganalysis{
     }else{
       std::cout<<"neq: "<<ndofs<<std::endl;
     }
-    m_an->SetStructuralMatrix(strmtrx);
+    this->SetStructuralMatrix(strmtrx);
   }
   
   void WgmaPlanar::WriteToCsv(std::string filename, STATE lambda)
@@ -326,7 +309,7 @@ namespace wgma::wganalysis{
   
   void WgmaPlanar::CountActiveEqs(int &neq)
   {
-    auto eq_filt = m_an->StructMatrix()->EquationFilter();
+    auto eq_filt = this->StructMatrix()->EquationFilter();
     if(eq_filt.IsActive()){
       neq = eq_filt.NActiveEquations();
     }else{
@@ -336,18 +319,15 @@ namespace wgma::wganalysis{
   void WgmaPlanar::LoadSolution(const int isol)
   {
     Wgma::LoadSolution(isol);
-    
-    const auto neqOriginal = m_evectors.Rows();
-    TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
-    
-    auto &ev = m_evalues;
-    auto &eigenvectors = m_evectors;
-    
-    const auto nev = ev.size();
 
-    const auto beta = ev[isol];
+    const auto &ev = this->GetEigenvalues();
+    const auto &eigenvectors = this->GetEigenvectors();
+    
+    const auto neqOriginal = eigenvectors.Rows();
+    TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
+
     eigenvectors.GetSub(0, isol, neqOriginal, 1, evector);
-    m_an->LoadSolution(evector);
+    this->LoadSolution(evector);
   }
 
 
