@@ -15,7 +15,7 @@ namespace wgma::scattering{
   /**
      @brief  Class responsible for managing the scattering analysis of planar waveguides
   */
-  class Analysis{
+  class Analysis : private TPZLinearAnalysis {
   public:
     /**
        @brief Creates the analysis module based on a given computational mesh
@@ -29,18 +29,20 @@ namespace wgma::scattering{
                        const int n_threads, const bool reorder_eqs=true,
                        const bool filter_bound=true);
     //! Sets a custom linear solver to be copied to underlying TPZAnalysis(advanced)
-    void SetSolver(const TPZMatrixSolver<CSTATE> &solv);
+    using TPZLinearAnalysis::SetSolver;
     /**
        @brief Gets a copy of the linear solver for easier configuration (advanced)
        @note A call to Analysis::SetSolver must be made afterwards.
     */
-    TPZMatrixSolver<CSTATE> & GetSolver() const;
+    TPZMatrixSolver<CSTATE> & GetSolver(){
+      return TPZLinearAnalysis::MatrixSolver<CSTATE>();
+    }
     /**
        @brief Assembles the algebraic system
      */
     void Assemble();
     /**
-       @brief Assembles the rhs of hte algebraic system
+       @brief Assembles the rhs of the algebraic system
        @param[in] identifiers of the materials to be assembled (source materials)
      */
     void AssembleRhs(std::set<int> matids);
@@ -57,8 +59,6 @@ namespace wgma::scattering{
   protected:
     //! H1 mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};
-    //! Analysis instance
-    TPZAutoPointer<TPZLinearAnalysis> m_an{nullptr};
     //! Whether the matrices have been assembled already
     bool m_assembled{false};
     //! Number of H1 dofs

@@ -20,11 +20,10 @@ namespace wgma::scattering{
                      const int n_threads,
                      const bool reorder_eqs,
                      const bool filter_bound) :
+    TPZLinearAnalysis(mesh,reorder_eqs),
     m_filter_bound(filter_bound){
     
     m_cmesh = mesh;
-  
-    m_an = new TPZLinearAnalysis(m_cmesh, reorder_eqs);
 
     TPZAutoPointer<TPZStructMatrix> strmtrx =
       new TPZSpStructMatrix<CSTATE>(m_cmesh);
@@ -46,40 +45,33 @@ namespace wgma::scattering{
                <<"\tneq(after): "<<m_n_dofs<<std::endl;
       strmtrx->EquationFilter().SetActiveEquations(activeEquations);
     }
-    m_an->SetStructuralMatrix(strmtrx);
+    SetStructuralMatrix(strmtrx);
 
     ///Setting a direct solver
     TPZStepSolver<CSTATE> step;
     step.SetDirect(ELU);
-    m_an->SetSolver(step);
-  }
-    
-  void Analysis::SetSolver(const TPZMatrixSolver<CSTATE> & solv){
-    m_an->SetSolver(solv);
-  }
-    
-  TPZMatrixSolver<CSTATE> & Analysis::GetSolver() const{
-    return m_an->MatrixSolver<CSTATE>();
+    SetSolver(step);
   }
 
 
   void Analysis::Assemble(){
     TPZSimpleTimer assemble("Assemble");
     //assembles the system
-    m_an->Assemble();    
+    TPZLinearAnalysis::Assemble();    
   }
   
   void Analysis::AssembleRhs(std::set<int> matids){
-    auto matids_cp = m_an->StructMatrix()->MaterialIds();
-    m_an->StructMatrix()->SetMaterialIds(matids);
-    m_an->AssembleResidual();
-    m_an->StructMatrix()->SetMaterialIds(matids_cp);
+    auto strmat = this->StructMatrix();
+    auto matids_cp = strmat->MaterialIds();
+    strmat->SetMaterialIds(matids);
+    TPZLinearAnalysis::AssembleResidual();
+    strmat->SetMaterialIds(matids_cp);
   }
   
   void Analysis::Solve(){
     TPZSimpleTimer solve("Solve");
     ///solves the system
-    m_an->Solve();
+    TPZLinearAnalysis::Solve();
   }
   void Analysis::Run(){
     Assemble();
