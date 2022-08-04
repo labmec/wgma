@@ -494,3 +494,45 @@ def generate_physical_ids(tags, domains):
             regions = domains[name]
             gmsh.model.add_physical_group(dim, regions, tag)
             gmsh.model.set_physical_name(dim, tag, name)
+
+
+def insert_pml_ids(pmlmap: dict, domain_ids: list, domain_tags: dict):
+    """
+    Create unique physical ids for PMLs and insert them into the dictionary.
+    It will also create a dictionary relating each PML region name and their tags.
+    The physical regions associated with the PML will be named accordingly to
+    their neighbour
+    Parameters
+    ----------
+    pmlmap: dict
+        pml maps as returned by create_pml_region and create_pml_corner
+    domain_ids: list
+        list of dictionaries of domain ids indexed by dimension of the domain
+    domain_tags: list
+        list of dictionaries of domain names and their associated tags
+    """
+
+    # first physical id for the PML regions
+    new_id = 0
+    for groups in domain_ids:
+        if not groups:
+            continue
+        for _, id in groups.items():
+            new_id += id
+
+    vol_ids = domain_ids[-1]
+    # tp is the pml type, tag its tag and reg the asociated region
+    pml_ids = {}
+    pml_tags = {}
+    for (tp, tag), reg in pmlmap.items():
+        rnlist = [name for name in vol_ids.keys()
+                  if domain_tags[name].count(reg) > 0]
+        if len(rnlist) == 0:
+            raise Exception("Tag "+str(tag)+" not found")
+        regname = rnlist[0]
+        pmlname = "pml_"+str(new_id)+"_"+regname+"_"+tp
+        pml_ids.update({pmlname: new_id})
+        pml_tags.update({pmlname: [tag]})
+        new_id = new_id+1
+    vol_ids.update(pml_ids)
+    domain_tags.update(pml_tags)
