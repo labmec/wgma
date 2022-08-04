@@ -13,6 +13,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <scattering.hpp>
 #include <util.hpp>
 #include <slepcepshandler.hpp>
+#include <post/orthosol.hpp>
 // pz includes
 #include <MMeshType.h>      //for MMeshType
 #include <TPZSimpleTimer.h> //for TPZSimpleTimer
@@ -190,6 +191,15 @@ int main(int argc, char *argv[]) {
     modal_an.Assemble(TPZEigenAnalysis::Mat::A);
     modal_an.Assemble(TPZEigenAnalysis::Mat::B);
     modal_an.Solve(computeVectors);
+    //load all obtained modes into the mesh
+    modal_an.LoadAllSolutions();
+    //leave empty for all valid matids
+    std::set<int> matids {};
+    auto ortho = wgma::post::OrthoSol(modal_cmesh, matids, nThreads);
+    //orthogonalise the modes
+    auto normsol = ortho.Orthogonalise();
+    //let us set the orthogonalised modes
+    modal_an.SetEigenvectors(normsol);
   }
 
 
@@ -279,7 +289,7 @@ int main(int argc, char *argv[]) {
   const int nsols = src_index.size();
     
   for(int isol = 0; isol < nsols; isol++){
-    std::cout<<"running source "<<isol<<" out of "<<nsols<<std::endl;
+    std::cout<<"running source "<<isol+1<<" out of "<<nsols<<std::endl;
     modal_an.LoadSolution(src_index[isol]);
     auto beta = std::sqrt(modal_an.GetEigenvalues()[isol]);
     wgma::scattering::LoadSource(scatt_cmesh, src);
