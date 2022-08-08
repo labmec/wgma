@@ -96,7 +96,17 @@ namespace wgma::wganalysis{
                <<"were calculated. Aborting...\n";
       DebugStop();
     }
+
+    LoadSolutionInternal(isol, 1);
   }
+
+
+  void Wgma::LoadAllSolutions()
+  {
+    const auto nsol = this->GetEigenvectors().Cols();
+    LoadSolutionInternal(0, nsol);
+  }
+  
 
   Wgma2D::Wgma2D(const TPZVec<TPZAutoPointer<TPZCompMesh>> &meshvec,
                  const int n_threads, const bool reorder_eqs,
@@ -191,18 +201,14 @@ namespace wgma::wganalysis{
     std::cout << "------\t----------\t-------" << std::endl;
     return;
   }
-
-
-  void Wgma2D::LoadSolution(const int isol)
-  {
-    Wgma::LoadSolution(isol);
-    
-    
+  
+  void Wgma2D::LoadSolutionInternal(const int isol, const int ncols)
+  { 
     const auto &ev = this->GetEigenvalues();
     const auto &eigenvectors = this->GetEigenvectors();
 
     const auto neqOriginal = eigenvectors.Rows();
-    TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
+    TPZFMatrix<CSTATE> evector(neqOriginal, ncols, 0.);
     
     TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshVecPost(2);
     meshVecPost[0] = m_cmesh_h1;
@@ -217,8 +223,10 @@ namespace wgma::wganalysis{
         {tmp = tmp.real();}
       return tmp;
     }();
+
     
-    eigenvectors.GetSub(0, isol, neqOriginal, 1, evector);
+
+    eigenvectors.GetSub(0, isol, neqOriginal, ncols, evector);
     for(auto mat : m_cmesh_mf->MaterialVec()){
       auto id = mat.first;
       auto matPtr =
@@ -316,17 +324,18 @@ namespace wgma::wganalysis{
       neq = m_cmesh->NEquations();
     }
   }
-  void WgmaPlanar::LoadSolution(const int isol)
+
+  
+  void WgmaPlanar::LoadSolutionInternal(const int isol, const int nsol)
   {
-    Wgma::LoadSolution(isol);
 
     const auto &ev = this->GetEigenvalues();
     const auto &eigenvectors = this->GetEigenvectors();
     
     const auto neqOriginal = eigenvectors.Rows();
-    TPZFMatrix<CSTATE> evector(neqOriginal, 1, 0.);
+    TPZFMatrix<CSTATE> evector(neqOriginal, nsol, 0.);
 
-    eigenvectors.GetSub(0, isol, neqOriginal, 1, evector);
+    eigenvectors.GetSub(0, isol, neqOriginal, nsol, evector);
     this->LoadSolution(evector);
   }
 

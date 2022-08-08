@@ -59,9 +59,12 @@ namespace wgma::wganalysis{
       @brief Loads the isol-th solution (eigenvector) in the computational mesh.
       This method is specially useful if the solution from the modal analysis
       will be used in another FEM scheme (as a source, for instance).
-      @note Derived classes should call base class function first.
+      @note Derived classes will implement LoadSolutionInternal.
      */
-    virtual void LoadSolution(const int isol) = 0;
+    void LoadSolution(const int isol);
+
+    //! Loads all computed eigenvectors into the mesh
+    void LoadAllSolutions();
     /*
       @brief Gets calculated eigenvalues
      */
@@ -91,8 +94,10 @@ namespace wgma::wganalysis{
      */
     virtual void WriteToCsv(std::string filename, STATE lambda) = 0;
   protected:
+
+    virtual void LoadSolutionInternal(const int isol, const int nsol) = 0;
+    using TPZEigenAnalysis::LoadSolution;
     using TPZAnalysis::SetCompMeshInit;
-    using TPZAnalysis::LoadSolution;
     using TPZAnalysis::SetStructuralMatrix;
     using TPZAnalysis::StructMatrix;
     //! Perform necessary adjustments on the eigensolver
@@ -123,14 +128,6 @@ namespace wgma::wganalysis{
                const int n_threads, const bool reorder_eqs=true,
                const bool filter_bound=true);
 
-    /*
-      @brief Loads the isol-th solution (eigenvector) in the computational mesh.
-      This method is specially useful if the solution from the modal analysis
-      will be used in another FEM scheme (as a source, for instance).
-      @note Derived classes should call base class function first.
-     */
-    void LoadSolution(const int isol) override;
-
     /**
        @brief Export eigenvalues to in a csv format and append it to a file.
        The following values are exported:
@@ -150,7 +147,8 @@ namespace wgma::wganalysis{
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
     void CountActiveEqs(int &neq, int&nh1, int &nhcurl);
   private:
-    using Wgma::LoadSolution;
+    void LoadSolutionInternal(const int isol, const int ncols) override;
+    
     void AdjustSolver(TPZEigenSolver<CSTATE> *solv) override;
     //! Combined computational mesh (hcurl and h1)
     TPZAutoPointer<TPZCompMesh> m_cmesh_mf{nullptr};
@@ -183,15 +181,6 @@ namespace wgma::wganalysis{
     WgmaPlanar(TPZAutoPointer<TPZCompMesh> cmesh,
                const int n_threads, const bool reorder_eqs=true,
                const bool filter_bound=true);
-
-    /*
-      @brief Loads the isol-th solution (eigenvector) in the computational mesh.
-      This method is specially useful if the solution from the modal analysis
-      will be used in another FEM scheme (as a source, for instance).
-      @note Derived classes should call base class function first.
-     */
-    void LoadSolution(const int isol) override;
-
     /**
        @brief Export eigenvalues to in a csv format and append it to a file.
        The following values are exported:
@@ -211,7 +200,7 @@ namespace wgma::wganalysis{
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
     void CountActiveEqs(int &neq);
   protected:
-    using Wgma::LoadSolution;
+    void LoadSolutionInternal(const int isol, const int nsol) override;
     //! Computational mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};
     //! Total number of dofs
