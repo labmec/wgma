@@ -17,6 +17,10 @@ set(headers
   include/scattering.hpp
   include/slepcepshandler.hpp
   include/util.hpp
+  include/post/eldata.hpp
+  include/post/integrator.hpp
+  include/post/solutionnorm.hpp
+  include/post/orthosol.hpp
   )
 
 set(sources
@@ -26,6 +30,9 @@ set(sources
   src/scattering.cpp
   src/slepcepshandler.cpp
   src/util.cpp
+  src/post/integrator.cpp
+  src/post/solutionnorm.cpp
+  src/post/orthosol.cpp
   )
 
 target_sources(wgma PUBLIC ${headers})
