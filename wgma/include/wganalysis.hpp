@@ -66,10 +66,14 @@ namespace wgma::wganalysis{
       @brief Gets calculated eigenvalues
      */
     using TPZEigenAnalysis::GetEigenvalues;
+    //! Sets eigenvalues
+    using TPZEigenAnalysis::SetEigenvalues;
     /*
       @brief Gets calculated eigenvectors
      */
     using TPZEigenAnalysis::GetEigenvectors;
+    //! Sets eigenvectors
+    using TPZEigenAnalysis::SetEigenvectors;
 
     /**
        @brief Export eigenvalues to in a csv format and append it to a file.
