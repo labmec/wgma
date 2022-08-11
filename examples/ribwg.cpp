@@ -13,6 +13,7 @@ directional mesh refinement.
 #include "gmeshtools.hpp"
 #include "pmltypes.hpp"
 #include "slepcepshandler.hpp"
+#include "util.hpp"
 //pz includes
 #include <MMeshType.h>                   //for MMeshType
 #include <pzcmesh.h>                     //for TPZCompMesh
@@ -24,6 +25,7 @@ directional mesh refinement.
 #include <pzmultiphysicselement.h>
 #include <Electromagnetics/TPZWgma.h>
 #include <pzbuildmultiphysicsmesh.h>
+#include <TPZVTKGenerator.h>
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
 
 
@@ -97,7 +99,8 @@ int main(int argc, char *argv[]) {
   //whether to export the solution as a .vtk file
   constexpr bool exportVtk{true};
   //prefix for exported files
-  const std::string prefix{"ribwg"};
+  const std::string prefix{"res_ribwg/ribwg"};
+  wgma::util::CreatePath(wgma::util::ExtractPath(prefix));
   //resolution of the .vtk file in which the solution will be exported
   constexpr int vtkRes{3};
   //if true, the real part of the electric fields is exported. otherwise, the magnitude
@@ -235,11 +238,24 @@ int main(int argc, char *argv[]) {
   
   if (!computeVectors && !exportVtk) return 0;
 
-  const std::string plotfile = prefix+"_field_";
+  const std::string plotfile = prefix+"_field";
 
   TPZSimpleTimer postProc("Post processing");
-  
-  analysis.PostProcess(plotfile, vtkRes, printRealPart);
+
+  TPZVec<std::string> fields = {
+    "Ez_real",
+    "Ez_abs",
+    "Et_real",
+    "Et_abs"};
+  auto vtk = TPZVTKGenerator(meshVec[0], fields, plotfile, vtkRes);
+  auto ev = analysis.GetEigenvalues();
+  for (int isol = 0; isol < ev.size(); isol++) {
+    auto currentKz = std::sqrt(-1.0*ev[isol]);
+    std::cout<<"\rPost processing step "<<isol+1<<" out of "<<ev.size()
+             <<"(kz = "<<currentKz<<")"<<std::endl;
+    analysis.LoadSolution(isol);
+    vtk.Do();
+  }
   return 0;
 }
 

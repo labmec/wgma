@@ -20,7 +20,7 @@ directional mesh refinement.
 #include <pzgmesh.h>                     //for TPZGeoMesh
 #include <pzlog.h>                       //for TPZLogger
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
-
+#include <TPZVTKGenerator.h>
 
 
 /**
@@ -178,8 +178,15 @@ int main(int argc, char *argv[]) {
   an.Run();
 
   const std::string plotfile = prefix+".vtk";
-  std::set<std::string_view> vars = {"Field_real", "Field_imag", "Field_abs"};
-  an.PostProcess(plotfile, vars, vtkRes);
+  TPZSimpleTimer postProc("Post processing");
+
+  TPZVec<std::string> fields = {
+    "Ez_real",
+    "Ez_abs",
+    "Et_real",
+    "Et_abs"};
+  auto vtk = TPZVTKGenerator(cmesh, fields, plotfile, vtkRes);
+  vtk.Do();
 }
 
 

@@ -20,11 +20,12 @@ J. Lightwave Technol. 20, 463- (2002)
 #include <wganalysis.hpp>
 #include <scattering.hpp>
 #include <util.hpp>
+#include <slepcepshandler.hpp>
 // pz includes
 #include <MMeshType.h>      //for MMeshType
 #include <TPZSimpleTimer.h> //for TPZSimpleTimer
 #include <pzlog.h>          //for TPZLogger
-
+#include <TPZVTKGenerator.h>
 
 #include <Electromagnetics/TPZPlanarWgScatt.h>
 #include <Electromagnetics/TPZMatPML.h>
@@ -84,7 +85,7 @@ int main(int argc, char *argv[]) {
   constexpr int nThreads{8};
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
-  constexpr bool usingSLEPC {true};
+  constexpr bool usingSLEPC {false};
 
   /*********************
    * exporting options *
@@ -203,7 +204,7 @@ int main(int argc, char *argv[]) {
   
   std::cout.precision(std::numeric_limits<STATE>::max_digits10);
   STATE rel_error{0};
-  constexpr STATE tol = std::numeric_limits<STATE>::epsilon()*10;
+  constexpr STATE tol = std::numeric_limits<STATE>::epsilon()*1000;
 
   bool computeVectors{false};
   auto solver = SetupSolver( beta*beta, sortingRule, usingSLEPC);
@@ -253,18 +254,28 @@ int main(int argc, char *argv[]) {
   }
 
 
+  modal_an.LoadSolution(0);
+  beta = std::sqrt(modal_an.GetEigenvalues()[0]);
   {
     TPZSimpleTimer postProc("Post processing");
-  
+    
     if(exportVtk){
       const std::string modal_file = prefix+"_modal";
-      modal_an.PostProcess(modal_file, vtkRes);
+      TPZVec<std::string> fvars = {
+        "Field_real",
+        "Field_imag",
+        "Field_abs",
+        // "Field_phase",
+        "Deriv_real",
+        "Deriv_imag",
+        "Deriv_abs",
+        // "Deriv_phase"
+      };
+      auto vtk = TPZVTKGenerator(modal_cmesh, fvars, modal_file, vtkRes);
+      
+      vtk.Do();
     }
-  }
-
-  beta = std::sqrt(modal_an.GetEigenvalues()[0]);
-  modal_an.LoadSolution(0);
-  
+  }  
   
   /*********************
    * cmesh(scattering) *
@@ -324,13 +335,25 @@ int main(int argc, char *argv[]) {
     wgma::cmeshtools::RemovePeriodicity(modal_cmesh);
 
     const std::string scatt_file = prefix+"_scatt";
-    std::set<std::string_view> vars = {
-      // "Field_real",
-      // "Field_imag",
-      "Field_abs"};
-    TPZSimpleTimer tpostprocess("Post processing");
-    scatt_an.PostProcess(scatt_file, vars, vtkRes);
+    // {
+    //   TPZSimpleTimer tpostprocess("Post processing(old)");
+    //   std::set<std::string_view> vars = {
+    //     // "Field_real",
+    //     // "Field_imag",
+    //     "Field_abs"};
+    //   scatt_an.PostProcess(scatt_file, vars, vtkRes);
+    // }
+    {
+      TPZSimpleTimer tpostprocess("Post processing(new)");
+      TPZVec<std::string> fvars = {
+        // "Field_real",
+        // "Field_imag",
+        "Field_abs"};
+      auto vtk = TPZVTKGenerator(scatt_cmesh, fvars, scatt_file, vtkRes);
+      vtk.Do();
+    }
   }
+  // wgma::slepc::EPSHandler<CSTATE>::FinalizeSLEPc();
 }
 
 

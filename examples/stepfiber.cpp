@@ -13,6 +13,7 @@ complex curved structured meshes in NeoPZ.
 #include "gmeshtools.hpp"
 #include "pmltypes.hpp"
 #include "slepcepshandler.hpp"
+#include "util.hpp"
 //pz includes
 #include <MMeshType.h>                   //for MMeshType
 #include <pzcmesh.h>                     //for TPZCompMesh
@@ -20,7 +21,7 @@ complex curved structured meshes in NeoPZ.
 #include <pzlog.h>                       //for TPZLogger
 #include <TPZElectromagneticConstants.h> //for pzelectromag::cZero
 #include <TPZKrylovEigenSolver.h>        //for TPZKrylovEigenSolver
-
+#include <TPZVTKGenerator.h>
 
 
 
@@ -147,7 +148,11 @@ int main(int argc, char *argv[]) {
   //whether to export the solution as a .vtk file
   constexpr bool exportVtk{true};
   //resolution of the .vtk file in which the solution will be exported
-  constexpr int vtkRes{0};
+  constexpr int vtkRes{2};
+  // path for output files
+  const std::string path {"res_stepfiber/"};
+  //just to make sure we will output results
+  wgma::util::CreatePath(path);
   //if true, the real part of the electric fields is exported. otherwise, the magnitude
   constexpr bool printRealPart{true};
 
@@ -192,7 +197,7 @@ int main(int argc, char *argv[]) {
     //prefix for the gmesh files
     const std::string prefix = refine ? "ref_" : "noref_";
     const auto suffix = usingPML? "wpml" : "";
-    const auto filename = "stepfiber_gmesh_"+
+    const auto filename = path+"stepfiber_gmesh_"+
       std::to_string(factor) + " _" + prefix + suffix;
     wgma::gmeshtools::PrintGeoMesh(gmesh,filename);
   }
@@ -247,11 +252,27 @@ int main(int argc, char *argv[]) {
   
   if (!computeVectors && !exportVtk) return 0;
 
-  const std::string plotfile = "stepfiber_field_";
+  const std::string plotfile = path+"stepfiber_field";
 
-  TPZSimpleTimer postProc("Post processing");
   
-  analysis.PostProcess(plotfile, vtkRes, printRealPart);
+  {
+    
+    TPZSimpleTimer tpostprocess("Post processing");
+    TPZVec<std::string> fvars = {
+      "Ez_real",
+      "Ez_abs",
+      "Et_real",
+      "Et_abs"};
+    auto vtk = TPZVTKGenerator(meshVec[0], fvars, plotfile, vtkRes);
+    auto ev = analysis.GetEigenvalues();
+    for (int isol = 0; isol < ev.size(); isol++) {
+      auto currentKz = std::sqrt(-1.0*ev[isol]);
+      std::cout<<"\rPost processing step "<<isol+1<<" out of "<<ev.size()
+               <<"(kz = "<<currentKz<<")"<<std::endl;
+      analysis.LoadSolution(isol);
+      vtk.Do();
+    }
+  }
   return 0;
 }
 

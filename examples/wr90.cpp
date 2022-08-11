@@ -9,6 +9,7 @@ of a metal-backed electromagnetic waveguide using the WR90 waveguide as a model.
 #include "gmeshtools.hpp"
 #include "cmeshtools.hpp"
 #include "wganalysis.hpp"
+#include "util.hpp"
 //pz includes
 #include <MMeshType.h>                   //for MMeshType
 #include <pzcmesh.h>                     //for TPZCompMesh
@@ -17,7 +18,7 @@ of a metal-backed electromagnetic waveguide using the WR90 waveguide as a model.
 #include <pzlog.h>                       //for TPZLogger
 #include <TPZElectromagneticConstants.h> //for pzelectromag::cZero
 #include <TPZKrylovEigenSolver.h>        //for TPZKrylovEigenSolver
-
+#include <TPZVTKGenerator.h>             //for TPZVTKGenerator
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
 /**
    @brief Creates the geometrical mesh associated with a rectangular metallic waveguide. 
@@ -113,6 +114,9 @@ int main(int argc, char *argv[]) {
   constexpr int vtkRes{1};
   //if true, the real part of the electric fields is exported. otherwise, the magnitude
   constexpr bool printRealPart{true};
+  //path for exporting file
+  const std::string path{"res_wr90/"};
+  wgma::util::CreatePath(path);
 
   /********************
    * advanced options *
@@ -147,7 +151,7 @@ int main(int argc, char *argv[]) {
   //print gmesh to .txt and .vtk format
   if(printGMesh)
   {
-    const auto filename = "wr90_gmesh_"+
+    const auto filename = path+"wr90_gmesh_"+
       std::to_string(nDivX) + " _" + std::to_string(nDivY);
     wgma::gmeshtools::PrintGeoMesh(gmesh,filename);
   }
@@ -192,11 +196,25 @@ int main(int argc, char *argv[]) {
   
   if (!computeVectors && !exportVtk) return 0;
 
-  const std::string plotfile = "wr90_field_";
+  const std::string plotfile = path+"wr90_field";
 
   TPZSimpleTimer postProc("Post processing");
+
+  TPZVec<std::string> fields = {
+    "Ez_real",
+    "Ez_abs",
+    "Et_real",
+    "Et_abs"};
+  auto vtk = TPZVTKGenerator(meshVec[0], fields, plotfile, vtkRes);
+  auto ev = analysis.GetEigenvalues();
+  for (int isol = 0; isol < ev.size(); isol++) {
+    auto currentKz = std::sqrt(-1.0*ev[isol]);
+    std::cout<<"\rPost processing step "<<isol+1<<" out of "<<ev.size()
+             <<"(kz = "<<currentKz<<")"<<std::endl;
+    analysis.LoadSolution(isol);
+    vtk.Do();
+  }
   
-  analysis.PostProcess(plotfile, vtkRes, printRealPart);
   return 0;
 }
 

@@ -110,14 +110,6 @@ namespace wgma::wganalysis{
     Wgma2D(const TPZVec<TPZAutoPointer<TPZCompMesh>> &meshvec,
                const int n_threads, const bool reorder_eqs=true,
                const bool filter_bound=true);
-    
-    /**
-       @brief Post-process the solution in .vtk format
-       @param[in] filename without extension in which to export the solution
-       @param[in] vtk_res resolution of the .vtk file (number of element subdivisions)
-       @param[in] print_real_part whether to print the real part (or magnitude) of the field
-     */
-    void PostProcess(std::string filename, const int vtk_res = 0, const bool print_real_part=true);
 
     /*
       @brief Loads the isol-th solution (eigenvector) in the computational mesh.
@@ -194,13 +186,6 @@ namespace wgma::wganalysis{
       @note Derived classes should call base class function first.
      */
     void LoadSolution(const int isol) override;
-    
-    /**
-       @brief Post-process the solution in .vtk format
-       @param[in] filename without extension in which to export the solution
-       @param[in] vtk_res resolution of the .vtk file (number of element subdivisions)
-     */
-    void PostProcess(std::string filename, const int vtk_res = 0);
 
     /**
        @brief Export eigenvalues to in a csv format and append it to a file.

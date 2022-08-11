@@ -24,6 +24,7 @@ J. Lightwave Technol. 20, 463- (2002)
 #include <MMeshType.h>      //for MMeshType
 #include <TPZSimpleTimer.h> //for TPZSimpleTimer
 #include <pzlog.h>          //for TPZLogger
+#include <TPZVTKGenerator.h>
 // std includes
 #include <regex>
 
@@ -235,7 +236,18 @@ int main(int argc, char *argv[]) {
   
     if(exportVtk){
       const std::string modal_file = prefix+"_modal";
-      modal_an.PostProcess(modal_file, vtkRes);
+      TPZVec<std::string> fvars = {
+        "Field_real",
+        "Field_imag",
+        "Field_abs",
+        // "Field_phase",
+        "Deriv_real",
+        "Deriv_imag",
+        "Deriv_abs",
+        // "Deriv_phase"
+      };
+      auto vtk = TPZVTKGenerator(modal_cmesh, fvars, modal_file, vtkRes);
+      vtk.Do();
     }
   }
 
@@ -287,8 +299,15 @@ int main(int argc, char *argv[]) {
   wgma::cmeshtools::RemovePeriodicity(modal_cmesh);
 
   const std::string scatt_file = prefix+"_scatt";
-  std::set<std::string_view> empty;//print all relevant ouo
-  scatt_an.PostProcess(scatt_file, empty, vtkRes);
+  {
+    TPZSimpleTimer tpostprocess("Post processing(new)");
+    TPZVec<std::string> fvars = {
+      // "Field_real",
+      // "Field_imag",
+      "Field_abs"};
+    auto vtk = TPZVTKGenerator(scatt_cmesh, fvars, scatt_file, vtkRes);
+    vtk.Do();
+  }
   
 }
 

@@ -40,16 +40,6 @@ namespace wgma::scattering{
      */
     void Run();
 
-    static constexpr std::string_view VecNames[] = {"Deriv_real"sv,"Deriv_imag"sv,"Deriv_abs"sv};
-    static constexpr std::string_view ScalNames[] = {"Field_real"sv,"Field_imag"sv,"Field_abs"sv};
-    /**
-       @brief Post-process the solution in .vtk format
-       @param[in] filename without extension in which to export the solution
-       @param[in] vars variables to be post-processed (leave empty for all)
-       @param[in] vtk_res resolution of the .vtk file (number of element subdivisions)
-     */
-    void PostProcess(std::string filename, std::set<std::string_view> vars = {}, const int vtk_res = 0);
-
     
   protected:
     //! H1 mesh
