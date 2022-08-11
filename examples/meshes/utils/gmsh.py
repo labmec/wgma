@@ -231,7 +231,7 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         'yp') else -1 if direction.count('ym') else 0)
     signvec.append(1 if direction.count(
         'zp') else -1 if direction.count('zm') else 0)
-    print(dpml)
+    # print(dpml)
     for ix in range(3):
         minv = min([xc[ix]for xc in mclist])
         maxv = max([xc[ix]for xc in mclist])
