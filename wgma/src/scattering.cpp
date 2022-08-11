@@ -62,17 +62,28 @@ namespace wgma::scattering{
     return m_an->MatrixSolver<CSTATE>();
   }
 
+
+  void Analysis::Assemble(){
+    TPZSimpleTimer assemble("Assemble");
+    //assembles the system
+    m_an->Assemble();    
+  }
+  
+  void Analysis::AssembleRhs(std::set<int> matids){
+    auto matids_cp = m_an->StructMatrix()->MaterialIds();
+    m_an->StructMatrix()->SetMaterialIds(matids);
+    m_an->AssembleResidual();
+    m_an->StructMatrix()->SetMaterialIds(matids_cp);
+  }
+  
+  void Analysis::Solve(){
+    TPZSimpleTimer solve("Solve");
+    ///solves the system
+    m_an->Solve();
+  }
   void Analysis::Run(){
-    {
-      TPZSimpleTimer assemble("Assemble");
-      //assembles the system
-      m_an->Assemble();
-    }
-    {
-      TPZSimpleTimer solve("Solve");
-      ///solves the system
-      m_an->Solve();
-    }
+    Assemble();
+    Solve();
   }
 
 
@@ -153,14 +164,15 @@ namespace wgma::scattering{
       }
   }
   
-  void LoadSources(
+  void LoadSource(
     TPZAutoPointer<TPZCompMesh> scatt_cmesh,
     std::variant<
     wgma::scattering::Source1D,
-    wgma::scattering::SourceWgma> source,
-    const bool prescribed_source
+    wgma::scattering::SourceWgma> source
     )
   {
+    const bool prescribed_source =
+      std::holds_alternative<wgma::scattering::Source1D>(source);
     const std::set<int> src_id_set = [prescribed_source, &source](){
       if(prescribed_source){
         return std::get<wgma::scattering::Source1D>(source).id;
@@ -269,9 +281,7 @@ namespace wgma::scattering{
   CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
                     const wgma::planarwg::mode mode, int pOrder,
                     wgma::cmeshtools::PhysicalData &data,
-                    std::variant<
-                    wgma::scattering::Source1D,
-                    wgma::scattering::SourceWgma> source,
+                    const std::set<int> src_id_set,
                     const STATE lambda, const REAL scale)
   {
     static constexpr bool isComplex{true};
@@ -346,17 +356,6 @@ namespace wgma::scattering{
     scatt_cmesh->AutoBuild(allmats);
     scatt_cmesh->CleanUpUnconnectedNodes();
 
-    //check whether the solution is analytical or if it comes from modal analysis
-    const bool prescribed_source =
-      std::holds_alternative<wgma::scattering::Source1D>(source);
-
-    const std::set<int> src_id_set = [prescribed_source, &source](){
-      if(prescribed_source){
-        return std::get<wgma::scattering::Source1D>(source).id;
-      }else{
-        return std::get<wgma::scattering::SourceWgma>(source).id;
-      }
-    }();
 
     //we insert all the materials in the computational mesh
     for(auto src_id : src_id_set){
@@ -392,9 +391,6 @@ namespace wgma::scattering{
     //create computational elements with memory for the source
     scatt_cmesh->AutoBuild(src_id_set);
 
-
-    //now we load the source
-    LoadSources(scatt_cmesh, source, prescribed_source);
     return scatt_cmesh;
   }
 

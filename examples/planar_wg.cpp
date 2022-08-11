@@ -147,19 +147,14 @@ int main(int argc, char *argv[]) {
 
 
   
-  auto mysource = GetSourceFunc(scale,lambda);
-
-  auto beta = mysource.second;
   
-  wgma::scattering::Source1D sources;
-  sources.func = mysource.first;
-  
+  std::set<int> source_ids;
   {
     //let us iterate through all 1D materials read by gmsh
     for(auto gmshbc : gmshmats[1]){
       const auto bcname = gmshbc.first;
       if(srclist.find(bcname) != srclist.end()){
-        sources.id.insert(gmshbc.second);
+        source_ids.insert(gmshbc.second);
       }
     }
   }
@@ -168,8 +163,16 @@ int main(int argc, char *argv[]) {
     
   auto cmesh =
     wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder,
-                                        data, sources, lambda,scale);
+                                        data, source_ids, lambda,scale);
 
+  auto mysource = GetSourceFunc(scale,lambda);
+
+  auto beta = mysource.second;
+  
+  wgma::scattering::Source1D sources;
+  sources.func = mysource.first;
+  sources.id = source_ids;
+  wgma::scattering::LoadSource(cmesh, sources);
   wgma::scattering::SetPropagationConstant(cmesh, beta);
 
   auto an = wgma::scattering::Analysis(cmesh, nThreads,
