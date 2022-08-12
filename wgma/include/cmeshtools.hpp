@@ -23,6 +23,12 @@ namespace wgma::cmeshtools{
   /** @brief Data needed for creating the computational mesh.
       @note for gmsh generated meshes, the routine SetupGmshMaterialData
       fills all the data in the correct format.
+      
+      Materials related to the variational formulation are given in matinfovec.
+      PML materials are in pmlvec, and boundary conditions are in bcvec.
+      If no specific computation should take place for a given material id,
+      but elements should be created anyway (i.e., probes for easier evaluation
+      of the solution), insert the material ids on probevec.
    */
   struct PhysicalData{
     //! each position contains the tuple (id,er,ur) for a given region of the mesh
@@ -31,6 +37,8 @@ namespace wgma::cmeshtools{
     std::vector<wgma::pml::data> pmlvec;
     //! each position contains data for a given boundary condition
     std::vector<wgma::bc::data> bcvec;
+    //! each position contains ids and dimension of dummy materials (such as probes)
+    std::vector<std::pair<int,int>> probevec;
   };
   /**
    @brief This function associates materials (regions) read from .msh file

@@ -9,6 +9,7 @@
 #include <Electromagnetics/TPZPeriodicWgma.h>
 #include <Electromagnetics/TPZPlanarWgma.h>
 #include <TPZNullMaterial.h>
+#include <TPZNullMaterialCS.h>
 #include <TPZSimpleTimer.h>
 #include <pzbuildmultiphysicsmesh.h>
 #include <pzelctemp.h>
@@ -401,7 +402,11 @@ namespace wgma::wganalysis{
       }
     }
 
-
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      cmeshH1->InsertMaterialObject(mat);
+    }
 
     /**let us associate each boundary with a given material.
        this is important for any non-homogeneous BCs*/
@@ -450,6 +455,11 @@ namespace wgma::wganalysis{
       }
     }
 
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      cmeshHCurl->InsertMaterialObject(mat);
+    }
   
     for(auto bc : bcDataVec){
       const int bctype = wgma::bc::to_int(bc.t);
@@ -479,7 +489,13 @@ namespace wgma::wganalysis{
         TPZWgma
         >(pml, realvolmats, gmesh, cmeshMF);
     }
-  
+
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterialCS<CSTATE>(id,matdim,nstate);
+      cmeshMF->InsertMaterialObject(mat);
+    }
+    
     for(auto bc : bcDataVec){
       const int bctype = wgma::bc::to_int(bc.t);
       const int id = bc.id;
@@ -561,6 +577,12 @@ namespace wgma::wganalysis{
     }
     
 
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      cmeshH1->InsertMaterialObject(mat);
+      allmats.insert(id);
+    }
     TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
     TPZManVector<CSTATE, 1> val2(1, 0.);
 
@@ -647,6 +669,13 @@ namespace wgma::wganalysis{
       }
     }
 
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      cmeshH1->InsertMaterialObject(mat);
+      allmats.insert(id);
+    }
+    
     TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
     TPZManVector<CSTATE, 1> val2(1, 0.);
 

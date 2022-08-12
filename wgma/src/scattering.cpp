@@ -7,6 +7,7 @@
 #include <pzstepsolver.h>
 #include <Electromagnetics/TPZPlanarWgScatt.h>
 #include <Electromagnetics/TPZPlanarWgScattSrc.h>
+#include <TPZNullMaterial.h>
 #include <TPZSimpleTimer.h>
 #include <pzcompelwithmem.h>
 #include <pzaxestools.h>
@@ -320,6 +321,12 @@ namespace wgma::scattering{
       }
     }
 
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      scatt_cmesh->InsertMaterialObject(mat);
+      allmats.insert(id);
+    }
   
     TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
     TPZManVector<CSTATE,1> val2(1, 0.);
