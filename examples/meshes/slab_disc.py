@@ -8,6 +8,7 @@ from utils.gmsh import (
     create_pml_region,
     create_pml_corner,
     create_rect,
+    find_pml_region,
     generate_physical_ids,
     insert_pml_ids,
     LineData,
@@ -20,8 +21,11 @@ from utils.gmsh import (
 #############################################
 #                  BEGIN                    #
 #############################################
-h1 = 0.4
-h2 = 1.5
+# h1 = 0.4
+# h2 = 1.5
+h1 = 1.5
+h2 = 0.4
+
 
 h_domain = 10
 w_domain = 10
@@ -212,8 +216,8 @@ lower, upper = split_region_dir(all_domains, 'y')
 ul, ur = split_region_dir(upper, "x")
 ll, lr = split_region_dir(lower, "x")
 # setting up the PMLs
-pmlmap = {}
 
+pmlmap = {}
 pmlmap.update(create_pml_region(left, "xm", d_pmlx))
 pmlmap.update(create_pml_region(right, "xp", d_pmlx))
 pmlmap.update(create_pml_region(upper, "yp", d_pmly))
@@ -228,29 +232,66 @@ pmlmap.update(create_pml_corner(ur, "xpyp", dpml))
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
-# just in case any point ids have changed
-source_left_pts = gmsh.model.get_boundary(
-    [(1, tag) for tag in source_left.tag],
-    combined=True, oriented=False, recursive=False)
-source_left_pts = [reg[1] for reg in source_left_pts]
 
-source_right_pts = gmsh.model.get_boundary(
-    [(1, tag) for tag in source_right.tag],
-    combined=True, oriented=False, recursive=False)
-source_right_pts = [reg[1] for reg in source_right_pts]
-
-
-far_right_pts = gmsh.model.get_boundary(
-    [(1, tag) for tag in far_right.tag],
-    combined=True, oriented=False, recursive=False)
-far_right_pts = [reg[1] for reg in far_right_pts]
-
-# get boundary
+# let us add 1d pml regions
+src_right_clad_dimtags = [(1, t) for t in src_right_clad_tags]
+far_right_clad_dimtags = [(1, t) for t in far_right_clad_tags]
+src_left_clad_dimtags = [(1, t) for t in src_left_clad_tags]
+pmldim = 2
+pml1d_src_left = find_pml_region(src_left_clad_dimtags, pmlmap, pmldim)
+pml1d_src_right = find_pml_region(src_right_clad_dimtags, pmlmap, pmldim)
+pml1d_far_right = find_pml_region(far_right_clad_dimtags, pmlmap, pmldim)
+pmlmap1d = {}
+pmlmap1d.update(pml1d_src_left)
+pmlmap1d.update(pml1d_src_right)
+pmlmap1d.update(pml1d_far_right)
+# get boundaries
 dim = 2
 all_domains = gmsh.model.get_entities(dim)
 scatt_bound = gmsh.model.get_boundary(
     all_domains, combined=True, oriented=False, recursive=False)
 scatt_bound = [bnd[1] for bnd in scatt_bound]
+
+# 1D bounds have changed due to PML
+source_left_pts = gmsh.model.get_boundary(
+    [(1, tag) for tag in source_left.tag]
+    +
+    [(1, tag) for _, tag in pml1d_src_left.keys()],
+    combined=True, oriented=False, recursive=False)
+source_left_pts = [reg[1] for reg in source_left_pts]
+
+source_right_pts = gmsh.model.get_boundary(
+    [(1, tag) for tag in source_right.tag]
+    +
+    [(1, tag) for _, tag in pml1d_src_right.keys()],
+    combined=True, oriented=False, recursive=False)
+source_right_pts = [reg[1] for reg in source_right_pts]
+
+
+far_right_pts = gmsh.model.get_boundary(
+    [(1, tag) for tag in far_right.tag]
+    +
+    [(1, tag) for _, tag in pml1d_far_right.keys()],
+    combined=True, oriented=False, recursive=False)
+far_right_pts = [reg[1] for reg in far_right_pts]
+
+# source_left_pts = gmsh.model.get_boundary(
+#     [(1, tag) for tag in source_left.tag],
+#     combined=True, oriented=False, recursive=False)
+# source_left_pts = [reg[1] for reg in source_left_pts]
+
+# source_right_pts = gmsh.model.get_boundary(
+#     [(1, tag) for tag in source_right.tag],
+#     combined=True, oriented=False, recursive=False)
+# source_right_pts = [reg[1] for reg in source_right_pts]
+
+
+# far_right_pts = gmsh.model.get_boundary(
+#     [(1, tag) for tag in far_right.tag],
+#     combined=True, oriented=False, recursive=False)
+# far_right_pts = [reg[1] for reg in far_right_pts]
+
+
 # set element size per region
 
 gmsh.model.mesh.field.add("Distance", 1)
@@ -275,6 +316,8 @@ domain_physical_ids_2d = {
     "cladding_left": 2,
     "core_right": 3,
     "cladding_right": 4
+
+
 }
 
 domain_physical_ids_1d = {
@@ -290,7 +333,7 @@ domain_physical_ids_1d = {
 domain_physical_ids_0d = {
     "source_left_bnd": 12,
     "source_right_bnd": 13,
-    "far_right_bnd":14
+    "far_right_bnd": 14
 }
 
 domain_physical_ids = [domain_physical_ids_0d,
@@ -314,6 +357,7 @@ domain_regions = {"core_left": rec_lcore.tag,
 
 
 insert_pml_ids(pmlmap, domain_physical_ids, domain_regions)
+insert_pml_ids(pmlmap1d, domain_physical_ids, domain_regions, 1)
 
 
 generate_physical_ids(domain_physical_ids, domain_regions)
