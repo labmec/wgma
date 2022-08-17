@@ -324,6 +324,61 @@ The same applies for "xm" and "ym"
     return pmlmap
 
 
+def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
+    """
+    Finds among existent PML regions in pmlmap (with dimenison pmldim)
+    entities contained in the PML neighbouring the items in dimtags.
+    This function is useful when the PMLs have already been created and
+    one is looking for a subdomain of the PML
+    (for example, looking for a PML line in a 2d domain).
+
+    Tested only for finding 1d pml subdomains in a 2d domain and with
+    all items in dimtags with same dimension
+
+    Parameters
+    ----------
+    dimtags: list
+        All domains whose PMLs we are looking for
+    pmlmap: dict
+        pml dictionary as returned by create_pml_region
+    pmldim: int
+        dimension of the pmls in pmlmap
+    """
+
+    # keys are the tags and values the types
+    pmltagmap = dict([(tag, tp) for tp, tag in pmlmap.keys()])
+
+    pml_regions = {}
+    for dim, tag in dimtags:
+        # get boundary
+        bnd = gmsh.model.get_boundary([(dim, tag)], oriented=False)
+        # check adjacencies of boundary to find entity contained in pml
+        for b in bnd:
+            # getting upper dimensional adjacencies from boundaries
+            # is the same as finding the neighbours
+            neighs, _ = gmsh.model.get_adjacencies(b[0], b[1])
+            # we are looking for a neighbour that is either a PML
+            # or that all its adjacencies are PMLs
+            for neigh in neighs:
+                pmlcandidates = [neigh]
+                dimup = dim
+                while dimup < pmldim:
+                    new_adjacencies = []
+                    for cand in pmlcandidates:
+                        adj, _ = gmsh.model.get_adjacencies(dimup, cand)
+                        new_adjacencies.extend(adj)
+                    dimup = dimup + 1
+                    pmlcandidates = new_adjacencies
+                found = all(cand in pmltagmap for cand in pmlcandidates)
+                if found:
+                    pml_regions.update(
+                        {(pmltagmap[pmlcandidates[0]], neigh): tag})
+                    print(
+                        "({},{}) is neighbour of {} which is in PML".format(
+                            dim, tag, neigh))
+    return pml_regions
+
+
 def split_region_dir(dimtags: list, direction: str):
     """
     Categorise regions in "x", "y" or "z" directions by comparing
