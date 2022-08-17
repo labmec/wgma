@@ -621,6 +621,7 @@ wgma::gmeshtools::ReadPeriodicGmshMesh(const std::string filename,
 std::optional<int>
 wgma::gmeshtools::FindPMLNeighbourMaterial(
   TPZAutoPointer<TPZGeoMesh> gmesh,
+  const int pmlDim,
   const int pmlId,
   const std::set<int> &volmats,
   const REAL boundPosX, const REAL boundPosY)
@@ -630,9 +631,9 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
   for(auto &currentEl : gmesh->ElementVec()){
     if ( !currentEl ||
          currentEl->NSubElements() > 0  ||
-         currentEl->Dimension() != 2 ||
+         currentEl->Dimension() != pmlDim ||
          volmats.count(currentEl->MaterialId()) == 0) continue;
-    TPZVec<REAL> qsi(2,-1);
+    TPZVec<REAL> qsi(pmlDim,-1);
     const int largerSize = currentEl->NSides() - 1;
     currentEl->CenterPoint(largerSize, qsi);
     TPZVec<REAL> xCenter(3,-1);

@@ -310,8 +310,11 @@ namespace wgma::scattering{
       volmats.insert(id);
       allmats.insert(id);
     }
-  
+
+    
     for(auto pml : data.pmlvec){
+      //skip PMLs of other dimensions
+      if(pml.dim != scatt_cmesh->Dimension()){continue;}
       const auto neighs = wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgScatt>
         (pml, realvolmats, gmesh, scatt_cmesh);
       for(auto id : pml.ids){

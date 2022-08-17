@@ -25,10 +25,59 @@ cmeshtools::SetupGmshMaterialData(
   wgma::cmeshtools::PhysicalData &data,
   int dim)
 {
+
   auto &matinfo = data.matinfovec;
   auto &pmlvec = data.pmlvec;
   auto &bcvec = data.bcvec;
   pmlvec.resize(0);
+
+
+  //lambda for easier creation of PML mats
+  auto SetupIfPml = [&pmlvec, &alphaPMLx, &alphaPMLy](const std::string &name,
+                                                      int id,
+                                                      int dim) -> bool{
+    constexpr auto pmlname{"pml"};
+
+    //std::regex_constants::icase - ignores case
+    const auto rx = std::regex{ pmlname ,std::regex_constants::icase };
+    const bool ispml = std::regex_search(name, rx);
+    if(!ispml) return false;
+    
+    const auto pos = pmlvec.size();
+    bool found{false};
+    const TPZVec<std::string> pmlnames =
+      {"xpyp", "xmyp", "xmym", "xpym", "xp", "yp", "xm", "ym"};
+    const TPZVec<wgma::pml::type> pmltypes =
+      {wgma::pml::type::xpyp,wgma::pml::type::xmyp,
+       wgma::pml::type::xmym,wgma::pml::type::xpym,
+       wgma::pml::type::xp,wgma::pml::type::yp,
+       wgma::pml::type::xm,wgma::pml::type::ym};
+      
+    for(int ipml = 0; ipml < pmlnames.size(); ipml++){
+      const std::string pmlname = pmlnames[ipml];
+      const auto rx = std::regex{ pmlname, std::regex_constants::icase };
+      const bool test = std::regex_search(name, rx);
+      if(test){
+        pmlvec.resize(pos+1);
+        pmlvec[pos].ids = {id};
+        pmlvec[pos].alphax = alphaPMLx;
+        pmlvec[pos].alphay = alphaPMLy;
+        pmlvec[pos].t = pmltypes[ipml];
+        pmlvec[pos].names = {name};
+        pmlvec[pos].dim = dim;
+        found = true;
+        break;
+      }
+    }
+
+    if(!found){
+      std::cout<<"error: mat "<<name<<" id "<<id<<" not found"
+               <<"\nAborting..."<<std::endl;
+      DebugStop();
+    }
+    
+    return true;
+  };
   
   if(dim == -1){
     //find maximum dim
@@ -43,46 +92,9 @@ cmeshtools::SetupGmshMaterialData(
   for(auto mat : gmshmats[dim]){
     const std::string name = mat.first;
     const auto id = mat.second;
-    constexpr auto pmlname{"pml"};
 
-    //std::regex_constants::icase - ignores case
-    const auto rx = std::regex{ pmlname ,std::regex_constants::icase };
-    const bool ispml = std::regex_search(name, rx);
-      
-    if(ispml){
-      
-      const auto pos = pmlvec.size();
-      bool found{false};
-      const TPZVec<std::string> pmlnames =
-        {"xpyp", "xmyp", "xmym", "xpym", "xp", "yp", "xm", "ym"};
-      const TPZVec<wgma::pml::type> pmltypes =
-        {wgma::pml::type::xpyp,wgma::pml::type::xmyp,
-         wgma::pml::type::xmym,wgma::pml::type::xpym,
-         wgma::pml::type::xp,wgma::pml::type::yp,
-         wgma::pml::type::xm,wgma::pml::type::ym};
-      
-      for(int ipml = 0; ipml < pmlnames.size(); ipml++){
-        const std::string pmlname = pmlnames[ipml];
-        const auto rx = std::regex{ pmlname, std::regex_constants::icase };
-        const bool test = std::regex_search(name, rx);
-        if(test){
-          pmlvec.resize(pos+1);
-          pmlvec[pos].ids = {id};
-          pmlvec[pos].alphax = alphaPMLx;
-          pmlvec[pos].alphay = alphaPMLy;
-          pmlvec[pos].t = pmltypes[ipml];
-          pmlvec[pos].names = {name};
-          found = true;
-          break;
-        }
-      }
-      //pml was not identified
-      if(!found){
-        std::cout<<"error: mat "<<name<<" id "<<id<<" not found"
-                 <<"\nAborting..."<<std::endl;
-        DebugStop();
-      }
-    }else{
+    if(SetupIfPml(name,id,dim)){continue;}
+    else{
       if(matmap.find(name) == matmap.end()){//material not found
         std::cout<<"info: mat "<<name<<" id "<<id<<" not found"
                  <<"\nSkipping..."<<std::endl;
@@ -99,16 +111,20 @@ cmeshtools::SetupGmshMaterialData(
   //bc materials
   {
     for(auto bc : gmshmats[dim-1]){
-      const auto name = bc.first;
+      const std::string name = bc.first;
       const auto id = bc.second;
-      /*sometimes we need 1d materials with a given id for other purposes,
-        such as circumference arcs. soo, not finding it is not a problem*/
-      if(bcmap.find(name) != bcmap.end()){
-        const int ibc = bcvec.size();
-        bcvec.resize(ibc+1);
-        bcvec[ibc].id = id;
-        bcvec[ibc].t = bcmap.at(name);
-        bcvec[ibc].name = name;
+
+      if(SetupIfPml(name,id,dim-1)){continue;}
+      else{
+        /*sometimes we need 1d materials with a given id for other purposes,
+          such as circumference arcs. soo, not finding it is not a problem*/
+        if(bcmap.find(name) != bcmap.end()){
+          const int ibc = bcvec.size();
+          bcvec.resize(ibc+1);
+          bcvec[ibc].id = id;
+          bcvec[ibc].t = bcmap.at(name);
+          bcvec[ibc].name = name;
+        }
       }
     }
   }

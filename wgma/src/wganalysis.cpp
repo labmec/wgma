@@ -396,6 +396,8 @@ namespace wgma::wganalysis{
   
     for(auto pml : pmlDataVec){
       for(auto matid : pml.ids){
+        //skip PMLs of other dimensions
+        if(pml.dim != cmeshH1->Dimension()){continue;}
         auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
         volmats.insert(matid);
         cmeshH1->InsertMaterialObject(dummyMat);
@@ -450,6 +452,8 @@ namespace wgma::wganalysis{
     }
     for(auto pml : pmlDataVec){
       for(auto matid : pml.ids){
+        //skip PMLs of other dimensions
+        if(pml.dim != cmeshHCurl->Dimension()){continue;}
         auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
         cmeshHCurl->InsertMaterialObject(dummyMat);
       }
@@ -485,6 +489,8 @@ namespace wgma::wganalysis{
   
     //insert PML regions
     for(auto pml : pmlDataVec){
+      //skip PMLs of other dimensions
+      if(pml.dim != cmeshMF->Dimension()){continue;}
       cmeshtools::AddRectangularPMLRegion<
         TPZWgma
         >(pml, realvolmats, gmesh, cmeshMF);
@@ -569,11 +575,14 @@ namespace wgma::wganalysis{
       allmats.insert(id);
     }
 
-    if(data.pmlvec.size() > 0){
-      PZError<<__PRETTY_FUNCTION__
-             <<"\nerror: PMLs in 1D domains are not supported yet. Aborting..."
-             <<std::endl;
-      DebugStop();
+    for (auto pml : data.pmlvec) {
+      //skip PMLs of other dimensions
+      if(pml.dim != cmeshH1->Dimension()){continue;}
+      wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgma>(
+        pml, volmats, gmesh, cmeshH1);
+      for( auto id : pml.ids){
+        allmats.insert(id);
+      }
     }
     
 
@@ -662,6 +671,8 @@ namespace wgma::wganalysis{
     }
 
     for (auto pml : data.pmlvec) {
+      //skip PMLs of other dimensions
+      if(pml.dim != cmeshH1->Dimension()){continue;}
       wgma::cmeshtools::AddRectangularPMLRegion<TPZPeriodicWgma>(
         pml, volmats, gmesh, cmeshH1);
       for( auto id : pml.ids){

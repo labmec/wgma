@@ -115,12 +115,14 @@ namespace wgma::gmeshtools{
   /**
      @brief Finds the neighbouring material of a given pml region.
      @param[in] gmesh geometrical mesh.
+     @param[in] pmlDim dimension of pml region
      @param[in] pmlId pml material identifier.
      @param[in] boundPosX x-coordinate of the pml with the inner domain
      @param[in] boundPosY y-coordinate of the pml with the inner domain
   */
   [[nodiscard]] std::optional<int>
   FindPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,
+                           const int pmlDim,
                            const int pmlId,
                            const std::set<int> &volmats,
                            const REAL boundPosX, const REAL boundPosY);
