@@ -551,7 +551,8 @@ def generate_physical_ids(tags, domains):
             gmsh.model.set_physical_name(dim, tag, name)
 
 
-def insert_pml_ids(pmlmap: dict, domain_ids: list, domain_tags: dict):
+def insert_pml_ids(
+        pmlmap: dict, domain_ids: list, domain_tags: dict, pmldim: int = -1):
     """
     Create unique physical ids for PMLs and insert them into the dictionary.
     It will also create a dictionary relating each PML region name and their tags.
@@ -565,6 +566,8 @@ def insert_pml_ids(pmlmap: dict, domain_ids: list, domain_tags: dict):
         list of dictionaries of domain ids indexed by dimension of the domain
     domain_tags: list
         list of dictionaries of domain names and their associated tags
+    pmldim: int
+        dimension of the pml regions in pmlmap. defaults to max dim of domain_ids
     """
 
     # first physical id for the PML regions
@@ -575,7 +578,7 @@ def insert_pml_ids(pmlmap: dict, domain_ids: list, domain_tags: dict):
         for _, id in groups.items():
             new_id += id
 
-    vol_ids = domain_ids[-1]
+    vol_ids = domain_ids[pmldim]
     # tp is the pml type, tag its tag and reg the asociated region
     pml_ids = {}
     pml_tags = {}
