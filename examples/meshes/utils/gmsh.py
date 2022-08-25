@@ -33,7 +33,7 @@ class CircleData:
 
 class RectData:
     """
-    represents a rectangular region with lower left corner (xc,yc,0)
+    represents a rectangular region with lower left corner (xc,yc,zc)
     """
 
     def __init__(self):
@@ -41,8 +41,25 @@ class RectData:
         self.dim = 2
         self.xc = 0.
         self.yc = 0.
+        self.zc = 0.
         self.w = 0.
         self.h = 0.
+
+
+class BoxData:
+    """
+    represents a parallelepipedic box with lower left corner (xc,yc,zc)
+    """
+
+    def __init__(self):
+        self.tag = []
+        self.dim = 3
+        self.xc = 0.
+        self.yc = 0.
+        self.zc = 0.
+        self.dx = 0.
+        self.dy = 0.
+        self.dz = 0.
 
 
 def create_line(line: LineData, elsize: float):
@@ -64,7 +81,7 @@ def create_line(line: LineData, elsize: float):
     line.tag = [gmsh.model.occ.add_line(ptl1, ptl2)]
 
 
-def create_rect(rect, elsize: float):
+def create_rect(rect, elsize: float, normal: str = 'z'):
     """
     Creates a rectangular region and insert it in the model
 
@@ -76,19 +93,31 @@ def create_rect(rect, elsize: float):
         will have its tag field filled, must have all other attributes set
     elsize: float
         prescribed element size
-
+    normal: string
+        direction of the normal vector of the rectangle ('x', 'y' or 'z')
     """
 
     xc = rect.xc
     yc = rect.yc
+    zc = rect.zc
     w = rect.w
     h = rect.h
     pts = []
-    pts.append(gmsh.model.occ.add_point(xc, yc, 0, elsize))
-    pts.append(gmsh.model.occ.add_point(xc+w, yc, 0, elsize))
-    pts.append(gmsh.model.occ.add_point(xc+w, yc+h, 0, elsize))
-    pts.append(gmsh.model.occ.add_point(xc, yc+h, 0, elsize))
-
+    if normal == 'z':
+        pts.append(gmsh.model.occ.add_point(xc, yc, zc, elsize))
+        pts.append(gmsh.model.occ.add_point(xc+w, yc, zc, elsize))
+        pts.append(gmsh.model.occ.add_point(xc+w, yc+h, zc, elsize))
+        pts.append(gmsh.model.occ.add_point(xc, yc+h, zc, elsize))
+    elif normal == 'y':
+        pts.append(gmsh.model.occ.add_point(xc, yc, zc, elsize))
+        pts.append(gmsh.model.occ.add_point(xc, yc, zc+w, elsize))
+        pts.append(gmsh.model.occ.add_point(xc+h, yc, zc+w, elsize))
+        pts.append(gmsh.model.occ.add_point(xc+h, yc, zc, elsize))
+    else:  # normal == 'x'
+        pts.append(gmsh.model.occ.add_point(xc, yc, zc, elsize))
+        pts.append(gmsh.model.occ.add_point(xc, yc+w, zc, elsize))
+        pts.append(gmsh.model.occ.add_point(xc, yc+w, zc+h, elsize))
+        pts.append(gmsh.model.occ.add_point(xc, yc, zc+h, elsize))
     l = []
     assert(len(pts) == 4)
     for i in range(len(pts)):
