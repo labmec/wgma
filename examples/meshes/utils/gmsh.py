@@ -235,10 +235,15 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
     if type(dpml) == float:
         dpml = [dpml for _ in range(dim)]
     else:
-        for ix in range(len(dpml), 3):
+        for _ in range(len(dpml), 3):
             dpml.append(1)
 
-    valid_dirs = ["xmym", "xmyp", "xpym", "xpyp"]
+    valid_dirs = ["xmym", "xmyp", "xpym", "xpyp",
+                  "xmzm", "xmzp", "xpzm", "xpzp",
+                  "ymzm", "ymzp", "ypzm", "ypzp",
+                  "xmymzm", "xmymzp", "xmypzm", "xmypzp",
+                  "xpymzm", "xpymzp", "xpypzm", "xpypzp"
+                  ]
     direction = direction.lower()
     # just to make sure nothing weird will happen
     assert(direction in valid_dirs)
@@ -312,7 +317,7 @@ The same applies for "xm" and "ym"
         PML length
 
     """
-    valid_dirs = ["xm", "ym", "xp", "yp"]
+    valid_dirs = ["xm", "ym", "xp", "yp", "zm", "zp"]
     direction = direction.lower()
     # just to make sure nothing weird will happen
     assert(direction in valid_dirs)
@@ -324,10 +329,15 @@ The same applies for "xm" and "ym"
     # get all boundaries of the regions
     allbnds = gmsh.model.get_boundary(dimtags, combined=True, oriented=False)
     # attenuation direction
-    attdir = {'xp': 'x', 'xm': 'x', 'yp': 'y', 'ym': 'y'}
-    attsign = {'xp': 'plus', 'xm': 'minus', 'yp': 'plus', 'ym': 'minus'}
+    attdir = {'xp': 'x', 'xm': 'x',
+              'yp': 'y', 'ym': 'y',
+              'zp': 'z', 'zm': 'z'}
+    attsign = {'xp': 'plus', 'xm': 'minus',
+               'yp': 'plus', 'ym': 'minus',
+               'zp': 'plus', 'zm': 'minus'
+               }
     # now we split all domains
-    low, upper = split_region_dir(allbnds, attdir[direction])
+    low, upper = split_region_dir(allbnds, attdir[direction], True)
     # list of boundaries to be extruded
     pml_bnds = low if attsign[direction] == 'minus' else upper
     dx = -dpml if direction.count(
@@ -361,8 +371,7 @@ def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
     one is looking for a subdomain of the PML
     (for example, looking for a PML line in a 2d domain).
 
-    Tested only for finding 1d pml subdomains in a 2d domain and with
-    all items in dimtags with same dimension
+    Tested only with all items in dimtags with same dimension
 
     Parameters
     ----------
@@ -398,6 +407,8 @@ def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
                         new_adjacencies.extend(adj)
                     dimup = dimup + 1
                     pmlcandidates = new_adjacencies
+                if len(pmlcandidates) == 0:
+                    continue
                 found = all(cand in pmltagmap for cand in pmlcandidates)
                 if found:
                     pml_regions.update(
@@ -408,7 +419,7 @@ def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
     return pml_regions
 
 
-def split_region_dir(dimtags: list, direction: str):
+def split_region_dir(dimtags: list, direction: str, chkbnd: bool = False):
     """
     Categorise regions in "x", "y" or "z" directions by comparing
 their center of mass. Useful for regions that have been divided.
@@ -426,7 +437,8 @@ zero)
         list of pairs (dim, tag) of the regions to be split
     dir: str
         either "x", "y" or "z"
-
+    chckbnd: bool
+        if set to true, the regions themselves are used, not their boundaries
     """
     dimlist = [dt[0] for dt in dimtags]
 
@@ -441,7 +453,7 @@ zero)
 
     # check if we need boundaries or the regions themselves
     ents = []
-    if dim == 1:
+    if dim == 1 or chkbnd:
         ents = [[dt] for dt in dimtags]
     else:
         ents = [gmsh.model.get_boundary([dt], oriented=False) for dt in dimtags]
