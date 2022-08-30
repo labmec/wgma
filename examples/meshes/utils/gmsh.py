@@ -215,6 +215,35 @@ associating (pmltype,tag) with its neighbouring domain.
 
     Tested only on rectangular domains.
 
+    Since the algorithm depends on already created PML regions,
+    it must be called after calls to create_pml_region and the subsequent
+    gmsh.model.occ.remove_all_duplicates()
+    gmsh.model.occ.synchronize()
+
+    ex:
+    pmlmap = {}
+
+    pmlmap.update(create_pml_region(xm, "xm", d_pmlx))
+    # etc...
+    pmlmap.update(create_pml_region(zm, "zm", d_pmlz))
+
+    gmsh.model.occ.remove_all_duplicates()
+    gmsh.model.occ.synchronize()
+
+    #now the create_pml_corner is aware of the existent PMLs
+    dpml = [d_pmlx, d_pmly, d_pmlz]
+    [pmlmap.update(create_pml_corner(xpp, "xpzm", dpml)) for xpp in xp]
+    [pmlmap.update(create_pml_corner(xpp, "xpzp", dpml)) for xpp in xp]
+    # etc...
+    # in order to create PMLs that will attenuate in 3 directions,
+    # we need to know about the existent PMls
+    gmsh.model.occ.remove_all_duplicates()
+    gmsh.model.occ.synchronize()
+
+    [pmlmap.update(create_pml_corner(xpp, "xpypzm", dpml)) for xpp in xpyp]
+    # etc...
+    [pmlmap.update(create_pml_corner(xmm, "xmymzp", dpml)) for xmm in xmym]
+
     Parameters
     ----------
     dimtags: tuple
@@ -226,6 +255,19 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         PML length in each direction (can be float as well)
 
     """
+
+    # utility function to find a boundary in a given direction
+    def find_bnd(dt, direction, signvec):
+        # get all bounds
+        bndlist = gmsh.model.get_boundary([dt], oriented=False)
+        # get mass center of each boundary
+        mclist = [gmsh.model.occ.get_center_of_mass(bnd[0], bnd[1])
+                  for bnd in bndlist]
+
+        bx = [xc[direction] for xc in mclist]
+        b = bndlist[bx.index(
+            min(bx))] if signvec[direction] == -1 else bndlist[bx.index(max(bx))]
+        return b
 
     if type(dimtag) == list:
         assert(len(dimtag) == 1)
@@ -247,15 +289,7 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
     direction = direction.lower()
     # just to make sure nothing weird will happen
     assert(direction in valid_dirs)
-    # get all bounds
-    bndlist = gmsh.model.get_boundary([dimtag], oriented=False)
-    # get mass center of each boundary
-    mclist = [gmsh.model.occ.get_center_of_mass(bnd[0], bnd[1])
-              for bnd in bndlist]
-    # calc domain size in all directions
-    minval = []
-    maxval = []
-    width = []
+
     # calc orientation
     signvec = []
 
@@ -265,28 +299,52 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         'yp') else -1 if direction.count('ym') else 0)
     signvec.append(1 if direction.count(
         'zp') else -1 if direction.count('zm') else 0)
-    # print(dpml)
-    for ix in range(3):
-        minv = min([xc[ix]for xc in mclist])
-        maxv = max([xc[ix]for xc in mclist])
-        minval.append(minv)
-        maxval.append(maxv)
-        if(signvec[ix] == 0):
-            width.append(dpml[ix])
-        else:
-            width.append(maxv-minv)
 
-    dirvec = [width[i]*signvec[i] for i in range(3)]
-    # copy domain
-    dcp = gmsh.model.occ.copy([dimtag])
-    gmsh.model.occ.translate(dcp, dirvec[0], dirvec[1], dirvec[2])
-    dscale = [dpml[i]/width[i] for i in range(3)]
-    dcenter = [maxval[i] if signvec[i] == 1 else minval[i]
-               if signvec[i] == -1 else 0 for i in range(3)]
-    gmsh.model.occ.dilate(dcp,
-                          dcenter[0], dcenter[1], dcenter[2],
-                          dscale[0], dscale[1], dscale[2])
-    return {(direction, dcp[0][1]): dimtag[1]}
+    # let us put the sign in the dpml vec
+    dpml = [dpml[i] * signvec[i] for i in range(3)]
+    # all directions with an attenuation
+    alldirs = [i for i, s in enumerate(signvec) if s != 0]
+    assert(len(alldirs) > 0)
+    # let us find the boundary in the PML direction
+    b = find_bnd(dimtag, alldirs[0], signvec)
+    # now we expect to find a PML region after this boundary
+    up, _ = gmsh.model.get_adjacencies(b[0], b[1])
+
+    if len(up) != 2:
+        raise ValueError(
+            "There should be two adjacencies"
+            ", instead {} were found.\n"
+            "Have you called\n\tgmsh.model.occ.remove_all_duplicates()\n"
+            "and\n\tgmsh.model.occ.synchronize()\n"
+            "after the cals to create_pml_region?".format(len(up)))
+    pmlreg = (dim, up[0] if up[1] == dimtag[1] else up[1])
+
+    bpml = find_bnd(pmlreg, alldirs[1], signvec)
+    # now we may or may not find a PML region after this boundary
+    up, _ = gmsh.model.get_adjacencies(bpml[0], bpml[1])
+    if(len(up) > 1):
+        # there is already a PML in that direction
+        pmlreg = (dim, up[0] if up[1] == pmlreg[1] else up[1])
+    else:
+        # there is no PML in this direction, we must extrude
+        dx = [0, 0, 0]
+        dx[alldirs[1]] = dpml[alldirs[1]]
+        pmlreg = [(d, t)
+                  for d, t in gmsh.model.occ.extrude([bpml], *dx) if d == dim][0]
+
+    if(len(alldirs) == 3):
+        # yet another extrusion
+        bpml = find_bnd(pmlreg, alldirs[2], signvec)
+        # now we should not find a PML region after this boundary
+        up, _ = gmsh.model.get_adjacencies(bpml[0], bpml[1])
+        # why would there be already a PML?
+        assert(len(up) == 1)
+        dx = [0, 0, 0]
+        dx[alldirs[2]] = dpml[alldirs[2]]
+        pmlreg = [(d, t)
+                  for d, t in gmsh.model.occ.extrude([bpml], *dx) if d == dim][0]
+
+    return {(direction, pmlreg[1]): dimtag[1]}
 
 
 def create_pml_region(dimtags: list, direction: str, dpml: float):
