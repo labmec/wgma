@@ -413,9 +413,6 @@ def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
                 if found:
                     pml_regions.update(
                         {(pmltagmap[pmlcandidates[0]], neigh): tag})
-                    print(
-                        "({},{}) is neighbour of {} which is in PML".format(
-                            dim, tag, neigh))
     return pml_regions
 
 
