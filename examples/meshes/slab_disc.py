@@ -223,6 +223,9 @@ pmlmap.update(create_pml_region(right, "xp", d_pmlx))
 pmlmap.update(create_pml_region(upper, "yp", d_pmly))
 pmlmap.update(create_pml_region(lower, "ym", d_pmly))
 
+gmsh.model.occ.remove_all_duplicates()
+gmsh.model.occ.synchronize()
+
 dpml = [d_pmlx, d_pmly]
 pmlmap.update(create_pml_corner(ll, "xmym", dpml))
 pmlmap.update(create_pml_corner(lr, "xpym", dpml))
