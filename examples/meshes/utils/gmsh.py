@@ -230,7 +230,7 @@ associating (pmltype,tag) with its neighbouring domain.
     gmsh.model.occ.remove_all_duplicates()
     gmsh.model.occ.synchronize()
 
-    #now the create_pml_corner is aware of the existent PMLs
+    # now the create_pml_corner is aware of the existent PMLs
     dpml = [d_pmlx, d_pmly, d_pmlz]
     [pmlmap.update(create_pml_corner(xpp, "xpzm", dpml)) for xpp in xp]
     [pmlmap.update(create_pml_corner(xpp, "xpzp", dpml)) for xpp in xp]
@@ -423,7 +423,7 @@ The same applies for "xm" and "ym"
 
 def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
     """
-    Finds among existent PML regions in pmlmap (with dimenison pmldim)
+    Finds among existent PML regions in pmlmap (with dimension pmldim)
     entities contained in the PML neighbouring the items in dimtags.
     This function is useful when the PMLs have already been created and
     one is looking for a subdomain of the PML
@@ -444,6 +444,27 @@ def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
     # keys are the tags and values the types
     pmltagmap = dict([(tag, tp) for tp, tag in pmlmap.keys()])
 
+    # check if a region is a pml (or if it is embed in one)
+
+    def check_if_pml(dim, tag, pmldim):
+        pmlcandidates = [tag]
+        dimup = dim
+        while dimup < pmldim:
+            new_adjacencies = []
+            for cand in pmlcandidates:
+                adj, _ = gmsh.model.get_adjacencies(dimup, cand)
+                new_adjacencies.extend(adj)
+                dimup = dimup + 1
+                pmlcandidates = new_adjacencies
+        if len(pmlcandidates) == 0:
+            return False, ""
+        found = all(cand in pmltagmap for cand in pmlcandidates)
+        # pml attenuation direction
+        if found == False:
+            return found, ""
+        direction = pmltagmap[pmlcandidates[0]]
+        return found, direction
+    print("pmltagmap {}".format(pmltagmap))
     pml_regions = {}
     for dim, tag in dimtags:
         # get boundary
@@ -452,25 +473,64 @@ def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
         for b in bnd:
             # getting upper dimensional adjacencies from boundaries
             # is the same as finding the neighbours
-            neighs, _ = gmsh.model.get_adjacencies(b[0], b[1])
+            neightags, _ = gmsh.model.get_adjacencies(b[0], b[1])
             # we are looking for a neighbour that is either a PML
             # or that all its adjacencies are PMLs
-            for neigh in neighs:
-                pmlcandidates = [neigh]
-                dimup = dim
-                while dimup < pmldim:
-                    new_adjacencies = []
-                    for cand in pmlcandidates:
-                        adj, _ = gmsh.model.get_adjacencies(dimup, cand)
-                        new_adjacencies.extend(adj)
-                    dimup = dimup + 1
-                    pmlcandidates = new_adjacencies
-                if len(pmlcandidates) == 0:
-                    continue
-                found = all(cand in pmltagmap for cand in pmlcandidates)
+            for neightag in neightags:
+                neighdim = b[0] + 1
+                found, direction = check_if_pml(neighdim, neightag, pmldim)
                 if found:
-                    pml_regions.update(
-                        {(pmltagmap[pmlcandidates[0]], neigh): tag})
+                    pml_regions.update({(direction, neightag): tag})
+
+    dim = dimtags[0][0]
+    if dim < 2:
+        return pml_regions
+    # now we look for any remaining regions (i.e., corner PMLs)
+
+    # tags of pml regions and the domains they are associated with
+    prt = dict([(k[1], v) for k, v in pml_regions.items()])
+    prtlst = list(prt.keys())
+    dlist = [t for _, t in dimtags]
+    # boundary points of each region
+    dbndpts = [
+        gmsh.model.get_boundary(
+            [(dim, tag)],
+            oriented=False, recursive=True) for dim, tag in dimtags]
+    dbndpts = [[t for _, t in lst] for lst in dbndpts]
+
+    new_pmls = {}
+
+    # let us find the bounding box enclosing all the PMLs
+    xmin = [10**9, 10**9, 10**9]
+    xmax = [-1*10**9, -1*10**9, -1*10**9]
+    for reg in prtlst:
+        xm = [0 for _ in range(3)]
+        xp = [0 for _ in range(3)]
+        xm[0], xm[1], xm[2], xp[0], xp[1], xp[2] = gmsh.model.occ.get_bounding_box(
+            dim, reg)
+        for i in range(3):
+            if xm[i] < xmin[i]:
+                xmin[i] = xm[i]
+            if xp[i] > xmax[i]:
+                xmax[i] = xp[i]
+    # bounding box dimtags
+    bbdt = gmsh.model.occ.get_entities_in_bounding_box(*xmin, *xmax, dim)
+    # exclude regions already known
+    bbdt = [t for _, t in bbdt if prtlst.count(t) == 0 and dlist.count(t) == 0]
+    for pmlcand in bbdt:
+
+        found, direction = check_if_pml(dim, pmlcand, pmldim)
+        if not found:
+            continue
+        bndpts = [t for _, t in gmsh.model.get_boundary(
+            [(dim, pmlcand)], oriented=False, recursive=True)]
+        regindex = next((i for i, regpts in enumerate(dbndpts)
+                         for p in bndpts if regpts.count(p) > 0), -1)
+        if regindex < 0:
+            raise ValueError("Could not find PML region {}".format(pmlcand))
+        new_pmls.update({(direction, pmlcand): dlist[regindex]})
+
+    pml_regions.update(new_pmls)
     return pml_regions
 
 
