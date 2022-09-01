@@ -93,6 +93,8 @@ namespace wgma::wganalysis{
        @param [in] lambda operational wavelength
      */
     virtual void WriteToCsv(std::string filename, STATE lambda) = 0;
+
+    [[nodiscard]] virtual TPZAutoPointer<TPZCompMesh> GetMesh() = 0;
   protected:
 
     virtual void LoadSolutionInternal(const int isol, const int nsol) = 0;
@@ -146,6 +148,8 @@ namespace wgma::wganalysis{
 
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
     void CountActiveEqs(int &neq, int&nh1, int &nhcurl);
+
+    [[nodiscard]] TPZAutoPointer<TPZCompMesh> GetMesh() override{return m_cmesh_mf;}
   private:
     void LoadSolutionInternal(const int isol, const int ncols) override;
     
@@ -199,6 +203,8 @@ namespace wgma::wganalysis{
 
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
     void CountActiveEqs(int &neq);
+
+    [[nodiscard]] TPZAutoPointer<TPZCompMesh> GetMesh() override{return m_cmesh;}
   protected:
     void LoadSolutionInternal(const int isol, const int nsol) override;
     //! Computational mesh

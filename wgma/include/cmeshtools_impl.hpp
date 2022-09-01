@@ -30,8 +30,9 @@ wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::data data,
     //check if neighbour has been set already, otherwise find it
     const int neigh_mat_id  = [&]{
       if(data.neigh.count(id) == 0){
+        const auto pmldim = cmesh->Dimension();
         const auto neigh_mat_res =
-          gmeshtools::FindPMLNeighbourMaterial(gmesh, id, volmats, boundPosX, boundPosY);
+          gmeshtools::FindPMLNeighbourMaterial(gmesh, pmldim, id, volmats, boundPosX, boundPosY);
         if(neigh_mat_res.has_value() == false){
           PZError<<__PRETTY_FUNCTION__
                  <<"Could not find neighbouring material. Aborting...\n";

@@ -118,3 +118,14 @@ of curved geometries
 - how PMLs can be set up for periodic domains
 - how to perform more complex analysis and transfer the solution between different 
 problems
+
+
+### slab_disc
+
+Modal analysis of a slab waveguide followed by scattering analysis in a small region containing a waveguide discontinuity.
+Then, the scattered solution is projected onto the modes of the second section of the waveguide.
+
+Illustrates
+- how to integrate a given FEM solution (for orthogonalising modes for instance)
+- how to insert probes in the mesh for visualising the solution
+- how to deal with problems of dimension `d-1` : identifying PML regions, etc

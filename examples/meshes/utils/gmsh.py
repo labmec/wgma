@@ -231,7 +231,7 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         'yp') else -1 if direction.count('ym') else 0)
     signvec.append(1 if direction.count(
         'zp') else -1 if direction.count('zm') else 0)
-    print(dpml)
+    # print(dpml)
     for ix in range(3):
         minv = min([xc[ix]for xc in mclist])
         maxv = max([xc[ix]for xc in mclist])
@@ -322,6 +322,61 @@ The same applies for "xm" and "ym"
         [pmlmap.update({(direction, pr[1]):reg})
          for pr in pmlreg if pr[0] == dim]
     return pmlmap
+
+
+def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
+    """
+    Finds among existent PML regions in pmlmap (with dimenison pmldim)
+    entities contained in the PML neighbouring the items in dimtags.
+    This function is useful when the PMLs have already been created and
+    one is looking for a subdomain of the PML
+    (for example, looking for a PML line in a 2d domain).
+
+    Tested only for finding 1d pml subdomains in a 2d domain and with
+    all items in dimtags with same dimension
+
+    Parameters
+    ----------
+    dimtags: list
+        All domains whose PMLs we are looking for
+    pmlmap: dict
+        pml dictionary as returned by create_pml_region
+    pmldim: int
+        dimension of the pmls in pmlmap
+    """
+
+    # keys are the tags and values the types
+    pmltagmap = dict([(tag, tp) for tp, tag in pmlmap.keys()])
+
+    pml_regions = {}
+    for dim, tag in dimtags:
+        # get boundary
+        bnd = gmsh.model.get_boundary([(dim, tag)], oriented=False)
+        # check adjacencies of boundary to find entity contained in pml
+        for b in bnd:
+            # getting upper dimensional adjacencies from boundaries
+            # is the same as finding the neighbours
+            neighs, _ = gmsh.model.get_adjacencies(b[0], b[1])
+            # we are looking for a neighbour that is either a PML
+            # or that all its adjacencies are PMLs
+            for neigh in neighs:
+                pmlcandidates = [neigh]
+                dimup = dim
+                while dimup < pmldim:
+                    new_adjacencies = []
+                    for cand in pmlcandidates:
+                        adj, _ = gmsh.model.get_adjacencies(dimup, cand)
+                        new_adjacencies.extend(adj)
+                    dimup = dimup + 1
+                    pmlcandidates = new_adjacencies
+                found = all(cand in pmltagmap for cand in pmlcandidates)
+                if found:
+                    pml_regions.update(
+                        {(pmltagmap[pmlcandidates[0]], neigh): tag})
+                    print(
+                        "({},{}) is neighbour of {} which is in PML".format(
+                            dim, tag, neigh))
+    return pml_regions
 
 
 def split_region_dir(dimtags: list, direction: str):
@@ -494,3 +549,48 @@ def generate_physical_ids(tags, domains):
             regions = domains[name]
             gmsh.model.add_physical_group(dim, regions, tag)
             gmsh.model.set_physical_name(dim, tag, name)
+
+
+def insert_pml_ids(
+        pmlmap: dict, domain_ids: list, domain_tags: dict, pmldim: int = -1):
+    """
+    Create unique physical ids for PMLs and insert them into the dictionary.
+    It will also create a dictionary relating each PML region name and their tags.
+    The physical regions associated with the PML will be named accordingly to
+    their neighbour
+    Parameters
+    ----------
+    pmlmap: dict
+        pml maps as returned by create_pml_region and create_pml_corner
+    domain_ids: list
+        list of dictionaries of domain ids indexed by dimension of the domain
+    domain_tags: list
+        list of dictionaries of domain names and their associated tags
+    pmldim: int
+        dimension of the pml regions in pmlmap. defaults to max dim of domain_ids
+    """
+
+    # first physical id for the PML regions
+    new_id = 0
+    for groups in domain_ids:
+        if not groups:
+            continue
+        for _, id in groups.items():
+            new_id += id
+
+    vol_ids = domain_ids[pmldim]
+    # tp is the pml type, tag its tag and reg the asociated region
+    pml_ids = {}
+    pml_tags = {}
+    for (tp, tag), reg in pmlmap.items():
+        rnlist = [name for name in vol_ids.keys()
+                  if domain_tags[name].count(reg) > 0]
+        if len(rnlist) == 0:
+            raise Exception("Tag "+str(tag)+" not found")
+        regname = rnlist[0]
+        pmlname = "pml_"+str(new_id)+"_"+regname+"_"+tp
+        pml_ids.update({pmlname: new_id})
+        pml_tags.update({pmlname: [tag]})
+        new_id = new_id+1
+    vol_ids.update(pml_ids)
+    domain_tags.update(pml_tags)

@@ -9,6 +9,7 @@
 #include <Electromagnetics/TPZPeriodicWgma.h>
 #include <Electromagnetics/TPZPlanarWgma.h>
 #include <TPZNullMaterial.h>
+#include <TPZNullMaterialCS.h>
 #include <TPZSimpleTimer.h>
 #include <pzbuildmultiphysicsmesh.h>
 #include <pzelctemp.h>
@@ -395,13 +396,19 @@ namespace wgma::wganalysis{
   
     for(auto pml : pmlDataVec){
       for(auto matid : pml.ids){
+        //skip PMLs of other dimensions
+        if(pml.dim != cmeshH1->Dimension()){continue;}
         auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
         volmats.insert(matid);
         cmeshH1->InsertMaterialObject(dummyMat);
       }
     }
 
-
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      cmeshH1->InsertMaterialObject(mat);
+    }
 
     /**let us associate each boundary with a given material.
        this is important for any non-homogeneous BCs*/
@@ -445,11 +452,18 @@ namespace wgma::wganalysis{
     }
     for(auto pml : pmlDataVec){
       for(auto matid : pml.ids){
+        //skip PMLs of other dimensions
+        if(pml.dim != cmeshHCurl->Dimension()){continue;}
         auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
         cmeshHCurl->InsertMaterialObject(dummyMat);
       }
     }
 
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      cmeshHCurl->InsertMaterialObject(mat);
+    }
   
     for(auto bc : bcDataVec){
       const int bctype = wgma::bc::to_int(bc.t);
@@ -475,11 +489,19 @@ namespace wgma::wganalysis{
   
     //insert PML regions
     for(auto pml : pmlDataVec){
+      //skip PMLs of other dimensions
+      if(pml.dim != cmeshMF->Dimension()){continue;}
       cmeshtools::AddRectangularPMLRegion<
         TPZWgma
         >(pml, realvolmats, gmesh, cmeshMF);
     }
-  
+
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterialCS<CSTATE>(id,matdim,nstate);
+      cmeshMF->InsertMaterialObject(mat);
+    }
+    
     for(auto bc : bcDataVec){
       const int bctype = wgma::bc::to_int(bc.t);
       const int id = bc.id;
@@ -553,14 +575,23 @@ namespace wgma::wganalysis{
       allmats.insert(id);
     }
 
-    if(data.pmlvec.size() > 0){
-      PZError<<__PRETTY_FUNCTION__
-             <<"\nerror: PMLs in 1D domains are not supported yet. Aborting..."
-             <<std::endl;
-      DebugStop();
+    for (auto pml : data.pmlvec) {
+      //skip PMLs of other dimensions
+      if(pml.dim != cmeshH1->Dimension()){continue;}
+      wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgma>(
+        pml, volmats, gmesh, cmeshH1);
+      for( auto id : pml.ids){
+        allmats.insert(id);
+      }
     }
     
 
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      cmeshH1->InsertMaterialObject(mat);
+      allmats.insert(id);
+    }
     TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
     TPZManVector<CSTATE, 1> val2(1, 0.);
 
@@ -640,6 +671,8 @@ namespace wgma::wganalysis{
     }
 
     for (auto pml : data.pmlvec) {
+      //skip PMLs of other dimensions
+      if(pml.dim != cmeshH1->Dimension()){continue;}
       wgma::cmeshtools::AddRectangularPMLRegion<TPZPeriodicWgma>(
         pml, volmats, gmesh, cmeshH1);
       for( auto id : pml.ids){
@@ -647,6 +680,13 @@ namespace wgma::wganalysis{
       }
     }
 
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      cmeshH1->InsertMaterialObject(mat);
+      allmats.insert(id);
+    }
+    
     TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
     TPZManVector<CSTATE, 1> val2(1, 0.);
 

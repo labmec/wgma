@@ -55,7 +55,7 @@ namespace wgma::scattering{
      */
     void Run();
 
-    
+   [[nodiscard]] TPZAutoPointer<TPZCompMesh> GetMesh() {return m_cmesh;} 
   protected:
     //! H1 mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};

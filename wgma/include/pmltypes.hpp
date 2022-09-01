@@ -72,6 +72,7 @@ namespace wgma{
         neigh for setting material properties for each PML region
      */
     struct data{
+      int dim{-1};
       type t{type::xm};
       STATE alphax{0};
       STATE alphay{0};
