@@ -482,6 +482,7 @@ namespace wgma::wganalysis{
   
     TPZAutoPointer<TPZCompMesh> cmeshMF =
       new TPZCompMesh(gmesh,isComplex);
+    cmeshMF->SetDimModel(dim);
     for(auto [matid, er, ur] : data.matinfovec){
       auto *matWG = new TPZWgma(matid, er, ur, lambda, scale);
       cmeshMF->InsertMaterialObject(matWG);
@@ -508,6 +509,12 @@ namespace wgma::wganalysis{
       const int volid = bc.volid;
       auto *matWG =
         dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshMF->FindMaterial(volid));
+      if(!matWG){
+        PZError<<__PRETTY_FUNCTION__
+               <<"\n could not find material with id "<<id
+               <<"\n.Is it a PML? Aborting..."<<std::endl;
+        DebugStop();
+      }
       auto *bcMat = matWG->CreateBC(matWG, id, bctype, val1, val2);
       cmeshMF->InsertMaterialObject(bcMat);
     }

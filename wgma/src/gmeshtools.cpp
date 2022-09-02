@@ -606,7 +606,9 @@ wgma::gmeshtools::ReadPeriodicGmshMesh(const std::string filename,
 
   matids = meshReader.GetDimNamePhysical();
   if(verbose){
-    for(int i = 0; i < 3; i++){
+
+    const auto dim = meshReader.Dimension();
+    for(int i = 0; i <= dim; i++){
       std::cout<<"materials with dim "<<i<<std::endl;
       for(auto &mat : matids[i]){
         std::cout<<"\t name: "<<mat.first <<" id: "<<mat.second<<std::endl;
