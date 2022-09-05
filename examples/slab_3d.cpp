@@ -20,6 +20,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <pzlog.h>          //for TPZLogger
 #include <TPZVTKGenerator.h>
 #include <TPZVTKGeoMesh.h>
+#include <pzbuildmultiphysicsmesh.h>
 
 #include <regex>//for string search
 
@@ -30,6 +31,8 @@ constexpr int nThreads{8};
 constexpr int nThreadsDebug{0};
 constexpr int vtkRes{2};
 
+void CompareDofs(TPZAutoPointer<TPZCompMesh> cmesh,
+                 std::map<int64_t,int64_t> &periodic_els);
 
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const CSTATE target, const int neigenpairs,
@@ -43,7 +46,10 @@ void ComputeModes(wgma::wganalysis::Wgma &an,
 void PostProcessModes(wgma::wganalysis::Wgma2D &an,
                       TPZAutoPointer<TPZCompMesh> cmesh,
                       std::string filename,
-                      const int vtkres);
+                      const int vtkres,
+                      std::set<int> sols = {});
+
+
 
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           wgma::wganalysis::Wgma& src_an,
@@ -72,8 +78,8 @@ int main(int argc, char *argv[]) {
   constexpr STATE ncore{1.5};
   constexpr STATE nclad{1.000};
 
-  constexpr STATE alphaPMLx {1.0};
-  constexpr STATE alphaPMLy {1.0};
+  constexpr STATE alphaPMLx {0.5};
+  constexpr STATE alphaPMLy {2.5};
   constexpr STATE alphaPMLz {1.5};
   /*
     Given the small dimensions of the domain, scaling it can help in
@@ -119,7 +125,7 @@ int main(int argc, char *argv[]) {
   constexpr int nEigenpairs_left{10};
   constexpr int nEigenpairs_right{50};
 
-  constexpr CSTATE target{ncore*ncore};
+  constexpr CSTATE target{-ncore*ncore};
 
   /*********
    * begin *
@@ -141,7 +147,10 @@ int main(int argc, char *argv[]) {
   TPZVec<std::map<std::string, int>> gmshmats;
   constexpr bool verbosity_lvl{true};
   std::map<int64_t,int64_t> periodic_els;
-  auto gmesh = wgma::gmeshtools::ReadGmshMesh(meshfile, scale,gmshmats,verbosity_lvl);
+  auto gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(meshfile, scale,gmshmats,
+                                                      periodic_els,verbosity_lvl);
+
+  // auto gmesh = wgma::gmeshtools::ReadGmshMesh(meshfile, scale,gmshmats,verbosity_lvl);
 
   // print wgma_gmesh to .txt and .vtk format
   if (printGMesh) {
@@ -155,7 +164,7 @@ int main(int argc, char *argv[]) {
    * cmesh(modal analysis: left)  *
    ********************************/
 
-  auto modal_l_cmesh = [gmesh,&gmshmats,scale](){
+  auto modal_l_cmesh = [gmesh,&gmshmats,&periodic_els, scale](){
     // setting up cmesh data
     wgma::cmeshtools::PhysicalData modal_data;
 
@@ -163,7 +172,9 @@ int main(int argc, char *argv[]) {
     modal_mats["source_clad_left"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad, 1.);
     modal_mats["source_core_left"] = std::make_pair<CSTATE, CSTATE>(ncore*ncore, 1.);
     std::map<std::string, wgma::bc::type> modal_bcs;
-    modal_bcs["source_left_bnd"] = wgma::bc::type::PEC;
+    modal_bcs["source_left_bnd_pec"] = wgma::bc::type::PEC;
+    modal_bcs["source_left_bnd_per_dep"] = wgma::bc::type::PERIODIC;
+    modal_bcs["source_left_bnd_per_indep"] = wgma::bc::type::PERIODIC;
     //dimension of the modal analysis 
     constexpr int modal_dim{2};
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs, alphaPMLx,
@@ -178,7 +189,9 @@ int main(int argc, char *argv[]) {
       if(found_pattern){pmlvec.push_back(pml);}
     }
     modal_data.pmlvec = pmlvec;
-    return wgma::wganalysis::CMeshWgma2D(gmesh, pOrder, modal_data, lambda, scale);
+    constexpr bool verbose{true};
+    return wgma::wganalysis::CMeshWgma2D(gmesh, pOrder, modal_data, lambda, scale, verbose);
+    // return wgma::wganalysis::CMeshWgma2DPeriodic(gmesh, pOrder, modal_data, periodic_els, lambda, scale, verbose);
   }();
 
 
@@ -200,13 +213,203 @@ int main(int argc, char *argv[]) {
 
   std::string modal_left_file{prefix+"_modal_left"};
   //no need to orthogonalise modes
-  bool ortho{false};
-  ComputeModes(modal_l_an, modal_l_cmesh[0], ortho, nThreads);
-  if(exportVtk){
-    PostProcessModes(modal_l_an, modal_l_cmesh[0], modal_left_file, vtkRes);
-  }
+  constexpr bool ortho{false};
+  ComputeModes(modal_l_an, modal_l_cmesh[0], ortho, nThreadsDebug);
 
+  const int isol = 0;
+  //load first eigenvector
+  modal_l_an.LoadSolution(isol);
+
+  const auto nrows = modal_l_an.GetEigenvectors().Rows();
+  
+  TPZFMatrix<CSTATE> sol(nrows,1);
+  modal_l_an.GetEigenvectors().GetSub(0, isol, nrows, 1, sol);
+  //beta squared
+  auto beta2 = modal_l_an.GetEigenvalues()[isol];
+
+
+  auto CreateVTK = [prefix](TPZAutoPointer<TPZCompMesh> cmesh, std::string filename){
+    TPZVec<std::string> fvars = {
+      "Ez_real",
+      "Ez_abs",
+      "Et_real",
+      "Et_abs"};
+    return TPZVTKGenerator(cmesh, fvars, filename, vtkRes);
+  };
+  const std::string file_left{prefix+"_modal_left"};
+  auto vtk_left = CreateVTK(modal_l_cmesh[0], file_left);
+  vtk_left.Do();
+
+  TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshvec = {modal_l_cmesh[1],
+    modal_l_cmesh[2]};
+  std::cout<<"hcurl mesh"<<std::endl;
+  CompareDofs(modal_l_cmesh[1], periodic_els);
+  std::cout<<"h1 mesh"<<std::endl;
+  CompareDofs(modal_l_cmesh[2],periodic_els);
+
+  
+  auto CalcResidual = [](wgma::wganalysis::Wgma2D &ma,
+                         TPZVec<TPZAutoPointer<TPZCompMesh>>meshvec,
+                         CSTATE lambda, TPZVTKGenerator &vtk){
+    ma.GetSolver().ResetMatrix();
+    ma.Assemble(TPZEigenAnalysis::Mat::A);
+    ma.Assemble(TPZEigenAnalysis::Mat::B);
+    auto matA = ma.GetSolver().MatrixA();
+    auto matB = ma.GetSolver().MatrixB();
+    TPZFMatrix<CSTATE>  xfull = ma.GetMesh()->Solution();
+    //if there are dependent connects, we need to eliminate these equatios
+    xfull.Resize(ma.GetMesh()->NEquations(),1);
+    std::cout<<" A ("<<matA->Rows()<<","<<matA->Cols()<<")\n";
+    std::cout<<" B ("<<matB->Rows()<<","<<matB->Cols()<<")\n";
+    std::cout<<" xfull ("<<xfull.Rows()<<","<<xfull.Cols()<<")\n";    
+    TPZFMatrix<CSTATE> x(matA->Rows(),1);
+    ma.StructMatrix()->EquationFilter().Gather(xfull, x);
+    
+    std::cout<<" x ("<<x.Rows()<<","<<x.Cols()<<")\n";
+    auto res = (*matA) * x - (*matB) * x * lambda;
+
+    const auto nrows = res.Rows();
+    STATE resnorm = 0;
+    for(auto ir  =0; ir < nrows; ir++){
+      resnorm += std::real(
+        res.GetVal(ir,0)*std::conj(res.GetVal(ir,0)
+                                   ));
+        }
+
+    TPZFMatrix<CSTATE> resfull(xfull.Rows(),1);
+    ma.StructMatrix()->EquationFilter().Scatter(res, resfull);
+    ma.GetMesh()->LoadSolution(resfull);
+    TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshvec,ma.GetMesh());
+    vtk.Do();
+    ma.GetMesh()->LoadSolution(xfull);
+    TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshvec,ma.GetMesh());
+    return resnorm;
+    
+  };
+
+  const auto resbefore = CalcResidual(modal_l_an, meshvec, beta2, vtk_left);
+  
+  std::cout<<"Residual (before): "<<resbefore<<std::endl;
+  //now we need to apply the periodicity to each atomic mesh
+  auto SetPeriodic = [&periodic_els](TPZAutoPointer<TPZCompMesh> cmesh){
+      auto gmesh = cmesh->Reference();
+      gmesh->ResetReference();
+      cmesh->LoadReferences();
+      //let us copy the connects
+      for(auto [dep, indep] : periodic_els){
+        //geometric elements
+        auto *dep_gel = gmesh->Element(dep);
+        const auto *indep_gel = gmesh->Element(indep);
+        //computational element
+        auto *indep_cel = indep_gel->Reference();
+        auto *dep_cel = dep_gel->Reference();
+        //number of connects
+        const auto n_dep_con = dep_cel->NConnects();
+        const auto n_indep_con = indep_cel->NConnects();
+
+        //now we create dependencies between connects
+        for(auto ic = 0; ic < n_indep_con; ic++){
+          const auto indep_ci = indep_cel->ConnectIndex(ic);
+          const auto dep_ci = dep_cel->ConnectIndex(ic);
+
+          auto &dep_con = dep_cel->Connect(ic);
+          const auto ndof = dep_con.NDof(cmesh);
+          if(ndof==0) {continue;}
+          constexpr int64_t ipos{0};
+          constexpr int64_t jpos{0};
+      
+          TPZFMatrix<REAL> mat(ndof,ndof);
+          mat.Identity();
+          dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
+        } 
+      }
+      cmesh->CleanUpUnconnectedNodes();
+    };
+
+  SetPeriodic(modal_l_cmesh[0]);
+  SetPeriodic(modal_l_cmesh[1]);
+  SetPeriodic(modal_l_cmesh[2]);
+
+
+  wgma::wganalysis::Wgma2D
+    periodic_an(modal_l_cmesh, nThreads, optimizeBandwidth, filterBoundaryEqs);
+  periodic_an.SetSolver(*solver_left);
+
+
+  const std::string file_periodic{prefix+"_modal_left_periodic"};
+  auto vtk_periodic = CreateVTK(modal_l_cmesh[0], file_periodic);
+  TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshvec,modal_l_cmesh[0]);
+  vtk_periodic.Do();
+
+  const auto resafter = CalcResidual(periodic_an,meshvec, beta2, vtk_periodic);
+  std::cout<<"Residual (after): "<<resafter<<std::endl;
+ 
+
+
+  wgma::cmeshtools::RemovePeriodicity(modal_l_cmesh[1]);
+  wgma::cmeshtools::RemovePeriodicity(modal_l_cmesh[2]);
   return 0;
+}
+
+
+
+void CompareDofs(TPZAutoPointer<TPZCompMesh> cmesh,
+                 std::map<int64_t,int64_t> &periodic_els)
+{
+  auto gmesh = cmesh->Reference();
+  ///set reference
+  gmesh->ResetReference();
+  cmesh->LoadReferences();
+  const TPZFMatrix<CSTATE> &meshsol = cmesh->Solution();
+  TPZBlock &block = cmesh->Block();
+  for(auto [dep, indep] : periodic_els){
+    auto depgel = gmesh->Element(dep);
+    auto indepgel = gmesh->Element(indep);
+    auto depcel = depgel->Reference();
+    auto indepcel = indepgel->Reference();
+
+    
+
+    auto PrintDofs = [&meshsol, &block] (TPZCompEl *cel1, TPZCompEl *cel2){
+      const auto ncon = cel1->NConnects();
+      
+      for (auto icon = 0; icon < ncon; icon++){
+        const auto &con1 = cel1->Connect(icon);
+        const auto seqnum1 = con1.SequenceNumber();
+        const auto blpos1 = block.Position(seqnum1);
+
+        const auto &con2 = cel2->Connect(icon);
+        const auto seqnum2 = con2.SequenceNumber();
+        const auto blpos2 = block.Position(seqnum2);
+        
+        const auto nvar = block.Size(seqnum1);
+        for(auto i = 0; i < nvar; i++){
+          auto sol1 = meshsol.GetVal(blpos1 + i, 0);
+          auto sol2 = meshsol.GetVal(blpos2 + i, 0);
+          auto diff = std::abs(sol1-sol2);
+          std::cout<<'\t'
+                   <<sol1<<'\t'
+                   <<sol2<<'\t'
+                   <<diff<<std::endl;
+        }
+        std::cout<<std::endl;
+      }
+    };
+
+    std::cout<<"dep gel "<<depgel->Index()<<" indep gel "<<indepgel->Index()<<std::endl;
+    const auto nnodes = depgel->NNodes();
+    std::cout<<"dep gel nodes:";
+    for(auto in = 0; in < nnodes; in++){
+      std::cout<<'\t'<<depgel->Node(in).Id();
+    }
+    std::cout<<std::endl;
+    std::cout<<"indep gel nodes:";
+    for(auto in = 0; in < nnodes; in++){
+      std::cout<<'\t'<<indepgel->Node(in).Id();
+    }
+    std::cout<<std::endl;
+    PrintDofs(depcel, indepcel);
+  }
 }
 
 #include <slepcepshandler.hpp>
@@ -294,24 +497,13 @@ void ComputeModes(wgma::wganalysis::Wgma &an,
 {
   
   TPZSimpleTimer analysis("Modal analysis");
-  an.Assemble(TPZEigenAnalysis::Mat::A);
-  an.Assemble(TPZEigenAnalysis::Mat::B);
   static constexpr bool computeVectors{true};
-  an.Solve(computeVectors);
+  an.Run(computeVectors);
   //let us discard all solutions with negative real part of beta
 
   auto &ev = an.GetEigenvalues();
   auto &evec = an.GetEigenvectors();
 
-  int count = 0;
-  for(auto w : ev){
-    if(std::real(w) <= 0){break;}
-    count++;
-  }
-
-  ev.Resize(count);
-  const int neq = evec.Rows();
-  evec.Resize(neq, count);
   //load all obtained modes into the mesh
   an.LoadAllSolutions();
   if(orthogonalise){
@@ -329,7 +521,8 @@ void ComputeModes(wgma::wganalysis::Wgma &an,
 void PostProcessModes(wgma::wganalysis::Wgma2D &an,
                       TPZAutoPointer<TPZCompMesh> cmesh,
                       std::string filename,
-                      const int vtkres){
+                      const int vtkres,
+                      std::set<int> sols){
   TPZSimpleTimer postProc("Post processing");
     
   const std::string file = filename;
@@ -339,9 +532,16 @@ void PostProcessModes(wgma::wganalysis::Wgma2D &an,
       "Et_real",
       "Et_abs"};
   auto vtk = TPZVTKGenerator(cmesh, fvars, file, vtkres);
-  const auto nsol = an.GetEigenvectors().Cols();
-  std::cout<<"Exporting "<<nsol<<" solutions"<<std::endl;
-  for(auto isol = 0; isol < nsol; isol++){
+
+  if(sols.size() == 0){
+    const auto nsol = an.GetEigenvectors().Cols();
+    for(auto is = 0; is < nsol; is++){
+      sols.insert(is);
+    }
+  }
+  
+  std::cout<<"Exporting "<<sols.size()<<" solutions"<<std::endl;
+  for(auto isol : sols){
     an.LoadSolution(isol);
     vtk.Do();
   }
