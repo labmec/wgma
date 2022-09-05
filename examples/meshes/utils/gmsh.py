@@ -464,7 +464,6 @@ def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
             return found, ""
         direction = pmltagmap[pmlcandidates[0]]
         return found, direction
-    print("pmltagmap {}".format(pmltagmap))
     pml_regions = {}
     for dim, tag in dimtags:
         # get boundary
