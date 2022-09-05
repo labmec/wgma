@@ -361,7 +361,8 @@ namespace wgma::wganalysis{
   TPZVec<TPZAutoPointer<TPZCompMesh>>
   CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
               cmeshtools::PhysicalData &data,
-              const STATE lambda, const REAL &scale)
+              const STATE lambda, const REAL &scale,
+              bool verbose)
   {
     TPZSimpleTimer timer ("Create cmesh");
     constexpr int dim = 2;
@@ -483,26 +484,54 @@ namespace wgma::wganalysis{
     TPZAutoPointer<TPZCompMesh> cmeshMF =
       new TPZCompMesh(gmesh,isComplex);
     cmeshMF->SetDimModel(dim);
+
+    if(verbose){
+      std::cout<<"inserting materials:\n";
+    }
     for(auto [matid, er, ur] : data.matinfovec){
       auto *matWG = new TPZWgma(matid, er, ur, lambda, scale);
       cmeshMF->InsertMaterialObject(matWG);
+      if(verbose){
+        std::cout<<"\t id "<<matid<<" er "<<er<<" ur "<<ur<<'\n';
+      }
     }
-  
+
+    if(verbose){
+      std::cout<<"inserting pmls:\n";
+    }
     //insert PML regions
     for(auto pml : pmlDataVec){
       //skip PMLs of other dimensions
       if(pml.dim != cmeshMF->Dimension()){continue;}
-      cmeshtools::AddRectangularPMLRegion<
+      auto pmlmap = cmeshtools::AddRectangularPMLRegion<
         TPZWgma
         >(pml, realvolmats, gmesh, cmeshMF);
+      if(verbose){
+        std::cout<<"\tid (neighbour) ";
+        for(auto [id, neigh] : pmlmap){
+          std::cout<<id<<" ("<<neigh<<") ";
+        }
+        std::cout<<"att dir "<<wgma::pml::to_string(pml.t)<<" att coeff ";
+        std::cout<<pml.alphax<<' '<<pml.alphay<<std::endl;
+      }
     }
 
+    if(verbose){
+      std::cout<<"inserting probes:\n";
+    }
     for(auto [id,matdim] : data.probevec){
       static constexpr int nstate{1};
       auto *mat = new TPZNullMaterialCS<CSTATE>(id,matdim,nstate);
       cmeshMF->InsertMaterialObject(mat);
+      if(verbose){
+        std::cout<<"\tid "<<id<<" dim "<<matdim<<std::endl;
+      }
     }
-    
+
+
+    if(verbose){
+      std::cout<<"inserting bcs:\n";
+    }
     for(auto bc : bcDataVec){
       const int bctype = wgma::bc::to_int(bc.t);
       const int id = bc.id;
@@ -517,6 +546,10 @@ namespace wgma::wganalysis{
       }
       auto *bcMat = matWG->CreateBC(matWG, id, bctype, val1, val2);
       cmeshMF->InsertMaterialObject(bcMat);
+
+      if(verbose){
+        std::cout<<"\tid "<<id<<" vol mat "<<volid<<" type "<<wgma::bc::to_string(bc.t)<<std::endl;
+      }
     }
 
     cmeshMF->SetDimModel(dim);
