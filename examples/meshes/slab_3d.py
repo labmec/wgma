@@ -289,12 +289,15 @@ pmldim = 3
 pml2d_src_left = find_pml_region(src_left_dimtags, pmlmap, pmldim)
 pml2d_src_right = find_pml_region(src_right_dimtags, pmlmap, pmldim)
 pml2d_far_right = find_pml_region(far_right_dimtags, pmlmap, pmldim)
+
+# let us filter the PML regions. we want periodic bcs on the x direction
+pml2d_src_left = dict(
+    [(k, v) for k, v in pml2d_src_left.items() if k[0].count('x') == 0])
+
 pmlmap2d = {}
 pmlmap2d.update(pml2d_src_left)
 pmlmap2d.update(pml2d_src_right)
 pmlmap2d.update(pml2d_far_right)
-
-print("pmlmap {}".format(pmlmap2d))
 
 
 # get boundaries
@@ -304,6 +307,13 @@ scatt_bound = gmsh.model.get_boundary(
     all_domains, combined=True, oriented=False, recursive=False)
 scatt_bound = [bnd[1] for bnd in scatt_bound]
 
+# now we find all the curves in the scatt boundary
+scatt_bound_curves = set([
+    item
+    for sublist in
+    [gmsh.model.occ.get_curve_loops(sc)[1][0] for sc in scatt_bound]
+    for item in sublist])
+
 
 # 2D bounds have changed due to PML
 src_left_bnd = gmsh.model.get_boundary(
@@ -311,7 +321,56 @@ src_left_bnd = gmsh.model.get_boundary(
     +
     [(2, tag) for _, tag in pml2d_src_left.keys()],
     combined=True, oriented=False, recursive=False)
-src_left_bnd = [reg[1] for reg in src_left_bnd]
+# now  we split the boundaries between periodic and PEC(dirichlet)
+src_left_bnd_per = [reg[1]
+                    for reg in src_left_bnd if not reg[1] in scatt_bound_curves]
+src_left_bnd_pec = [reg[1]
+                    for reg in src_left_bnd if reg[1] in scatt_bound_curves]
+
+# we must ensure that the edges are meshed periodically
+
+
+def calc_periodic_edges(bndlist, mcdir, transdir, transval):
+    dim = 1
+
+    dirmap = {0: "dx", 1: "dy", 2: "dz"}
+    affine = [1.0 if i == j else 0 for i in range(4) for j in range(4)]
+    pos = {"dx": 3, "dy": 7, "dz": 11}
+    val = {"dx": 0, "dy": 0, "dz": 0}
+
+    val[dirmap[transdir]] = transval
+
+    affine[pos["dx"]] = val["dx"]
+    affine[pos["dy"]] = val["dy"]
+    affine[pos["dz"]] = val["dz"]
+
+    bndcnt = []
+    per_edges = []
+    for bnd in bndlist:
+        if bnd in bndcnt:
+            continue
+        mc1 = gmsh.model.occ.get_center_of_mass(dim, bnd)
+        found = -1
+        for bbnd in bndlist:
+            if found > 0:
+                break
+            if bbnd in bndcnt or bnd == bbnd:
+                continue
+            mc2 = gmsh.model.occ.get_center_of_mass(dim, bbnd)
+            if abs(mc1[mcdir] - mc2[mcdir]) < 10**-12:
+                bndcnt.append(bnd)
+                found = bbnd
+                bndcnt.append(found)
+                per_edges.append(found)
+        if found < 0:
+            raise RuntimeError(
+                "Could not match periodic boundary {}".format(bnd))
+        gmsh.model.mesh.set_periodic(dim, [found], [bnd], affine)
+    return per_edges
+
+
+src_left_per_edges = calc_periodic_edges(src_left_bnd_per, 1, 0, d_extr)
+
 
 src_right_bnd = gmsh.model.get_boundary(
     [(2, tag) for tag in src_right.tag]
@@ -360,6 +419,8 @@ domain_physical_ids_3d = {
     "cladding_left": 2,
     "core_right": 3,
     "cladding_right": 4
+
+
 }
 
 domain_physical_ids_2d = {
@@ -373,9 +434,10 @@ domain_physical_ids_2d = {
 }
 
 domain_physical_ids_1d = {
-    "source_left_bnd": 12,
-    "source_right_bnd": 13,
-    "far_right_bnd": 14
+    "source_left_bnd_per": 12,
+    "source_left_bnd_pec": 13,
+    "source_right_bnd": 14,
+    "far_right_bnd": 15
 }
 
 domain_physical_ids_0d = {}
@@ -389,7 +451,8 @@ domain_regions = {"core_left": vol_lcore.tag,
                   "cladding_right": vol_right.tag,
                   "source_clad_left": src_left_clad_tags,
                   "source_core_left": src_left_core_tags,
-                  "source_left_bnd": src_left_bnd,
+                  "source_left_bnd_per": src_left_bnd_per,
+                  "source_left_bnd_pec": src_left_bnd_pec,
                   "source_clad_right": src_right_clad_tags,
                   "source_core_right": src_right_core_tags,
                   "source_right_bnd": src_right_bnd,
@@ -410,6 +473,10 @@ if '-nopopup' not in sys.argv:
     gmsh.fltk.run()
 
 gmsh.model.mesh.generate(3)
+# we know for sure that the elements on the minion edge are with reversed orientation
+dim = 1
+gmsh.model.mesh.reverse([(dim, edge) for edge in src_left_per_edges])
+
 
 if __name__ == "__main__":
     abspath = os.path.abspath(__file__)
