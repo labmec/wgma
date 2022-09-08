@@ -260,6 +260,13 @@ namespace wgma::wganalysis{
               cmeshtools::PhysicalData &data,
               const STATE lambda, const REAL &scale, const bool verbose=false);
 
+
+  TPZVec<TPZAutoPointer<TPZCompMesh>>
+  CMeshWgma2DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
+                      cmeshtools::PhysicalData &data,
+                      std::map<int64_t,int64_t> &periodic_els,
+                      const STATE lambda, const REAL &scale,
+                      bool verbose);
   /**
      @brief Creates the computational meshes used for approximating the waveguide EVP in one dimension, for planar waveguides.
      @param[in] gmesh geometrical mesh

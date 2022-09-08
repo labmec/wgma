@@ -610,6 +610,136 @@ namespace wgma::wganalysis{
   
   }
 
+  TPZVec<TPZAutoPointer<TPZCompMesh>>
+  CMeshWgma2DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
+                      cmeshtools::PhysicalData &data,
+                      std::map<int64_t,int64_t> &periodic_els,
+                      const STATE lambda, const REAL &scale,
+                      bool verbose)
+  {
+    TPZSimpleTimer timer ("Create cmesh");
+
+    constexpr int dim{2};
+
+    // let us setup data for atomic meshes
+    std::set<int> volmats;
+    for(auto [matid, _, __] : data.matinfovec){
+      volmats.insert(matid);
+    }
+    std::set<int> pmlmats;
+    for(auto &pml : data.pmlvec){
+      //skip PMLs of other dimensions
+      if(pml.dim != dim){continue;}
+      for(auto id : pml.ids){
+        pmlmats.insert(id);
+      }
+    }
+
+    std::set<int> allmats;
+    std::set_union(volmats.begin(), volmats.end(),
+                   pmlmats.begin(), pmlmats.end(),
+                   std::inserter(allmats, allmats.begin()));
+    
+    /**let us associate each boundary with a given material.
+       this is important for any non-homogeneous BCs*/
+    for(auto &bc : data.bcvec){
+      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, allmats);
+      if(!res.has_value()){
+        std::cout<<__PRETTY_FUNCTION__
+                 <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
+      }
+      bc.volid = res.value();
+    }
+
+
+    auto SetPeriodic = [&periodic_els](TPZAutoPointer<TPZCompMesh> cmesh){
+      auto gmesh = cmesh->Reference();
+      gmesh->ResetReference();
+      cmesh->LoadReferences();
+      //let us copy the connects
+      for(auto [dep, indep] : periodic_els){
+        //geometric elements
+        auto *dep_gel = gmesh->Element(dep);
+        const auto *indep_gel = gmesh->Element(indep);
+        //computational element
+        auto *indep_cel = indep_gel->Reference();
+        auto *dep_cel = dep_gel->Reference();
+        //number of connects
+        const auto n_dep_con = dep_cel->NConnects();
+        const auto n_indep_con = indep_cel->NConnects();
+        //just to be sure
+        assert(n_dep_con == n_indep_con);
+
+        //now we create dependencies between connects
+        for(auto ic = 0; ic < n_indep_con; ic++){
+          const auto indep_ci = indep_cel->ConnectIndex(ic);
+          const auto dep_ci = dep_cel->ConnectIndex(ic);
+
+          auto &dep_con = dep_cel->Connect(ic);
+          const auto ndof = dep_con.NDof(cmesh);
+          if(ndof==0) {continue;}
+          constexpr int64_t ipos{0};
+          constexpr int64_t jpos{0};
+      
+          TPZFMatrix<REAL> mat(ndof,ndof);
+          mat.Identity();
+          dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
+        } 
+      }
+      cmesh->CleanUpUnconnectedNodes();
+      cmesh->ExpandSolution();
+    };
+    
+    /*
+      First we create the computational mesh associated with the H1 space
+      (ez component)
+    */
+    bool ish1 = true;
+    TPZAutoPointer<TPZCompMesh> cmeshH1 =
+      CreateAtomicWgma2D(gmesh, ish1,pOrder,volmats,pmlmats, data.bcvec,data.probevec);
+
+    /*
+      Now we add the periodicity
+     */
+
+    SetPeriodic(cmeshH1);
+    /*
+      Then we create the computational mesh associated with the HCurl space
+    */
+    ish1 = false;
+    TPZAutoPointer<TPZCompMesh> cmeshHCurl =
+      CreateAtomicWgma2D(gmesh, ish1,pOrder,volmats,pmlmats, data.bcvec,data.probevec);
+    /*
+      Now we add the periodicity
+     */
+    SetPeriodic(cmeshHCurl);
+    /*
+      Now we create the MF mesh
+    */
+    TPZAutoPointer<TPZCompMesh> cmeshMF =
+      CreateMfWgma2D(gmesh, data, lambda, scale, verbose);
+
+    TPZManVector<TPZCompMesh*,3> meshVecIn(2);
+    meshVecIn[TPZWgma::H1Index()] = cmeshH1.operator->();
+    meshVecIn[TPZWgma::HCurlIndex()] = cmeshHCurl.operator->();
+
+  
+    TPZBuildMultiphysicsMesh::AddElements(meshVecIn, cmeshMF.operator->());
+    TPZBuildMultiphysicsMesh::AddConnects(meshVecIn, cmeshMF.operator->());
+    TPZBuildMultiphysicsMesh::TransferFromMeshes(meshVecIn, cmeshMF.operator->());
+
+    cmeshMF->ExpandSolution();
+    cmeshMF->ComputeNodElCon();
+    cmeshMF->CleanUpUnconnectedNodes();
+
+    TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec(3,nullptr);
+    meshVec[0] = cmeshMF;
+    meshVec[1 + TPZWgma::H1Index()] = cmeshH1;
+    meshVec[1 + TPZWgma::HCurlIndex()] = cmeshHCurl;
+    return meshVec;
+  
+  }
+  
   TPZAutoPointer<TPZCompMesh>
   CMeshWgma1D(TPZAutoPointer<TPZGeoMesh> gmesh,
               wgma::planarwg::mode mode, int pOrder,
