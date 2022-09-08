@@ -33,8 +33,8 @@ def cut_vol_with_plane(vols, surfs, elsize):
 #############################################
 # h1 = 0.4
 # h2 = 1.5
-h1 = 1.5
-h2 = 0.4
+h1 = 1.0
+h2 = 1.0
 
 
 h_domain = 10
@@ -344,24 +344,35 @@ def calc_periodic_edges(bndlist, mcdir, transdir, transval):
     affine[pos["dy"]] = val["dy"]
     affine[pos["dz"]] = val["dz"]
 
-    bndcnt = []
-    per_edges = []
+    # find max and min center of mass
+    minmc = 10**12
+    maxmc = -10**12
     for bnd in bndlist:
-        if bnd in bndcnt:
-            continue
+        mc = gmsh.model.occ.get_center_of_mass(dim, bnd)[transdir]
+        maxmc = mc if mc > maxmc else maxmc
+        minmc = mc if mc < minmc else minmc
+    # let us first split the boundaries into dependent and independent
+    minbnd = []
+    maxbnd = []
+    for bnd in bndlist:
+        mc = gmsh.model.occ.get_center_of_mass(dim, bnd)[transdir]
+        if abs(mc-maxmc) < abs(mc-minmc):
+            maxbnd.append(bnd)
+        else:
+            minbnd.append(bnd)
+
+    per_edges = []
+    for bnd in minbnd:
         mc1 = gmsh.model.occ.get_center_of_mass(dim, bnd)
         found = -1
-        for bbnd in bndlist:
+        for bbnd in maxbnd:
             if found > 0:
                 break
-            if bbnd in bndcnt or bnd == bbnd:
-                continue
             mc2 = gmsh.model.occ.get_center_of_mass(dim, bbnd)
             if abs(mc1[mcdir] - mc2[mcdir]) < 10**-12:
-                bndcnt.append(bnd)
                 found = bbnd
-                bndcnt.append(found)
                 per_edges.append(found)
+                break
         if found < 0:
             raise RuntimeError(
                 "Could not match periodic boundary {}".format(bnd))
@@ -369,8 +380,9 @@ def calc_periodic_edges(bndlist, mcdir, transdir, transval):
     return per_edges
 
 
-src_left_per_edges = calc_periodic_edges(src_left_bnd_per, 1, 0, d_extr)
-
+src_left_dep_edges = calc_periodic_edges(src_left_bnd_per, 1, 0, d_extr)
+src_left_indep_edges = [b for b in src_left_bnd_per
+                        if src_left_dep_edges.count(b) == 0]
 
 src_right_bnd = gmsh.model.get_boundary(
     [(2, tag) for tag in src_right.tag]
@@ -434,10 +446,11 @@ domain_physical_ids_2d = {
 }
 
 domain_physical_ids_1d = {
-    "source_left_bnd_per": 12,
-    "source_left_bnd_pec": 13,
-    "source_right_bnd": 14,
-    "far_right_bnd": 15
+    "source_left_bnd_per_dep": 12,
+    "source_left_bnd_per_indep": 13,
+    "source_left_bnd_pec": 14,
+    "source_right_bnd": 15,
+    "far_right_bnd": 16
 }
 
 domain_physical_ids_0d = {}
@@ -451,7 +464,8 @@ domain_regions = {"core_left": vol_lcore.tag,
                   "cladding_right": vol_right.tag,
                   "source_clad_left": src_left_clad_tags,
                   "source_core_left": src_left_core_tags,
-                  "source_left_bnd_per": src_left_bnd_per,
+                  "source_left_bnd_per_dep": src_left_dep_edges,
+                  "source_left_bnd_per_indep": src_left_indep_edges,
                   "source_left_bnd_pec": src_left_bnd_pec,
                   "source_clad_right": src_right_clad_tags,
                   "source_core_right": src_right_core_tags,
@@ -475,7 +489,7 @@ if '-nopopup' not in sys.argv:
 gmsh.model.mesh.generate(3)
 # we know for sure that the elements on the minion edge are with reversed orientation
 dim = 1
-gmsh.model.mesh.reverse([(dim, edge) for edge in src_left_per_edges])
+gmsh.model.mesh.reverse([(dim, edge) for edge in src_left_dep_edges])
 
 
 if __name__ == "__main__":
