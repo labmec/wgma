@@ -358,139 +358,101 @@ namespace wgma::wganalysis{
     solv->SetTarget(m_beta*m_beta);
   }
 
-  TPZVec<TPZAutoPointer<TPZCompMesh>>
-  CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
-              cmeshtools::PhysicalData &data,
-              const STATE lambda, const REAL &scale,
-              bool verbose)
+
+  
+  TPZAutoPointer<TPZCompMesh> CreateAtomicWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh,
+                                                 bool isH1,
+                                                 int p,
+                                                 const std::set<int> &volmats,
+                                                 const std::set<int> &pmlmats,
+                                                 
+                                                 const std::vector<wgma::bc::data> &bcmats,
+                                                 const std::vector<std::pair<int,int>> &probevec)
   {
-    TPZSimpleTimer timer ("Create cmesh");
     constexpr int dim = 2;
     constexpr bool isComplex{true};
-    auto &pmlDataVec = data.pmlvec;
-    auto &bcDataVec = data.bcvec;
-    const int nVolMats = data.matinfovec.size();
-    const int nPmlMats = pmlDataVec.size();
-    const int nBcMats = bcDataVec.size();
   
-  
-    /*
-      First we create the computational mesh associated with the H1 space
-      (ez component)*/
-    TPZAutoPointer<TPZCompMesh> cmeshH1 =
+    //for deRham compatibility
+    const auto pOrder = isH1 ? p +1 : p;
+
+    TPZAutoPointer<TPZCompMesh> cmesh =
       new TPZCompMesh(gmesh,isComplex);
-    cmeshH1->SetDefaultOrder(pOrder +1);//for deRham compatibility
-    cmeshH1->SetDimModel(dim);
+    cmesh->SetDefaultOrder(pOrder);
+    cmesh->SetDimModel(dim);
     //number of state variables in the problem
     constexpr int nState = 1;
 
 
-    std::set<int> volmats;
-    std::set<int> realvolmats;
-    for(auto regioninfo : data.matinfovec){
-      auto matid = std::get<0>(regioninfo);
+    TPZMaterialT<CSTATE> * dummyVolMat = nullptr;
+    for(auto matid : volmats){
       auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
-      cmeshH1->InsertMaterialObject(dummyMat);
-      realvolmats.insert(matid);
-      volmats.insert(matid);
+      cmesh->InsertMaterialObject(dummyMat);
+      dummyVolMat = dummyMat;
     }
   
-    for(auto pml : pmlDataVec){
-      for(auto matid : pml.ids){
-        //skip PMLs of other dimensions
-        if(pml.dim != cmeshH1->Dimension()){continue;}
-        auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
-        volmats.insert(matid);
-        cmeshH1->InsertMaterialObject(dummyMat);
-      }
+    for(auto id : pmlmats){
+      auto *dummyMat = new TPZNullMaterial<CSTATE>(id,dim,nState);
+        cmesh->InsertMaterialObject(dummyMat);
     }
 
-    for(auto [id,matdim] : data.probevec){
+    for(auto [id,matdim] : probevec){
       static constexpr int nstate{1};
-      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
-      cmeshH1->InsertMaterialObject(mat);
+      auto *mat = new TPZNullMaterial<CSTATE>(id,dim,nstate);
+      cmesh->InsertMaterialObject(mat);
     }
 
-    /**let us associate each boundary with a given material.
-       this is important for any non-homogeneous BCs*/
-    for(auto &bc : bcDataVec){
-      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, volmats);
-      if(!res.has_value()){
-        std::cout<<__PRETTY_FUNCTION__
-                 <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
-      }
-      bc.volid = res.value();
-    }
-  
     TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
     TPZManVector<CSTATE,1> val2(1, 0.);
-    for(auto bc : bcDataVec){
+    for(auto bc : bcmats){
       const int bctype = wgma::bc::to_int(bc.t);
       const int id = bc.id;
       const int volid = bc.volid;
-      auto *dummyMat =
-        dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshH1->FindMaterial(volid));
-      auto *dummyBC = dummyMat->CreateBC(dummyMat, id, bctype, val1, val2);
-      cmeshH1->InsertMaterialObject(dummyBC);
+      auto *dummyBC = dummyVolMat->CreateBC(dummyVolMat, id, bctype, val1, val2);
+      cmesh->InsertMaterialObject(dummyBC);
     }
 
-    cmeshH1->SetAllCreateFunctionsContinuous();
-    cmeshH1->AutoBuild();
-    cmeshH1->CleanUpUnconnectedNodes();
-
-    /*
-      Then we create the computational mesh associated with the HCurl space
-    */
-    TPZAutoPointer<TPZCompMesh> cmeshHCurl =
-      new TPZCompMesh(gmesh,isComplex);
-    cmeshHCurl->SetDefaultOrder(pOrder);
-    cmeshHCurl->SetDimModel(dim);
-  
-    for(auto regioninfo : data.matinfovec){
-      auto matid = std::get<0>(regioninfo);
-      auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
-      cmeshHCurl->InsertMaterialObject(dummyMat);
+    if(isH1){
+      cmesh->SetAllCreateFunctionsContinuous();
+    }else{
+      cmesh->SetAllCreateFunctionsHCurl();
     }
-    for(auto pml : pmlDataVec){
-      for(auto matid : pml.ids){
-        //skip PMLs of other dimensions
-        if(pml.dim != cmeshHCurl->Dimension()){continue;}
-        auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
-        cmeshHCurl->InsertMaterialObject(dummyMat);
-      }
-    }
+    cmesh->AutoBuild();
+    cmesh->CleanUpUnconnectedNodes();
 
-    for(auto [id,matdim] : data.probevec){
-      static constexpr int nstate{1};
-      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
-      cmeshHCurl->InsertMaterialObject(mat);
-    }
-  
-    for(auto bc : bcDataVec){
-      const int bctype = wgma::bc::to_int(bc.t);
-      const int id = bc.id;
-      const int volid = bc.volid;
-      auto *dummyMat =
-        dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshHCurl->FindMaterial(volid));
-      auto *dummyBC = dummyMat->CreateBC(dummyMat, id, bctype, val1, val2);
-      cmeshHCurl->InsertMaterialObject(dummyBC);
-    }
+    return cmesh;
+  }
 
-    cmeshHCurl->SetAllCreateFunctionsHCurl();
-    cmeshHCurl->AutoBuild();
-    cmeshHCurl->CleanUpUnconnectedNodes();
 
-  
+  TPZAutoPointer<TPZCompMesh> CreateMfWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh,
+                                             cmeshtools::PhysicalData &data,
+                                             const STATE lambda, const REAL &scale,
+                                             const bool verbose)
+  {
+    constexpr int dim = 2;
+    constexpr bool isComplex{true};
+    
+    auto &pmlDataVec = data.pmlvec;
+    auto &bcDataVec = data.bcvec;
+    
+    const int nVolMats = data.matinfovec.size();
+    const int nPmlMats = pmlDataVec.size();
+    const int nBcMats = bcDataVec.size();
+    
     TPZAutoPointer<TPZCompMesh> cmeshMF =
       new TPZCompMesh(gmesh,isComplex);
     cmeshMF->SetDimModel(dim);
 
+    std::set<int> volmats;
+    std::set<int> realvolmats;
+    
     if(verbose){
       std::cout<<"inserting materials:\n";
     }
     for(auto [matid, er, ur] : data.matinfovec){
       auto *matWG = new TPZWgma(matid, er, ur, lambda, scale);
       cmeshMF->InsertMaterialObject(matWG);
+      realvolmats.insert(matid);
+      volmats.insert(matid);
       if(verbose){
         std::cout<<"\t id "<<matid<<" er "<<er<<" ur "<<ur<<'\n';
       }
@@ -506,6 +468,10 @@ namespace wgma::wganalysis{
       auto pmlmap = cmeshtools::AddRectangularPMLRegion<
         TPZWgma
         >(pml, realvolmats, gmesh, cmeshMF);
+      for(auto [id, _] : pmlmap){
+        volmats.insert(id);
+      }
+      
       if(verbose){
         std::cout<<"\tid (neighbour) ";
         for(auto [id, neigh] : pmlmap){
@@ -527,11 +493,14 @@ namespace wgma::wganalysis{
         std::cout<<"\tid "<<id<<" dim "<<matdim<<std::endl;
       }
     }
-
-
+    
     if(verbose){
       std::cout<<"inserting bcs:\n";
     }
+
+    TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
+    TPZManVector<CSTATE,1> val2(1, 0.);
+    
     for(auto bc : bcDataVec){
       const int bctype = wgma::bc::to_int(bc.t);
       const int id = bc.id;
@@ -557,6 +526,68 @@ namespace wgma::wganalysis{
 
     cmeshMF->AutoBuild();
     cmeshMF->CleanUpUnconnectedNodes();
+
+    return cmeshMF;
+  }
+  
+  TPZVec<TPZAutoPointer<TPZCompMesh>>
+  CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
+              cmeshtools::PhysicalData &data,
+              const STATE lambda, const REAL &scale,
+              bool verbose)
+  {
+    TPZSimpleTimer timer ("Create cmesh");
+
+    constexpr int dim{2};
+
+    // let us setup data for atomic meshes
+    std::set<int> volmats;
+    for(auto [matid, _, __] : data.matinfovec){
+      volmats.insert(matid);
+    }
+    std::set<int> pmlmats;
+    for(auto &pml : data.pmlvec){
+      //skip PMLs of other dimensions
+      if(pml.dim != dim){continue;}
+      for(auto id : pml.ids){
+        pmlmats.insert(id);
+      }
+    }
+    std::set<int> allmats;
+
+    std::set_union(volmats.begin(), volmats.end(),
+                   pmlmats.begin(), pmlmats.end(),
+                   std::inserter(allmats, allmats.begin()));
+    /**let us associate each boundary with a given material.
+       this is important for any non-homogeneous BCs*/
+    for(auto &bc : data.bcvec){
+      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, allmats);
+      if(!res.has_value()){
+        std::cout<<__PRETTY_FUNCTION__
+                 <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
+      }
+      bc.volid = res.value();
+    }
+    /*
+      First we create the computational mesh associated with the H1 space
+      (ez component)
+    */
+    bool ish1 = true;
+    TPZAutoPointer<TPZCompMesh> cmeshH1 =
+      CreateAtomicWgma2D(gmesh, ish1,pOrder,volmats,pmlmats, data.bcvec,data.probevec);
+
+    /*
+      Then we create the computational mesh associated with the HCurl space
+    */
+    ish1 = false;
+    TPZAutoPointer<TPZCompMesh> cmeshHCurl =
+      CreateAtomicWgma2D(gmesh, ish1,pOrder,volmats,pmlmats, data.bcvec,data.probevec);
+
+    /*
+      Now we create the MF mesh
+    */
+    TPZAutoPointer<TPZCompMesh> cmeshMF =
+      CreateMfWgma2D(gmesh, data, lambda, scale, verbose);
 
     TPZManVector<TPZCompMesh*,3> meshVecIn(2);
     meshVecIn[TPZWgma::H1Index()] = cmeshH1.operator->();
