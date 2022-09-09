@@ -95,13 +95,14 @@ namespace wgma::wganalysis{
     virtual void WriteToCsv(std::string filename, STATE lambda) = 0;
 
     [[nodiscard]] virtual TPZAutoPointer<TPZCompMesh> GetMesh() = 0;
+
+    using TPZAnalysis::StructMatrix;
   protected:
 
     virtual void LoadSolutionInternal(const int isol, const int nsol) = 0;
     using TPZEigenAnalysis::LoadSolution;
     using TPZAnalysis::SetCompMeshInit;
     using TPZAnalysis::SetStructuralMatrix;
-    using TPZAnalysis::StructMatrix;
     //! Perform necessary adjustments on the eigensolver
     virtual void AdjustSolver(TPZEigenSolver<CSTATE> *solv) {}
     //! Whether the matrices have been assembled already
