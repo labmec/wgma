@@ -384,6 +384,12 @@ src_left_dep_edges = calc_periodic_edges(src_left_bnd_per, 1, 0, d_extr)
 src_left_indep_edges = [b for b in src_left_bnd_per
                         if src_left_dep_edges.count(b) == 0]
 
+try:
+    assert(len(src_left_dep_edges) == len(src_left_indep_edges))
+except:
+    print("there are {} dep edges and {} indep edges".format(
+        len(src_left_dep_edges), len(src_left_indep_edges)))
+
 src_right_bnd = gmsh.model.get_boundary(
     [(2, tag) for tag in src_right.tag]
     +
@@ -487,9 +493,22 @@ if '-nopopup' not in sys.argv:
     gmsh.fltk.run()
 
 gmsh.model.mesh.generate(3)
-# we know for sure that the elements on the minion edge are with reversed orientation
 dim = 1
-gmsh.model.mesh.reverse([(dim, edge) for edge in src_left_dep_edges])
+# let us check for edges with reverse orientation
+reverse = []
+for i in range(len(src_left_dep_edges)):
+    dep = src_left_dep_edges[i]
+    indep = src_left_indep_edges[i]
+    dep_bnd = gmsh.model.get_boundary([(dim, dep)], oriented=True)
+    indep_bnd = gmsh.model.get_boundary([(dim, indep)], oriented=True)
+    xi = [0.]
+    dep_deriv = gmsh.model.get_derivative(dim, dep, xi)
+    indep_deriv = gmsh.model.get_derivative(dim, indep, xi)
+    tol = 10**-12
+    deriv_comp = all([abs(d-i) < tol for d, i in zip(dep_deriv, indep_deriv)])
+    if not deriv_comp:
+        reverse.append((dim, dep))
+gmsh.model.mesh.reverse(reverse)
 
 
 if __name__ == "__main__":
