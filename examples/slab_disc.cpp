@@ -112,12 +112,12 @@ int main(int argc, char *argv[]) {
   // common prefix for both meshes and output files
   const std::string basisName{"slab_disc"};
   // prefix for exported files
-  const std::string prefix{path+basisName};
+  const std::string prefix{path+basisName+wgma::planarwg::mode_to_string(mode)};
   //just to make sure we will output results
   wgma::util::CreatePath(wgma::util::ExtractPath(prefix));
 
 
-  constexpr int nEigenpairs_left{1};
+  constexpr int nEigenpairs_left{10};
   constexpr int nEigenpairs_right{50};
 
   constexpr CSTATE target{ncore*ncore};
