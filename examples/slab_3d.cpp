@@ -25,11 +25,17 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <regex>//for string search
 
 
+
+#include <pzinterpolationspace.h>
+
 constexpr bool optimizeBandwidth{false};
 constexpr bool filterBoundaryEqs{true};
 constexpr int nThreads{8};
 constexpr int nThreadsDebug{0};
-constexpr int vtkRes{2};
+constexpr int vtkRes{0};
+
+void CheckNodes(TPZAutoPointer<TPZGeoMesh> gmesh,
+                std::map<int64_t,int64_t> &periodic_els);
 
 void CompareDofs(TPZAutoPointer<TPZCompMesh> cmesh,
                  std::map<int64_t,int64_t> &periodic_els);
@@ -78,8 +84,8 @@ int main(int argc, char *argv[]) {
   constexpr STATE ncore{1.5};
   constexpr STATE nclad{1.000};
 
-  constexpr STATE alphaPMLx {0.5};
-  constexpr STATE alphaPMLy {2.5};
+  constexpr STATE alphaPMLx {1.0};
+  constexpr STATE alphaPMLy {1.0};
   constexpr STATE alphaPMLz {1.5};
   /*
     Given the small dimensions of the domain, scaling it can help in
@@ -94,7 +100,7 @@ int main(int argc, char *argv[]) {
    *  fem options   *
    ******************/
   // polynomial order to be used in the approximation
-  constexpr int pOrder{3};
+  constexpr int pOrder{2};
 
   /******************
    * solver options *
@@ -150,6 +156,7 @@ int main(int argc, char *argv[]) {
   auto gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(meshfile, scale,gmshmats,
                                                       periodic_els,verbosity_lvl);
 
+  CheckNodes(gmesh, periodic_els);
   // auto gmesh = wgma::gmeshtools::ReadGmshMesh(meshfile, scale,gmshmats,verbosity_lvl);
 
   // print wgma_gmesh to .txt and .vtk format
@@ -160,6 +167,7 @@ int main(int argc, char *argv[]) {
   }
 
 
+  constexpr bool true_periodic{true};
   /********************************
    * cmesh(modal analysis: left)  *
    ********************************/
@@ -190,8 +198,11 @@ int main(int argc, char *argv[]) {
     }
     modal_data.pmlvec = pmlvec;
     constexpr bool verbose{true};
-    return wgma::wganalysis::CMeshWgma2D(gmesh, pOrder, modal_data, lambda, scale, verbose);
-    // return wgma::wganalysis::CMeshWgma2DPeriodic(gmesh, pOrder, modal_data, periodic_els, lambda, scale, verbose);
+    if(true_periodic){
+      return wgma::wganalysis::CMeshWgma2DPeriodic(gmesh, pOrder, modal_data, periodic_els, lambda, scale, verbose);
+    }else{
+      return wgma::wganalysis::CMeshWgma2D(gmesh, pOrder, modal_data, lambda, scale, verbose);
+    }
   }();
 
 
@@ -216,6 +227,14 @@ int main(int argc, char *argv[]) {
   constexpr bool ortho{false};
   ComputeModes(modal_l_an, modal_l_cmesh[0], ortho, nThreadsDebug);
 
+  PostProcessModes(modal_l_an, modal_l_cmesh[0], modal_left_file+"_ref", vtkRes);
+
+  if(true_periodic){
+    wgma::cmeshtools::RemovePeriodicity(modal_l_cmesh[1]);
+    wgma::cmeshtools::RemovePeriodicity(modal_l_cmesh[2]);
+    return 0;
+  }
+  
   const int isol = 0;
   //load first eigenvector
   modal_l_an.LoadSolution(isol);
@@ -242,11 +261,12 @@ int main(int argc, char *argv[]) {
 
   TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshvec = {modal_l_cmesh[1],
     modal_l_cmesh[2]};
-  std::cout<<"hcurl mesh"<<std::endl;
-  CompareDofs(modal_l_cmesh[1], periodic_els);
-  std::cout<<"h1 mesh"<<std::endl;
-  CompareDofs(modal_l_cmesh[2],periodic_els);
-
+  if(!true_periodic){
+    std::cout<<"hcurl mesh"<<std::endl;
+    CompareDofs(modal_l_cmesh[1], periodic_els);
+    std::cout<<"h1 mesh"<<std::endl;
+    CompareDofs(modal_l_cmesh[2],periodic_els);
+  }
   
   auto CalcResidual = [](wgma::wganalysis::Wgma2D &ma,
                          TPZVec<TPZAutoPointer<TPZCompMesh>>meshvec,
@@ -351,7 +371,37 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-
+void CheckNodes(TPZAutoPointer<TPZGeoMesh> gmesh,
+                std::map<int64_t,int64_t> &periodic_els)
+{
+  for(auto [dep, indep] : periodic_els){
+    auto depgel = gmesh->Element(dep);
+    auto indepgel = gmesh->Element(indep);
+    constexpr int nnodes = 2;
+    if(depgel->NNodes() != 2 || indepgel->NNodes() != 2){
+      PZError<<"WRONG NUMBER OF NODES"<<std::endl;
+      DebugStop();
+    }
+    const bool dep_orient = depgel->Node(0).Id() > depgel->Node(1).Id();
+    const bool indep_orient = indepgel->Node(0).Id() > indepgel->Node(1).Id();
+    if(dep_orient != indep_orient){
+      std::cout<<"dep gel "<<depgel->Index()
+               <<" indep gel "<<indepgel->Index()
+               <<std::endl;
+      std::cout<<"dep gel nodes:";
+      for(auto in = 0; in < nnodes; in++){
+        std::cout<<'\t'<<depgel->Node(in).Id();
+      }
+      std::cout<<std::endl;
+      std::cout<<"indep gel nodes:";
+      for(auto in = 0; in < nnodes; in++){
+        std::cout<<'\t'<<indepgel->Node(in).Id();
+      }
+      DebugStop(); 
+    }
+    
+  }
+}
 
 void CompareDofs(TPZAutoPointer<TPZCompMesh> cmesh,
                  std::map<int64_t,int64_t> &periodic_els)
@@ -365,12 +415,13 @@ void CompareDofs(TPZAutoPointer<TPZCompMesh> cmesh,
   for(auto [dep, indep] : periodic_els){
     auto depgel = gmesh->Element(dep);
     auto indepgel = gmesh->Element(indep);
-    auto depcel = depgel->Reference();
-    auto indepcel = indepgel->Reference();
+    auto depcel = dynamic_cast<TPZInterpolationSpace*>(depgel->Reference());
+    auto indepcel = dynamic_cast<TPZInterpolationSpace*>(indepgel->Reference());
 
     
 
-    auto PrintDofs = [&meshsol, &block] (TPZCompEl *cel1, TPZCompEl *cel2){
+    auto PrintDofs = [&meshsol, &block] (TPZInterpolationSpace *cel1,
+                                         TPZInterpolationSpace *cel2){
       const auto ncon = cel1->NConnects();
       
       for (auto icon = 0; icon < ncon; icon++){
@@ -394,18 +445,45 @@ void CompareDofs(TPZAutoPointer<TPZCompMesh> cmesh,
         }
         std::cout<<std::endl;
       }
+
+      TPZMaterialDataT<CSTATE> data1, data2;
+      constexpr int npts{5};
+      if(cel1->Reference()->Node(0).Id() == 299){
+        std::cout<<"NOWWWWWWWWWW"<<std::endl;
+      }
+      cel1->InitMaterialData(data1);
+      cel2->InitMaterialData(data2);
+      for(int i = 0;i < npts; i++){
+        REAL xi = -1 + ((REAL)i)/(npts-1)*2;
+        TPZManVector<REAL,1> xipt = {xi};
+        TPZManVector<REAL,3> x1(3,0.), x2(3,0.);
+        cel1->Reference()->X(xipt, x1);
+        cel2->Reference()->X(xipt, x2);
+        cel1->ComputeShape(xipt, data1);
+        cel2->ComputeShape(xipt, data2);
+        std::cout<<"\txi: "<<xi<<" x1: "<<x1[1]<<" x2: "<<x2[1]<<std::endl;
+        const int nshape = data1.phi.Rows();
+        for(int is = 0; is < nshape; is++){
+          std::cout<<"\t\tshape "<<is<<": "
+                   <<data1.phi.GetVal(is,0)<<" "<<data2.phi.GetVal(is,0)<<'\n';
+        }
+      }
+      
     };
 
     std::cout<<"dep gel "<<depgel->Index()<<" indep gel "<<indepgel->Index()<<std::endl;
     const auto nnodes = depgel->NNodes();
-    std::cout<<"dep gel nodes:";
+    std::cout<<"dep gel nodes:\n";
+    TPZManVector<REAL,3> x(3,0.);
     for(auto in = 0; in < nnodes; in++){
-      std::cout<<'\t'<<depgel->Node(in).Id();
+      std::cout<<'\t';
+      depgel->Node(in).Print(std::cout);
     }
     std::cout<<std::endl;
-    std::cout<<"indep gel nodes:";
+    std::cout<<"indep gel nodes:\n";
     for(auto in = 0; in < nnodes; in++){
-      std::cout<<'\t'<<indepgel->Node(in).Id();
+      std::cout<<'\t';
+      indepgel->Node(in).Print(std::cout);
     }
     std::cout<<std::endl;
     PrintDofs(depcel, indepcel);
