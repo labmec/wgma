@@ -31,10 +31,8 @@ def cut_vol_with_plane(vols, surfs, elsize):
 #############################################
 #                  BEGIN                    #
 #############################################
-# h1 = 0.4
-# h2 = 1.5
-h1 = 1.0
-h2 = 1.0
+h1 = 1.5
+h2 = 0.4
 
 
 h_domain = 10
@@ -407,25 +405,28 @@ far_right_bnd = [reg[1] for reg in far_right_bnd]
 
 # set element size per region
 
-rec_lcore_bnd = [t for _, t in gmsh.model.get_boundary(
-    [(3, tag) for tag in vol_lcore.tag],
-    combined=True, oriented=False, recursive=False)]
-rec_rcore_bnd = [t for _, t in gmsh.model.get_boundary(
-    [(3, tag) for tag in vol_rcore.tag],
-    combined=True, oriented=False, recursive=False)]
 
-gmsh.model.mesh.field.add("Distance", 1)
-gmsh.model.mesh.field.setNumbers(
-    1, "SurfacesList", rec_lcore_bnd + rec_rcore_bnd)
+small_domains = vol_lcore.tag + vol_rcore.tag
+dim = 3
+field_ct = 1
+for t in small_domains:
+    xMin, yMin, zMin, xMax, yMax, zMax = gmsh.model.occ.get_bounding_box(dim, t)
+    gmsh.model.mesh.field.add("Box", field_ct)
+    gmsh.model.mesh.field.set_number(field_ct, "XMin", xMin)
+    gmsh.model.mesh.field.set_number(field_ct, "YMin", yMin)
+    gmsh.model.mesh.field.set_number(field_ct, "ZMin", zMin)
+    gmsh.model.mesh.field.set_number(field_ct, "XMax", xMax)
+    gmsh.model.mesh.field.set_number(field_ct, "YMax", yMax)
+    gmsh.model.mesh.field.set_number(field_ct, "ZMax", zMax)
+    gmsh.model.mesh.field.set_number(field_ct, "Thickness", thickness)
+    gmsh.model.mesh.field.set_number(field_ct, "VIn", el_core)
+    gmsh.model.mesh.field.set_number(field_ct, "VOut", el_clad)
+    field_ct = field_ct + 1
 
-gmsh.model.mesh.field.add("Threshold", 2)
-gmsh.model.mesh.field.setNumber(2, "InField", 1)
-gmsh.model.mesh.field.setNumber(2, "DistMin", 0)
-gmsh.model.mesh.field.setNumber(2, "DistMax", thickness)
-gmsh.model.mesh.field.setNumber(2, "SizeMin", el_core)
-gmsh.model.mesh.field.setNumber(2, "SizeMax", el_clad)
-
-gmsh.model.mesh.field.setAsBackgroundMesh(2)
+gmsh.model.mesh.field.add("Min", field_ct)
+gmsh.model.mesh.field.set_numbers(
+    field_ct, "FieldsList", [i for i in range(1, field_ct)])
+gmsh.model.mesh.field.setAsBackgroundMesh(field_ct)
 gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
 gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
