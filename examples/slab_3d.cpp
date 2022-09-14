@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
   constexpr STATE ncore{1.5};
   constexpr STATE nclad{1.000};
 
-  constexpr STATE alphaPMLx {1.0};
+  constexpr STATE alphaPMLx {0.05};
   constexpr STATE alphaPMLy {1.0};
   constexpr STATE alphaPMLz {1.5};
   /*
@@ -153,11 +153,16 @@ int main(int argc, char *argv[]) {
   TPZVec<std::map<std::string, int>> gmshmats;
   constexpr bool verbosity_lvl{true};
   std::map<int64_t,int64_t> periodic_els;
-  auto gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(meshfile, scale,gmshmats,
-                                                      periodic_els,verbosity_lvl);
 
+  TPZAutoPointer<TPZGeoMesh> gmesh{nullptr};
+  constexpr bool true_periodic{false};
+  if(true_periodic){
+      gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(meshfile, scale,gmshmats,
+                                                     periodic_els,verbosity_lvl);
   CheckNodes(gmesh, periodic_els);
-  // auto gmesh = wgma::gmeshtools::ReadGmshMesh(meshfile, scale,gmshmats,verbosity_lvl);
+  }else{
+    gmesh = wgma::gmeshtools::ReadGmshMesh(meshfile, scale,gmshmats,verbosity_lvl);
+  }
 
   // print wgma_gmesh to .txt and .vtk format
   if (printGMesh) {
@@ -167,7 +172,7 @@ int main(int argc, char *argv[]) {
   }
 
 
-  constexpr bool true_periodic{true};
+  
   /********************************
    * cmesh(modal analysis: left)  *
    ********************************/
@@ -181,8 +186,8 @@ int main(int argc, char *argv[]) {
     modal_mats["source_core_left"] = std::make_pair<CSTATE, CSTATE>(ncore*ncore, 1.);
     std::map<std::string, wgma::bc::type> modal_bcs;
     modal_bcs["source_left_bnd_pec"] = wgma::bc::type::PEC;
-    modal_bcs["source_left_bnd_per_dep"] = wgma::bc::type::PERIODIC;
-    modal_bcs["source_left_bnd_per_indep"] = wgma::bc::type::PERIODIC;
+    // modal_bcs["source_left_bnd_per_dep"] = wgma::bc::type::PERIODIC;
+    // modal_bcs["source_left_bnd_per_indep"] = wgma::bc::type::PERIODIC;
     //dimension of the modal analysis 
     constexpr int modal_dim{2};
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs, alphaPMLx,
@@ -227,7 +232,7 @@ int main(int argc, char *argv[]) {
   constexpr bool ortho{false};
   ComputeModes(modal_l_an, modal_l_cmesh[0], ortho, nThreadsDebug);
 
-  PostProcessModes(modal_l_an, modal_l_cmesh[0], modal_left_file+"_ref", vtkRes);
+  PostProcessModes(modal_l_an, modal_l_cmesh[0], modal_left_file+"_ref_wpml", vtkRes);
 
   if(true_periodic){
     wgma::cmeshtools::RemovePeriodicity(modal_l_cmesh[1]);

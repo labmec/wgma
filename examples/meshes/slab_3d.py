@@ -39,10 +39,10 @@ h_domain = 10
 w_domain = 10
 d_src = 1
 d_far = 6*d_src
-el_core = 0.15
+el_core = 0.4
 thickness = 2*max(h1, h2)
-el_clad = 0.75
-d_pmlx = 2
+el_clad = 0.4
+d_pmlx = 3
 d_pmly = 1
 d_pmlz = 3
 d_extr = 4
@@ -288,10 +288,6 @@ pml2d_src_left = find_pml_region(src_left_dimtags, pmlmap, pmldim)
 pml2d_src_right = find_pml_region(src_right_dimtags, pmlmap, pmldim)
 pml2d_far_right = find_pml_region(far_right_dimtags, pmlmap, pmldim)
 
-# let us filter the PML regions. we want periodic bcs on the x direction
-pml2d_src_left = dict(
-    [(k, v) for k, v in pml2d_src_left.items() if k[0].count('x') == 0])
-
 pmlmap2d = {}
 pmlmap2d.update(pml2d_src_left)
 pmlmap2d.update(pml2d_src_right)
@@ -319,74 +315,9 @@ src_left_bnd = gmsh.model.get_boundary(
     +
     [(2, tag) for _, tag in pml2d_src_left.keys()],
     combined=True, oriented=False, recursive=False)
-# now  we split the boundaries between periodic and PEC(dirichlet)
-src_left_bnd_per = [reg[1]
-                    for reg in src_left_bnd if not reg[1] in scatt_bound_curves]
-src_left_bnd_pec = [reg[1]
-                    for reg in src_left_bnd if reg[1] in scatt_bound_curves]
 
-# we must ensure that the edges are meshed periodically
+src_left_bnd_pec = [reg[1] for reg in src_left_bnd]
 
-
-def calc_periodic_edges(bndlist, mcdir, transdir, transval):
-    dim = 1
-
-    dirmap = {0: "dx", 1: "dy", 2: "dz"}
-    affine = [1.0 if i == j else 0 for i in range(4) for j in range(4)]
-    pos = {"dx": 3, "dy": 7, "dz": 11}
-    val = {"dx": 0, "dy": 0, "dz": 0}
-
-    val[dirmap[transdir]] = transval
-
-    affine[pos["dx"]] = val["dx"]
-    affine[pos["dy"]] = val["dy"]
-    affine[pos["dz"]] = val["dz"]
-
-    # find max and min center of mass
-    minmc = 10**12
-    maxmc = -10**12
-    for bnd in bndlist:
-        mc = gmsh.model.occ.get_center_of_mass(dim, bnd)[transdir]
-        maxmc = mc if mc > maxmc else maxmc
-        minmc = mc if mc < minmc else minmc
-    # let us first split the boundaries into dependent and independent
-    minbnd = []
-    maxbnd = []
-    for bnd in bndlist:
-        mc = gmsh.model.occ.get_center_of_mass(dim, bnd)[transdir]
-        if abs(mc-maxmc) < abs(mc-minmc):
-            maxbnd.append(bnd)
-        else:
-            minbnd.append(bnd)
-
-    per_edges = []
-    for bnd in minbnd:
-        mc1 = gmsh.model.occ.get_center_of_mass(dim, bnd)
-        found = -1
-        for bbnd in maxbnd:
-            if found > 0:
-                break
-            mc2 = gmsh.model.occ.get_center_of_mass(dim, bbnd)
-            if abs(mc1[mcdir] - mc2[mcdir]) < 10**-12:
-                found = bbnd
-                per_edges.append(found)
-                break
-        if found < 0:
-            raise RuntimeError(
-                "Could not match periodic boundary {}".format(bnd))
-        gmsh.model.mesh.set_periodic(dim, [found], [bnd], affine)
-    return per_edges
-
-
-src_left_dep_edges = calc_periodic_edges(src_left_bnd_per, 1, 0, d_extr)
-src_left_indep_edges = [b for b in src_left_bnd_per
-                        if src_left_dep_edges.count(b) == 0]
-
-try:
-    assert(len(src_left_dep_edges) == len(src_left_indep_edges))
-except:
-    print("there are {} dep edges and {} indep edges".format(
-        len(src_left_dep_edges), len(src_left_indep_edges)))
 
 src_right_bnd = gmsh.model.get_boundary(
     [(2, tag) for tag in src_right.tag]
@@ -453,8 +384,6 @@ domain_physical_ids_2d = {
 }
 
 domain_physical_ids_1d = {
-    "source_left_bnd_per_dep": 12,
-    "source_left_bnd_per_indep": 13,
     "source_left_bnd_pec": 14,
     "source_right_bnd": 15,
     "far_right_bnd": 16
@@ -471,8 +400,6 @@ domain_regions = {"core_left": vol_lcore.tag,
                   "cladding_right": vol_right.tag,
                   "source_clad_left": src_left_clad_tags,
                   "source_core_left": src_left_core_tags,
-                  "source_left_bnd_per_dep": src_left_dep_edges,
-                  "source_left_bnd_per_indep": src_left_indep_edges,
                   "source_left_bnd_pec": src_left_bnd_pec,
                   "source_clad_right": src_right_clad_tags,
                   "source_core_right": src_right_core_tags,
@@ -493,23 +420,7 @@ generate_physical_ids(domain_physical_ids, domain_regions)
 if '-nopopup' not in sys.argv:
     gmsh.fltk.run()
 
-gmsh.model.mesh.generate(3)
-dim = 1
-# let us check for edges with reverse orientation
-reverse = []
-for i in range(len(src_left_dep_edges)):
-    dep = src_left_dep_edges[i]
-    indep = src_left_indep_edges[i]
-    dep_bnd = gmsh.model.get_boundary([(dim, dep)], oriented=True)
-    indep_bnd = gmsh.model.get_boundary([(dim, indep)], oriented=True)
-    xi = [0.]
-    dep_deriv = gmsh.model.get_derivative(dim, dep, xi)
-    indep_deriv = gmsh.model.get_derivative(dim, indep, xi)
-    tol = 10**-12
-    deriv_comp = all([abs(d-i) < tol for d, i in zip(dep_deriv, indep_deriv)])
-    if not deriv_comp:
-        reverse.append((dim, dep))
-gmsh.model.mesh.reverse(reverse)
+gmsh.model.mesh.generate(2)
 
 
 if __name__ == "__main__":
