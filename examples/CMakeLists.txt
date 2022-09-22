@@ -40,3 +40,10 @@ add_pz_target(
   FILES meshes/slab_disc.msh
   )
 target_link_libraries(slab_disc PUBLIC wgma)
+
+add_pz_target(
+  NAME sf3d
+  SOURCES sf3d.cpp
+  FILES meshes/sf3d.msh meshes/sf3d_cyldata.csv
+  )
+target_link_libraries(sf3d PUBLIC wgma)  
