@@ -949,16 +949,17 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
 
       //we store the first neighbour of each side of the element to be deleted
       constexpr bool skip_side_cylinder{false};
+      const auto eltype = el->Type();
       StoreNeighboursAndDeleteEl(el, gmesh.operator->(), skip_side_cylinder, neighs);
         
       //insert new element on the mesh
       TPZGeoEl* cylinder = nullptr;
-      if(el->Type() == ETriangle){
+      if(eltype == ETriangle){
           auto refel =
             new TPZGeoElRefPattern<pzgeom::TPZCylinderMap<pzgeom::TPZGeoTriangle>>(nodesIdVec, matid, *gmesh);
           SetCylData(refel->Geom());
           cylinder = refel;
-        }else if (el->Type() == EQuadrilateral){
+        }else if (eltype == EQuadrilateral){
           auto refel =
             new TPZGeoElRefPattern<pzgeom::TPZCylinderMap<pzgeom::TPZGeoQuad>>(nodesIdVec, matid, *gmesh);
           SetCylData(refel->Geom());
@@ -979,24 +980,40 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
         neighs[i].SetConnectivity(gelside);
       }
 
-      
 
-      /**now we need to replace each neighbour of a blend element,
-         so it can be deformed accordingly*/
-      TPZGeoElSide gelside(cylinder,cylinder->NSides()-1);
-      //now we iterate through all the neighbours of the linear side
-      TPZGeoElSide neighbour = gelside.Neighbour();
       //let us store all the neighbours
       std::set<TPZGeoElSide> all_neighs;
-      while(neighbour.Exists() && neighbour != gelside){
-        all_neighs.insert(neighbour);
-        neighbour = neighbour.Neighbour();
+      //just to ensure we wont  remove any element twice
+      std::set<TPZGeoEl*> neigh_els;
+
+
+      for(auto is = cylinder->NNodes(); is < cylinder->NSides(); is++){
+        /**now we need to replace each neighbour with a blend element,
+           so it can be deformed accordingly*/
+        TPZGeoElSide gelside(cylinder,is);
+        //now we iterate through all the neighbours of the given side
+        TPZGeoElSide neighbour = gelside.Neighbour();
+      
+        while(neighbour.Exists() && neighbour != gelside){
+          auto neigh_el = neighbour.Element();
+          //let us skip neighbours that are in the cylinder wall as well
+          auto check_el = neigh_els.find(neigh_el) == neigh_els.end();
+          if(check_el && neigh_el->MaterialId() != matid){
+            all_neighs.insert(neighbour);
+            neigh_els.insert(neigh_el);
+          }
+          neighbour = neighbour.Neighbour();
+        }
       }
+
+      
       //let us replace all the neighbours
       for(auto neighbour : all_neighs){ 
         const auto neigh_side = neighbour.Side();
         auto neigh_el = neighbour.Element();
-
+        
+        const auto neigh_matid = neigh_el->MaterialId();
+        const auto neigh_id = neigh_el->Id();
         /*let us take into account the possibility that
           one triangle might be neighbour of two cylinders
          */
@@ -1012,7 +1029,10 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
           
           const auto neigh_type = neigh_el->Type();
 
-          constexpr bool skip_side_neigh{true};
+          //if the element is 2D, then we need to check neighbours
+          //even on its highest dimensional side
+          //for 3D els, we check up to faces
+          const bool skip_side_neigh = neigh_el->Dimension() == 3 ? true : false;
           StoreNeighboursAndDeleteEl(neigh_el, gmesh.operator->(),
                                      skip_side_neigh, neighs);
           
@@ -1051,7 +1071,7 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
             neighs[i].SetConnectivity(mygelside);
           }
           //insert last remaining connectivity
-          {
+          if(skip_side_neigh){
             TPZGeoElSide mygelside(new_neigh, new_neigh->NSides()-1);
             mygelside.SetConnectivity(mygelside);
           }
