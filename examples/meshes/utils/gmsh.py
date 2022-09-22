@@ -419,7 +419,7 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         nel = [nlayers]
         height = [1]
         pmlreg = [(d, t)
-                  for d, t in gmsh.model.occ.extrude([bpml], *dx, nel, height) if d == dim][0]
+                  for d, t in gmsh.model.occ.extrude([bpml], *dx, nel, height,True) if d == dim][0]
 
     if(len(alldirs) == 3):
         # yet another extrusion
@@ -433,7 +433,7 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         nel = [nlayers]
         height = [1]
         pmlreg = [(d, t)
-                  for d, t in gmsh.model.occ.extrude([bpml], *dx, nel, height) if d == dim][0]
+                  for d, t in gmsh.model.occ.extrude([bpml], *dx, nel, height,True) if d == dim][0]
 
     return {(direction, pmlreg[1]): dimtag[1]}
 
@@ -506,7 +506,7 @@ The same applies for "xm" and "ym"
         assert(len(up) == 1)
     nel = [nlayers]
     height = [1]
-    pmlregs = gmsh.model.occ.extrude(pml_bnds, dx, dy, dz, nel, height)
+    pmlregs = gmsh.model.occ.extrude(pml_bnds, dx, dy, dz, nel, height, True)
     #let us filter the relevant PML regions 
     pmlregs = [pr[1] for pr in pmlregs if pr[0] == dim]
     #we now assume that the output of extrude will give 3d regions
