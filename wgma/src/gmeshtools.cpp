@@ -4,6 +4,7 @@
 #include <TPZRefPattern.h>
 #include <TPZRefPatternDataBase.h>
 #include <tpzarc3d.h>
+#include <TPZCylinderMap.h>
 #include <tpzgeoblend.h>
 #include <TPZVTKGeoMesh.h>
 #include <TPZGmshReader.h>
@@ -741,6 +742,24 @@ wgma::gmeshtools::FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh> gmesh,
   return std::nullopt;
 }
 
+void StoreNeighboursAndDeleteEl(TPZGeoEl *gel, TPZGeoMesh* gmesh, bool skip_last_side,
+                                TPZVec<TPZGeoElSide> &neighs){
+  //auxiliary function used in:
+  //SetExactArcRepresentation and SetExactCylinderRepresentation
+  //skip last side: for 1D elements in 2D meshes(or 2D elements in 3D meshes),
+  //we want ALL the neighbours
+  //for 2D elements in 2D meshes, we skip the last side
+  const int diff = skip_last_side ? 1 : 0;
+  auto nsides = gel->NSides() - diff;
+  neighs.Resize(nsides);
+  for(int i = 0; i < nsides; i++){
+    neighs[i] = gel->Neighbour(i);
+  }
+  //now we delete the element and its connectivities
+  gmesh->DeleteElement(gel);
+  gel = nullptr;//just to be on the safeside
+}
+
 void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
                                                  const TPZVec<ArcData> &circles)
 {
@@ -767,22 +786,6 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
   };
 
   
-  //stores the first neighbour for each side before deleting element
-  auto StoreNeighboursAndDeleteEl = [gmesh](TPZGeoEl *gel, bool skip_last_side){
-    //skip last side: for 1D elements in 2D meshes, we want ALL the neighbours
-    //for 2D elements in 2D meshes, we skip the last side
-    const int diff = skip_last_side ? 1 : 0;
-    auto nsides = gel->NSides() - diff;
-    TPZVec<TPZGeoElSide> neighs(nsides);
-    for(int i = 0; i < nsides; i++){
-      neighs[i] = gel->Neighbour(i);
-    }
-    //now we delete the element and its connectivities
-    gmesh->DeleteElement(gel);
-    gel = nullptr;//just to be on the safeside
-    return neighs;
-  };
-  
   std::map<int,int> arc_ids;
   std::map<int,bool> found_arcs;
   for(auto i = 0; i < circles.size(); i++){
@@ -790,6 +793,8 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
     found_arcs[circles[i].m_matid] = false;
   }
 
+
+  TPZManVector<TPZGeoElSide, 50> neighs;
   
   for(auto el : gmesh->ElementVec()){
     //this way we avoid processing recently inserted elements
@@ -819,7 +824,7 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
 
       //we store the first neighbour of each side of the element to be deleted
       constexpr bool skip_side_arc{false};
-      auto neighs = StoreNeighboursAndDeleteEl(el, skip_side_arc);
+      StoreNeighboursAndDeleteEl(el, gmesh.operator->(), skip_side_arc, neighs);
         
       //insert new element on the mesh
       auto arc = new TPZGeoElRefPattern<pzgeom::TPZArc3D>(nodesIdVec, matid, *gmesh);
@@ -862,7 +867,8 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
           const auto neigh_type = neigh_el->Type();
 
           constexpr bool skip_side_neigh{true};
-          auto neighs = StoreNeighboursAndDeleteEl(neigh_el, skip_side_neigh);
+          StoreNeighboursAndDeleteEl(neigh_el, gmesh.operator->(),
+                                     skip_side_neigh, neighs);
           
           //create new element
           if(neigh_type == MElementType::ETriangle){
@@ -895,6 +901,174 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
     if(!arc.second){
       PZError<<__PRETTY_FUNCTION__
              <<"\n arc "<<arc.first<<" not found in mesh"<<std::endl;
+    }
+  }
+}
+
+void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
+                                                      const TPZVec<CylinderData> &cylinders)
+{
+
+  
+  std::map<int,int> cylinder_ids;
+  std::map<int,bool> found_cylinders;
+  for(auto i = 0; i < cylinders.size(); i++){
+    cylinder_ids[cylinders[i].m_matid] = i;
+    found_cylinders[cylinders[i].m_matid] = false;
+  }
+
+
+  TPZManVector<TPZGeoElSide, 50> neighs;
+
+  std::set<TPZGeoEl*> blend_neighs;
+  for(auto el : gmesh->ElementVec()){
+    //this way we avoid processing recently inserted elements
+    if(!el || el->IsLinearMapping() == false) continue;
+    const int matid = el->MaterialId();
+    const bool is_cylinder = cylinder_ids.find(matid) != cylinder_ids.end();
+
+    if(is_cylinder){//found cylinder
+      found_cylinders[matid] = true;
+      const int cylinder_pos = cylinder_ids[matid];
+      const auto &cyldata = cylinders[cylinder_pos];
+      const REAL r = cyldata.m_radius;
+      TPZManVector<REAL,3> xc = {cyldata.m_xc,cyldata.m_yc,cyldata.m_zc};
+      TPZManVector<REAL,3> axis = {cyldata.m_xaxis, cyldata.m_yaxis,cyldata.m_zaxis};
+
+      const auto nnodes = el->NNodes();
+
+      auto SetCylData = [xc,r,axis,gmesh](auto &cyl){
+        cyl.SetOrigin(xc, r);
+        cyl.SetCylinderAxis(axis);
+        cyl.ComputeCornerCoordinates(*gmesh);
+      };
+
+      
+      TPZManVector<int64_t,4> nodesIdVec(nnodes, 0);
+      for(auto in = 0; in < nnodes; in ++){nodesIdVec[in] = el->Node(in).Id();}
+
+      //we store the first neighbour of each side of the element to be deleted
+      constexpr bool skip_side_cylinder{false};
+      StoreNeighboursAndDeleteEl(el, gmesh.operator->(), skip_side_cylinder, neighs);
+        
+      //insert new element on the mesh
+      TPZGeoEl* cylinder = nullptr;
+      if(el->Type() == ETriangle){
+          auto refel =
+            new TPZGeoElRefPattern<pzgeom::TPZCylinderMap<pzgeom::TPZGeoTriangle>>(nodesIdVec, matid, *gmesh);
+          SetCylData(refel->Geom());
+          cylinder = refel;
+        }else if (el->Type() == EQuadrilateral){
+          auto refel =
+            new TPZGeoElRefPattern<pzgeom::TPZCylinderMap<pzgeom::TPZGeoQuad>>(nodesIdVec, matid, *gmesh);
+          SetCylData(refel->Geom());
+          cylinder = refel;
+        }else{
+          PZError<<__PRETTY_FUNCTION__
+                 <<"\nError: unexpected element type."
+                 <<"\n id: "<<el->Id()<<" type: "<<el->TypeName()
+                 <<"\nAborting..."<<std::endl;
+          DebugStop();
+        }
+      
+      
+      
+      //insert connectivities
+      for(int i = 0; i< neighs.size();i++){
+        TPZGeoElSide gelside(cylinder,i);
+        neighs[i].SetConnectivity(gelside);
+      }
+
+      
+
+      /**now we need to replace each neighbour of a blend element,
+         so it can be deformed accordingly*/
+      TPZGeoElSide gelside(cylinder,cylinder->NSides()-1);
+      //now we iterate through all the neighbours of the linear side
+      TPZGeoElSide neighbour = gelside.Neighbour();
+      //let us store all the neighbours
+      std::set<TPZGeoElSide> all_neighs;
+      while(neighbour.Exists() && neighbour != gelside){
+        all_neighs.insert(neighbour);
+        neighbour = neighbour.Neighbour();
+      }
+      //let us replace all the neighbours
+      for(auto neighbour : all_neighs){ 
+        const auto neigh_side = neighbour.Side();
+        auto neigh_el = neighbour.Element();
+
+        /*let us take into account the possibility that
+          one triangle might be neighbour of two cylinders
+         */
+        TPZGeoEl *new_neigh{nullptr};
+        if(!neigh_el->IsGeoBlendEl()){
+          const auto neigh_matid = neigh_el->MaterialId();
+          const auto neigh_nnodes = neigh_el->NNodes();
+          TPZManVector<int64_t,4> neigh_nodes(neigh_nnodes,-1);
+          //lets copy all the nodes
+          for(int in = 0; in < neigh_nnodes; in++){
+            neigh_nodes[in] = neigh_el->Node(in).Id();
+          }
+          
+          const auto neigh_type = neigh_el->Type();
+
+          constexpr bool skip_side_neigh{true};
+          StoreNeighboursAndDeleteEl(neigh_el, gmesh.operator->(),
+                                     skip_side_neigh, neighs);
+          
+          //create new element
+          switch(neigh_type){
+          case MElementType::ETriangle:
+            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
+              pzgeom::TPZGeoTriangle>>(neigh_nodes, neigh_matid,*gmesh);
+            break;
+          case MElementType::EQuadrilateral:
+            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
+              pzgeom::TPZGeoQuad>>(neigh_nodes, neigh_matid,*gmesh);
+            break;
+          case MElementType::ETetraedro:
+            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
+              pzgeom::TPZGeoTetrahedra>>(neigh_nodes, neigh_matid,*gmesh);
+            break;
+          case MElementType::ECube:
+            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
+              pzgeom::TPZGeoCube>>(neigh_nodes, neigh_matid,*gmesh);
+            break;
+          case MElementType::EPrisma:
+            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
+              pzgeom::TPZGeoPrism>>(neigh_nodes, neigh_matid,*gmesh);
+            break;
+          default:
+            PZError<<__PRETTY_FUNCTION__
+                   <<"\nError: unexpected element type."
+                   <<"\n id: "<<neigh_el->Id()<<" type: "<<neigh_el->TypeName()
+                   <<"\nAborting..."<<std::endl;
+          }
+          
+          //insert connectivities
+          for(int i = 0; i<neighs.size();i++){
+            TPZGeoElSide mygelside(new_neigh,i);
+            neighs[i].SetConnectivity(mygelside);
+          }
+          //insert last remaining connectivity
+          {
+            TPZGeoElSide mygelside(new_neigh, new_neigh->NSides()-1);
+            mygelside.SetConnectivity(mygelside);
+          }
+          blend_neighs.insert(new_neigh);
+        }
+      }
+    }
+  }
+
+  for(auto *el : blend_neighs){
+    el->BuildBlendConnectivity();
+  }
+  
+  for(auto cylinder : found_cylinders){
+    if(!cylinder.second){
+      PZError<<__PRETTY_FUNCTION__
+             <<"\n cylinder "<<cylinder.first<<" not found in mesh"<<std::endl;
     }
   }
 }
