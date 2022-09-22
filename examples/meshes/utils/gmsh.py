@@ -71,6 +71,20 @@ class BoxData(VolData):
         self.dz = 0.
 
 
+class CylinderData(VolData):
+    """
+    will be used to feed wgma::gmeshtools::SetExactCylinderRepresentation
+    """
+
+    def __init__(self):
+        VolData.__init__(self)
+        self.matid = -10  # physical identifier for the cylinder surface
+        self.surftag = []  # tags for the cylinder surface
+        self.radius = -1.
+        self.xc = []
+        self.axis = []
+
+
 def create_line(line: LineData, elsize: float):
     """
     Creates a 1D line and insert it in the model
