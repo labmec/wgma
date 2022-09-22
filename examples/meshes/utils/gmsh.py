@@ -46,14 +46,23 @@ class RectData:
         self.h = 0.
 
 
-class BoxData:
+class VolData:
     """
-    represents a parallelepipedic box with lower left corner (xc,yc,zc)
+    represents a generic volume
     """
 
     def __init__(self):
         self.tag = []
         self.dim = 3
+
+
+class BoxData(VolData):
+    """
+    represents a parallelepipedic box with lower left corner (xc,yc,zc)
+    """
+
+    def __init__(self):
+        VolData.__init__(self)
         self.xc = 0.
         self.yc = 0.
         self.zc = 0.
@@ -196,6 +205,34 @@ them into lists of tags and regions
         regions[name] = circ.linetag
         circ.matid = new_physical_id
         new_physical_id += 1
+
+
+def create_box(box, elsize: float):
+    """
+    Creates a parallelepipedic region and insert it in the model
+
+
+
+    Parameters
+    ----------
+    box: BoxData
+        will have its tag field filled, must have all other attributes set
+    elsize: float
+        prescribed element size
+    normal: string
+        direction of the normal vector of the rectangle ('x', 'y' or 'z')
+    """
+
+    box.tag = [
+        gmsh.model.occ.add_box(
+            box.xc, box.yc, box.zc, box.dx, box.dy, box.dz)]
+    gmsh.model.occ.synchronize()
+    # Find domain boundary tags
+    boundary_dimtags = gmsh.model.getBoundary(
+        dimTags=[(3, box.tag[0])],
+        combined=False, oriented=False, recursive=True)
+    [gmsh.model.mesh.set_size([tag], elsize)
+     for tag in boundary_dimtags if tag[0] == 0]
 
 
 def create_pml_corner(dimtag, direction: str, dpml):
@@ -648,6 +685,8 @@ def apply_boolean_operation(
     if removetool:
         for dim, reg in orig_ent:
             if dim == 1:
+                if list(domain_map.keys()).count((dim, reg)) == 0:
+                    continue
                 for r in domain_map[(dim, reg)]:
                     bpts = gmsh.model.get_boundary([(dim, r)],
                                                    combined=False,
