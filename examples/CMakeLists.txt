@@ -40,3 +40,10 @@ add_pz_target(
   FILES meshes/slab_disc.msh
   )
 target_link_libraries(slab_disc PUBLIC wgma)
+
+add_pz_target(
+  NAME stepfiber_3d
+  SOURCES stepfiber_3d.cpp
+  FILES meshes/stepfiber_3d.msh meshes/stepfiber_3d_cyldata.csv
+  )
+target_link_libraries(stepfiber_3d PUBLIC wgma)  
