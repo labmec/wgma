@@ -789,7 +789,8 @@ def generate_physical_ids(tags, domains):
         if not groups:  # empty dict
             continue
         for name, tag in groups.items():
-            assert(name in domains)
+            if name not in domains:
+                raise Exception("Name "+name+" with tag "+str(tag)+" not found")
             regions = domains[name]
             gmsh.model.add_physical_group(dim, regions, tag)
             gmsh.model.set_physical_name(dim, tag, name)
