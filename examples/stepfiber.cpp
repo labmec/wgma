@@ -225,6 +225,7 @@ int main(int argc, char *argv[]) {
       pml.alphax = alphaPML;
       pml.alphay = alphaPML;
       pml.t = pmlTypeVec[ipml];
+      pml.dim = 2;
       data.pmlvec.push_back(pml);
     }
     
