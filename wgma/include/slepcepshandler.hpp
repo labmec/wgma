@@ -269,6 +269,11 @@ namespace wgma::slepc{
     void SetPrecond(const Precond precond,
                     RTVar zero = std::numeric_limits<RTVar>::epsilon());
 
+    //! Returns nullptr since pardiso is not used in this solver
+    TPZPardisoSolver<TVar> *GetPardisoControlA() override
+    {return nullptr;}
+    TPZPardisoSolver<TVar> *GetPardisoControlB() override
+    {return nullptr;}
   private:
     //! Actual solver implementation with SLEPc calls
     int SolveImpl(TPZVec<CTVar> &w,TPZFMatrix<CTVar> &eigenVectors,
