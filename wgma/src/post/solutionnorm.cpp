@@ -16,7 +16,7 @@ namespace wgma::post{
     for (auto &it : m_res){
       res += it;
     }
-    return res;
+    return sqrt(res);
   }
 
   template<class TSPACE>
