@@ -22,8 +22,8 @@ complex curved structured meshes in NeoPZ.
 #include <TPZElectromagneticConstants.h> //for pzelectromag::cZero
 #include <TPZKrylovEigenSolver.h>        //for TPZKrylovEigenSolver
 #include <TPZVTKGenerator.h>
-
-
+#include <TPZPardisoSolver.h>
+#include <post/solutionnorm.hpp>
 
 
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
@@ -125,7 +125,7 @@ int main(int argc, char *argv[]) {
   //number of threads to use
   constexpr int nThreads{8};
   //number of genvalues to be computed
-  constexpr int nEigenpairs{4};
+  constexpr int nEigenpairs{10};
   //whether to compute eigenvectors (instead of just eigenvalues)
   constexpr bool computeVectors{true};
   //how to sort the computed eigenvalues
@@ -148,7 +148,7 @@ int main(int argc, char *argv[]) {
   //whether to export the solution as a .vtk file
   constexpr bool exportVtk{true};
   //resolution of the .vtk file in which the solution will be exported
-  constexpr int vtkRes{2};
+  constexpr int vtkRes{0};
   // path for output files
   const std::string path {"res_stepfiber/"};
   //just to make sure we will output results
@@ -161,7 +161,7 @@ int main(int argc, char *argv[]) {
    ********************/
   
   //reorder the equations in order to optimize bandwidth
-  constexpr bool optimizeBandwidth{true};
+  constexpr bool optimizeBandwidth{false};
   /*
     The equations corresponding to homogeneous dirichlet boundary condition(PEC)
     can be filtered out of the global system in order to achieve better conditioning.
@@ -186,7 +186,7 @@ int main(int argc, char *argv[]) {
   constexpr bool refine{false};
   
 
-  bool usingSLEPC{true};
+  constexpr bool usingSLEPC{false};
   //creates gmesh
   auto gmesh = CreateStepFiberMesh(rCore,boundDist,factor,refine,scale,
                                    matIdVec,usingPML,dPML,nLayersPML,pmlTypeVec);
@@ -247,13 +247,29 @@ int main(int argc, char *argv[]) {
   wgma::wganalysis::Wgma2D analysis(meshVec,nThreads,optimizeBandwidth,filterBoundaryEqs);
   
   auto solver = SetupSolver(nEigenpairs, target, sortingRule, usingSLEPC);
-
+  
   analysis.SetSolver(solver);
-  analysis.Run(computeVectors);
+  analysis.Assemble();
+
+  analysis.Solve(computeVectors);
+  analysis.LoadAllSolutions();
+
+  using namespace wgma::post;
+  //leave empty for all valid matids
+  std::set<int> matids {};
+  auto ortho = SolutionNorm<MultiphysicsIntegrator>(meshVec[0], matids, nThreads);
+  //orthogonalise the modes
+  {
+    ortho.Normalise();
+    for(int i = 0; i < nEigenpairs; i++){
+      std::cout<<" sol "<<i<<" norm "<<ortho.ComputeNorm(i)<<std::endl;
+    }
+  }
   
   if (!computeVectors && !exportVtk) return 0;
 
-  const std::string plotfile = path+"stepfiber_field";
+  const std::string suffix = usingSLEPC ? "_slepc" : "_krylov";
+  const std::string plotfile = path+"stepfiber_field" + suffix;
 
   
   {
