@@ -8,7 +8,8 @@ namespace wgma::post{
   template<class TSPACE>
   STATE SolutionNorm<TSPACE>::ComputeNorm(int s){
     const int size_res = std::max(this->NThreads(),1);
-    m_res.Resize(size_res,0);
+    m_res.Resize(size_res);
+    m_res.Fill(0.);
     this->SetSol(s);
     this->Integrate(this->m_elvec);
     STATE res = 0;
