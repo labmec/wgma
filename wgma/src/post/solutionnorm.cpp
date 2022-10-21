@@ -6,6 +6,25 @@
 namespace wgma::post{
 
   template<class TSPACE>
+  void SolutionNorm<TSPACE>::Normalise()
+  {
+
+    auto mesh = this->Mesh();
+
+    TPZFMatrix<CSTATE> &evectors = mesh->Solution();
+    const int nev = evectors.Cols();
+    const int neq = mesh->NEquations();
+    //we iterate through the eigenvectors
+    for(int iev = 0; iev < nev; iev++){
+      const auto norm = this->ComputeNorm(iev);
+      const int offset = iev * neq;
+      TPZFMatrix<CSTATE> ei(neq,1,evectors.Elem() + offset,neq);
+      std::cout<<"computed norm of solution "<<iev<<": "<<norm<<std::endl;
+      ei *= 1./norm;
+    }
+  }
+
+  template<class TSPACE>
   STATE SolutionNorm<TSPACE>::ComputeNorm(int s){
     const int size_res = std::max(this->NThreads(),1);
     m_res.Resize(size_res);

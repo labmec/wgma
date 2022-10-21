@@ -17,6 +17,8 @@ namespace wgma::post{
                  int nThreads = 4) : TSPACE(mesh,elvec,nThreads) {}
     //! Compute norm of a given solution
     STATE ComputeNorm(int s = 0);
+    //! Normalise all solutions
+    void Normalise();
   protected:
     //! Index of the solution to be used
     void SetSol(int s){m_which = s;}
