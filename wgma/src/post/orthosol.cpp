@@ -8,10 +8,11 @@
 
 namespace wgma::post{
 
-  TPZFMatrix<CSTATE> OrthoSol::Orthogonalise()
+  template<class TSPACE>
+  TPZFMatrix<CSTATE> OrthoSol<TSPACE>::Orthogonalise()
   {
 
-    auto mesh = Mesh();
+    auto mesh = this->Mesh();
 
     TPZFMatrix<CSTATE> evectors = mesh->Solution();
     const int nev = evectors.Cols();
@@ -30,12 +31,12 @@ namespace wgma::post{
       TPZFMatrix<CSTATE> ei(neq,1,evectors.Elem() + offset,neq);
       
       //how many rows the results matrix has
-      const int nrows_res = std::max(NThreads(),1);
+      const int nrows_res = std::max(this->NThreads(),1);
       //if it is the first eigenvector, there is no need to iterate through
       //all the elements, only normalising it
       if(iev>0){
         m_res.Redim(nrows_res, iev + 1);
-        Integrate(m_elvec);
+        this->Integrate(this->m_elvec);
         //this will contain the dot product of the solutions
         TPZVec<CSTATE> res(iev+1,0.);
         //sum the results
@@ -53,7 +54,7 @@ namespace wgma::post{
         }
       }
 
-      auto solnorm = SolutionNorm(mesh, m_elvec, NThreads());
+      auto solnorm = SolutionNorm<TSPACE>(mesh, this->m_elvec, this->NThreads());
       auto norm = solnorm.ComputeNorm(iev);
       ei *= 1./norm;
     }
@@ -61,10 +62,11 @@ namespace wgma::post{
     return std::move(evectors);
   }
 
-  void OrthoSol::Compute(const ElData &eldata,REAL weight, int index)
+  template<class TSPACE>
+  void OrthoSol<TSPACE>::Compute(const ElData &eldata,REAL weight, int index)
   {
-    const TPZMaterialDataT<CSTATE> &data = eldata;
     const auto &which = WhichSol();
+    const TPZMaterialDataT<CSTATE> &data = eldata;
     const auto &cursol = data.sol[which];
     const auto solsize = cursol.size();
     for(auto isol = 0; isol < which; isol++){
@@ -74,4 +76,9 @@ namespace wgma::post{
       }
     }
   }
+
+  template
+  class OrthoSol<SingleSpaceIntegrator>;
+  template
+  class OrthoSol<MultiphysicsIntegrator>;
 };

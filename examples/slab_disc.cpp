@@ -417,7 +417,7 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   an.LoadAllSolutions();
   //leave empty for all valid matids
   std::set<int> matids {};
-  auto ortho = wgma::post::OrthoSol(cmesh, matids, nThreads);
+  auto ortho = wgma::post::OrthoSol<wgma::post::SingleSpaceIntegrator>(cmesh, matids, nThreads);
   //orthogonalise the modes
   auto normsol = ortho.Orthogonalise();
   //let us set the orthogonalised modes

@@ -5,16 +5,17 @@
 
 namespace wgma::post{
   //! Orthogonalises a given set of solutions (already loaded into the mesh)
-  class OrthoSol: public SingleSpaceIntegrator{
+  template<class TSPACE>
+  class OrthoSol: public TSPACE{
   public:
     OrthoSol(TPZAutoPointer<TPZCompMesh> mesh,
              std::set<int> matids = {},
              int nThreads = 4) :
-      SingleSpaceIntegrator(mesh,matids,nThreads) {}
+      TSPACE(mesh,matids,nThreads) {}
     OrthoSol(TPZAutoPointer<TPZCompMesh> mesh,
              TPZVec<TPZCompEl*> elvec,
              int nThreads = 4) :
-      SingleSpaceIntegrator(mesh,elvec,nThreads) {}
+      TSPACE(mesh,elvec,nThreads) {}
     //! Orthogonalise all solutions and return them
     TPZFMatrix<CSTATE> Orthogonalise();
   protected:

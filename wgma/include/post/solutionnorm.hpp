@@ -6,14 +6,15 @@
 
 namespace wgma::post{
   //! Computes L2 norm of a given FEM solution (already loaded into the mesh)
-  class SolutionNorm: public SingleSpaceIntegrator{
+  template<class TSPACE>
+  class SolutionNorm: public TSPACE{
   public:
     SolutionNorm(TPZAutoPointer<TPZCompMesh> mesh,
                  std::set<int> matids = {},
-                 int nThreads = 4) : SingleSpaceIntegrator(mesh,matids,nThreads) {}
+                 int nThreads = 4) : TSPACE(mesh,matids,nThreads) {}
     SolutionNorm(TPZAutoPointer<TPZCompMesh> mesh,
                  TPZVec<TPZCompEl*> elvec,
-                 int nThreads = 4) : SingleSpaceIntegrator(mesh,elvec,nThreads) {}
+                 int nThreads = 4) : TSPACE(mesh,elvec,nThreads) {}
     //! Compute norm of a given solution
     STATE ComputeNorm(int s = 0);
   protected:
