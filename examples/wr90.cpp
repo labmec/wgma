@@ -179,7 +179,8 @@ int main(int argc, char *argv[]) {
 
   TPZAutoPointer<TPZEigenSolver<CSTATE>>solver{nullptr};
 
-  auto krylov_solver = new TPZKrylovEigenSolver<CSTATE>;
+  TPZAutoPointer<TPZKrylovEigenSolver<CSTATE>> krylov_solver =
+    new TPZKrylovEigenSolver<CSTATE>;
   TPZSTShiftAndInvert<CSTATE> st;
   krylov_solver->SetSpectralTransform(st);
   krylov_solver->SetKrylovDim(krylovDim);
