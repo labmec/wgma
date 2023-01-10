@@ -9,6 +9,7 @@
 #include <Electromagnetics/TPZPlanarWgScattSrc.h>
 #include <Electromagnetics/TPZScattering.h>
 #include <Electromagnetics/TPZScatteringSrc.h>
+#include <Electromagnetics/TPZWgma.h>
 #include <TPZNullMaterial.h>
 #include <TPZSimpleTimer.h>
 #include <pzcompelwithmem.h>

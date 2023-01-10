@@ -7,7 +7,7 @@
 #include <pzfmatrix.h>
 
 #include <functional>
-
+#include <optional>
 namespace wgma::gmeshtools{
 
   enum class ElType {Tri, Quad};
