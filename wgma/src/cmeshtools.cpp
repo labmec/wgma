@@ -61,18 +61,19 @@ cmeshtools::SetupGmshMaterialData(
 
     const TPZVec<wgma::pml::type> pmltypes =
       {
-        wgma::pml::type::xpypzm,wgma::pml::type::xmypzm,
-        wgma::pml::type::xmymzm,wgma::pml::type::xpymzm,
-        wgma::pml::type::xpypzp,wgma::pml::type::xmypzp,
-        wgma::pml::type::xmymzp,wgma::pml::type::xpymzp,
-        wgma::pml::type::xpyp,wgma::pml::type::xmyp,
-        wgma::pml::type::xmym,wgma::pml::type::xpym,
-        wgma::pml::type::xpzp,wgma::pml::type::xmzp,
-        wgma::pml::type::ypzp,wgma::pml::type::ymzp,
-        wgma::pml::type::xpzm,wgma::pml::type::xmzm,
-        wgma::pml::type::ypzm,wgma::pml::type::ymzm,
+        wgma::pml::type::xmymzm, wgma::pml::type::xmymzp,
+        wgma::pml::type::xmypzm, wgma::pml::type::xmypzp,
+        wgma::pml::type::xpymzm, wgma::pml::type::xpymzp,
+        wgma::pml::type::xpypzm, wgma::pml::type::xpypzp,
+        wgma::pml::type::xmym,wgma::pml::type::xmyp,
+        wgma::pml::type::xpym,wgma::pml::type::xpyp,
+        wgma::pml::type::xmzm,wgma::pml::type::xmzp,
+        wgma::pml::type::xpzm,wgma::pml::type::xpzp,
+        wgma::pml::type::ymzm,wgma::pml::type::ymzp,
+        wgma::pml::type::ypzm,wgma::pml::type::ypzp,
         wgma::pml::type::xp,wgma::pml::type::yp,wgma::pml::type::zp,
-        wgma::pml::type::xm,wgma::pml::type::ym,wgma::pml::type::zm};
+        wgma::pml::type::xm,wgma::pml::type::ym,wgma::pml::type::zm
+      };
     
     TPZVec<std::string> pmlnames;
     for (auto t : pmltypes){
