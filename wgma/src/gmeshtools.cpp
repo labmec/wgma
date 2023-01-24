@@ -986,7 +986,10 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
 
       
       TPZManVector<int64_t,4> nodesIdVec(nnodes, 0);
-      for(auto in = 0; in < nnodes; in ++){nodesIdVec[in] = el->Node(in).Id();}
+      for(auto in = 0; in < nnodes; in ++){
+        nodesIdVec[in] = el->NodeIndex(in);
+        // nodesIdVec[in] = el->Node(in).Id();
+      }
 
       //we store the first neighbour of each side of the element to be deleted
       constexpr bool skip_side_cylinder{false};
@@ -1069,7 +1072,8 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
           TPZManVector<int64_t,4> neigh_nodes(neigh_nnodes,-1);
           //lets copy all the nodes
           for(int in = 0; in < neigh_nnodes; in++){
-            neigh_nodes[in] = neigh_el->Node(in).Id();
+            // neigh_nodes[in] = neigh_el->Node(in).Id();
+            neigh_nodes[in] = neigh_el->NodeIndex(in);
           }
           
           const auto neigh_type = neigh_el->Type();
