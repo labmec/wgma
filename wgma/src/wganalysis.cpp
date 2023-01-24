@@ -462,19 +462,18 @@ namespace wgma::wganalysis{
       std::cout<<"inserting pmls:\n";
     }
     //insert PML regions
-    for(auto pml : pmlDataVec){
+    for(auto &pml : pmlDataVec){
       //skip PMLs of other dimensions
       if(pml.dim != cmeshMF->Dimension()){continue;}
-      auto pmlmap = cmeshtools::AddRectangularPMLRegion<
+      pml.neigh = cmeshtools::AddRectangularPMLRegion<
         TPZWgma
         >(pml, realvolmats, gmesh, cmeshMF);
-      for(auto [id, _] : pmlmap){
+      for(auto [id, _] : pml.neigh){
         volmats.insert(id);
       }
-      
       if(verbose){
         std::cout<<"\tid (neighbour) ";
-        for(auto [id, neigh] : pmlmap){
+        for(auto [id, neigh] : pml.neigh){
           std::cout<<id<<" ("<<neigh<<") ";
         }
         std::cout<<"att dir "<<wgma::pml::to_string(pml.t)<<" att coeff ";
@@ -776,10 +775,10 @@ namespace wgma::wganalysis{
       allmats.insert(id);
     }
 
-    for (auto pml : data.pmlvec) {
+    for (auto &pml : data.pmlvec) {
       //skip PMLs of other dimensions
       if(pml.dim != cmeshH1->Dimension()){continue;}
-      wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgma>(
+      pml.neigh = wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgma>(
         pml, volmats, gmesh, cmeshH1);
       for( auto id : pml.ids){
         allmats.insert(id);
@@ -871,10 +870,10 @@ namespace wgma::wganalysis{
       allmats.insert(id);
     }
 
-    for (auto pml : data.pmlvec) {
+    for (auto &pml : data.pmlvec) {
       //skip PMLs of other dimensions
       if(pml.dim != cmeshH1->Dimension()){continue;}
-      wgma::cmeshtools::AddRectangularPMLRegion<TPZPeriodicWgma>(
+      pml.neigh = wgma::cmeshtools::AddRectangularPMLRegion<TPZPeriodicWgma>(
         pml, volmats, gmesh, cmeshH1);
       for( auto id : pml.ids){
         allmats.insert(id);
