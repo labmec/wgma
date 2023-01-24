@@ -876,7 +876,7 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
       }
         
 
-      /**now we need to replace each neighbour of a blend element,
+      /**now we need to replace each neighbour by a blend element,
          so it can be deformed accordingly*/
       TPZGeoElSide gelside(arc,arc->NSides()-1);
       //now we iterate through all the neighbours of the linear side
@@ -1037,7 +1037,11 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
       
         while(neighbour.Exists() && neighbour != gelside){
           auto neigh_el = neighbour.Element();
-          //let us skip neighbours that are in the cylinder wall as well
+          /*
+            let us skip:
+             1. neighbours that have been already identified (will be in  neigh_els)
+             2. neighbours that are in the cylinder wall as well
+          */
           auto check_el = neigh_els.find(neigh_el) == neigh_els.end();
           if(check_el && neigh_el->MaterialId() != matid){
             all_neighs.insert(neighbour);
@@ -1048,7 +1052,7 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
       }
 
       
-      //let us replace all the neighbours
+      //let us replace all the matching neighbours
       for(auto neighbour : all_neighs){ 
         const auto neigh_side = neighbour.Side();
         auto neigh_el = neighbour.Element();
@@ -1058,7 +1062,7 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
         /*let us take into account the possibility that
           one triangle might be neighbour of two cylinders
          */
-        TPZGeoEl *new_neigh{nullptr};
+        //if it is already blend, it has been replaced already
         if(!neigh_el->IsGeoBlendEl()){
           const auto neigh_matid = neigh_el->MaterialId();
           const auto neigh_nnodes = neigh_el->NNodes();
@@ -1076,7 +1080,8 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
           const bool skip_side_neigh = neigh_el->Dimension() == 3 ? true : false;
           StoreNeighboursAndDeleteEl(neigh_el, gmesh.operator->(),
                                      skip_side_neigh, neighs);
-          
+
+          TPZGeoEl *new_neigh{nullptr};
           //create new element
           switch(neigh_type){
           case MElementType::ETriangle:
@@ -1111,16 +1116,16 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
             TPZGeoElSide mygelside(new_neigh,i);
             neighs[i].SetConnectivity(mygelside);
           }
-          //insert last remaining connectivity
+          //if last side was skipped now we must insert last remaining connectivity
           if(skip_side_neigh){
             TPZGeoElSide mygelside(new_neigh, new_neigh->NSides()-1);
             mygelside.SetConnectivity(mygelside);
           }
           blend_neighs.insert(new_neigh);
-        }
-      }
-    }
-  }
+        }//if(!neigh_el->IsGeoBlendEl())
+      }//for(auto neighbour : all_neighs)
+    }//if(is_cylinder)
+  }//for(auto el : gmesh->ElementVec())
 
   for(auto *el : blend_neighs){
     el->BuildBlendConnectivity();
