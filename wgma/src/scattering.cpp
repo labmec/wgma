@@ -685,40 +685,51 @@ namespace wgma::scattering{
 
 
     //whether a source material has been created
-    bool found_src{false};
+    std::set<int> src_mats, src_pml_mats;
     //we insert all the materials in the computational mesh
     {
       TPZSimpleTimer tscatt("SrcMats");
-    for(auto src_id : src_id_set){
-      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, src_id, volmats);
-      if(!res.has_value()){
-        PZError<<__PRETTY_FUNCTION__
-               <<"\n could not find a material adjacent to the source.\nAborting..."
-               <<std::endl;
-        DebugStop();
-      }
-      
-      const auto src_volid = [res,pml_neighs](){
-        if(pml_neighs.count(res.value())){
-          //pmlmat
-          return pml_neighs.at(res.value());
-        }else{
-          //volmat
-          return res.value();
+      for(auto src_id : src_id_set){
+        bool found_this_src = false;
+        auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, src_id, volmats);
+        if(!res.has_value()){
+          PZError<<__PRETTY_FUNCTION__
+                 <<"\n could not find a material adjacent to the source.\nAborting..."
+                 <<std::endl;
+          DebugStop();
         }
-      }();
 
-
-      for(auto [id,er,ur] : data.matinfovec){
-        if(id == src_volid){
-          auto srcMat = new TPZScatteringSrc(src_id,er,ur,lambda,scale);
-          scatt_cmesh->InsertMaterialObject(srcMat);
-          found_src = true;
+        const auto src_neigh = res.value();
+        std::cout<<"src id: "<<src_id<<"src neigh: "<<src_neigh<<std::endl;
+        
+        
+        for(auto [id,er,ur] : data.matinfovec){
+          if(id == src_neigh){
+            auto srcMat = new TPZScatteringSrc(src_id,er,ur,lambda,scale);
+            scatt_cmesh->InsertMaterialObject(srcMat);
+            found_this_src = true;
+            src_mats.insert(src_id);
+            break;
+          }
+        }
+        if(!found_this_src){
+          //probably a PML material then
+          for(auto &pml : data.pmlvec){
+            if(pml.dim == scatt_cmesh->Dimension()){continue;}
+            if (pml.ids.count(src_id)){
+              pml.neigh = wgma::cmeshtools::AddRectangularPMLRegion<TPZScatteringSrc>
+                (pml, src_mats, gmesh, scatt_cmesh);
+            }
+            src_pml_mats.insert(src_id);
+            found_this_src = true;
+          }
+        }
+        if(!found_this_src){
+          std::cout<<"source "<<src_id<<" could not be found"<<std::endl;
         }
       }
     }
-    }
-    if(found_src){
+    if(src_mats.size() + src_pml_mats.size() > 0){
       TPZSimpleTimer tscatt("AutoBuild2",true);
       //now we insert the proper material
       scatt_cmesh->SetAllCreateFunctionsHCurlWithMem();
@@ -762,27 +773,6 @@ namespace wgma::scattering{
           LoadSrc(scatt_mat_2d,beta);
         }
       }
-    }
-
-
-    auto PrintSrc = [](auto mat,auto beta){
-      std::cout<<"i "<<mat->Id()<<" b "<<mat->Beta()<<std::endl;
-    };
-
-    
-    for(auto [_,mat] : cmesh->MaterialVec()){
-      auto scatt_mat_1d =
-        dynamic_cast<TPZPlanarWgScattSrc*>(mat);
-      if(scatt_mat_1d){
-        LoadSrc(scatt_mat_1d,beta);
-      }else{
-        auto scatt_mat_2d =
-          dynamic_cast<TPZScatteringSrc*>(mat);
-        if(scatt_mat_2d){
-          PrintSrc(scatt_mat_2d,beta);
-        }
-      }
-    }
-  
+    }  
   }
 };
