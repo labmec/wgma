@@ -671,11 +671,20 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
   REAL xMax = -1e20, xMin = 1e20,
     yMax = -1e20, yMin = 1e20,
     zMax = -1e20, zMin = 1e20;
+  std::set<int64_t> visited_nodes;
   for (auto geo : gmesh->ElementVec()){
     if (geo && pmlId.count(geo->MaterialId()) != 0) {
+      const int ncornernodes = geo->NCornerNodes();
       for (int iNode = 0; iNode < geo->NCornerNodes(); ++iNode) {
         TPZManVector<REAL, 3> co(3);
-        geo->Node(iNode).GetCoordinates(co);
+        const auto node_idx = geo->NodeIndex(iNode);
+        
+        if(visited_nodes.count(node_idx)){continue;}
+        else {visited_nodes.insert(node_idx);}
+        
+        const auto node = geo->Node(iNode);
+        node.GetCoordinates(co);
+        
         const REAL &xP = co[0];
         const REAL &yP = co[1];
         const REAL &zP = co[2];
