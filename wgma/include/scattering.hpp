@@ -59,6 +59,14 @@ namespace wgma::scattering{
    [[nodiscard]] TPZAutoPointer<TPZCompMesh> GetMesh() {return m_cmesh;}
 
     void SetSymMatrix(bool sym){m_sym = sym;}
+
+    using TPZAnalysis::StructMatrix;
+
+    using TPZAnalysis::LoadSolution;
+
+    using TPZLinearAnalysis::Rhs;
+
+    using TPZAnalysis::BuildPreconditioner;
   protected:
     //! H1 mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};
