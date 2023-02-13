@@ -55,6 +55,8 @@ namespace wgma::scattering{
       std::cout<<"neq(before): "<<n_dofs_before
                <<"\tneq(after): "<<m_n_dofs<<std::endl;
       strmtrx->EquationFilter().SetActiveEquations(activeEquations);
+    }else{
+      std::cout<<"neq: "<<m_n_dofs<<std::endl;;
     }
     SetStructuralMatrix(strmtrx);
 
