@@ -285,7 +285,7 @@ def create_box(box, elsize: float):
      for tag in boundary_dimtags if tag[0] == 0]
 
 
-def create_pml_corner(dimtag, direction: str, dpml):
+def create_pml_corner(dimtag, direction: str, dpml, nlayers: int):
     """
     Creates a pml extending a given domain in a diagonal direction.
 
@@ -416,8 +416,10 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         # there is no PML in this direction, we must extrude
         dx = [0, 0, 0]
         dx[alldirs[1]] = dpml[alldirs[1]]
+        nel = [nlayers]
+        height = [1]
         pmlreg = [(d, t)
-                  for d, t in gmsh.model.occ.extrude([bpml], *dx) if d == dim][0]
+                  for d, t in gmsh.model.occ.extrude([bpml], *dx, nel, height) if d == dim][0]
 
     if(len(alldirs) == 3):
         # yet another extrusion
@@ -428,13 +430,15 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         assert(len(up) == 1)
         dx = [0, 0, 0]
         dx[alldirs[2]] = dpml[alldirs[2]]
+        nel = [nlayers]
+        height = [1]
         pmlreg = [(d, t)
-                  for d, t in gmsh.model.occ.extrude([bpml], *dx) if d == dim][0]
+                  for d, t in gmsh.model.occ.extrude([bpml], *dx, nel, height) if d == dim][0]
 
     return {(direction, pmlreg[1]): dimtag[1]}
 
 
-def create_pml_region(dimtags: list, direction: str, dpml: float):
+def create_pml_region(dimtags: list, direction: str, dpml: float, nlayers: int):
     """
     Creates a pml extending given domains in a certain direction.
 
@@ -500,11 +504,16 @@ The same applies for "xm" and "ym"
         up, _ = gmsh.model.get_adjacencies(bnd[0], bnd[1])
         # check if there is only one adjacent region of dimension dim
         assert(len(up) == 1)
-        reg = up[0]
-        pmlreg = gmsh.model.occ.extrude([bnd], dx, dy, dz)
-
-        [pmlmap.update({(direction, pr[1]):reg})
-         for pr in pmlreg if pr[0] == dim]
+    nel = [nlayers]
+    height = [1]
+    pmlregs = gmsh.model.occ.extrude(pml_bnds, dx, dy, dz, nel, height)
+    #let us filter the relevant PML regions 
+    pmlregs = [pr[1] for pr in pmlregs if pr[0] == dim]
+    #we now assume that the output of extrude will give 3d regions
+    #in the same order as the 3d regions in dimtags
+    assert(len(dimtags) == len(pmlregs))
+    for i, pml in enumerate(pmlregs):
+        pmlmap.update({(direction, pml): dimtags[i][1]})
     return pmlmap
 
 
