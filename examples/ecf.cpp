@@ -294,7 +294,7 @@ SetupSolver(const int neigenpairs, const CSTATE target,
     
     eps_solver->SetLinearSolver(linsolver);
     eps_solver->SetLinearSolverTol(ksp_rtol,ksp_atol,ksp_dtol,ksp_max_its);
-    eps_solver->SetPrecond(pc, 1e-16);
+    eps_solver->SetPrecond(pc, 1e-25);
 
     solver = eps_solver;
   }else{
