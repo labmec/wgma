@@ -318,7 +318,7 @@ int main(int argc, char *argv[]) {
   wgma::scattering::SourceWgma src;
   src.id = {srcId};
   src.modal_cmesh = modal_cmesh;
-  wgma::scattering::LoadSource(scatt_cmesh, src);
+  wgma::scattering::LoadSource1D(scatt_cmesh, src);
   wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
   /*********************
    * solve(scattering) *  

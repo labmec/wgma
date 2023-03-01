@@ -31,7 +31,7 @@ directional mesh refinement.
    n strip = 1.55
    n air = 1
 */
-std::pair<wgma::scattering::srcfunc, CSTATE>
+std::pair<wgma::scattering::srcfunc1d, CSTATE>
 GetSourceFunc(const REAL scale, const REAL lambda);
 
 int main(int argc, char *argv[]) {
@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
   wgma::scattering::Source1D sources;
   sources.func = mysource.first;
   sources.id = source_ids;
-  wgma::scattering::LoadSource(cmesh, sources);
+  wgma::scattering::LoadSource1D(cmesh, sources);
   wgma::scattering::SetPropagationConstant(cmesh, beta);
 
   auto an = wgma::scattering::Analysis(cmesh, nThreads,
@@ -193,7 +193,7 @@ int main(int argc, char *argv[]) {
 }
 
 
-std::pair<wgma::scattering::srcfunc, CSTATE>
+std::pair<wgma::scattering::srcfunc1d, CSTATE>
 GetSourceFunc(const REAL scale, const REAL lambda)
 {
   /*
@@ -214,7 +214,7 @@ GetSourceFunc(const REAL scale, const REAL lambda)
   const STATE beta = k0 * nev;
   
   
-  wgma::scattering::srcfunc sourcefunc =
+  wgma::scattering::srcfunc1d sourcefunc =
     [d, kx, gammax, beta](const TPZVec<REAL> &loc,
                           CSTATE &val,
                           TPZVec<CSTATE> &deriv){

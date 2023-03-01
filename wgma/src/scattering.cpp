@@ -7,6 +7,8 @@
 #include <pzstepsolver.h>
 #include <Electromagnetics/TPZPlanarWgScatt.h>
 #include <Electromagnetics/TPZPlanarWgScattSrc.h>
+#include <Electromagnetics/TPZScattering.h>
+#include <Electromagnetics/TPZScatteringSrc.h>
 #include <TPZNullMaterial.h>
 #include <TPZSimpleTimer.h>
 #include <pzcompelwithmem.h>
@@ -80,7 +82,7 @@ namespace wgma::scattering{
   }
 
 
-  void LoadPrescribedSource(TPZPlanarWgScattSrc *mat,
+  void LoadPrescribedSource1D(TPZPlanarWgScattSrc *mat,
                             const TPZVec<int64_t> &mem_indices,
                             const TPZIntPoints &intrule,
                             TPZCompEl *cel,
@@ -100,6 +102,31 @@ namespace wgma::scattering{
         intrule.Point(ipt, pt_qsi, w);
         gel->X(pt_qsi, pt_x);
         src.func(pt_x, ptsol.sol, ptsol.dsol);
+        ptsol.x = pt_x;
+        (*(mat->GetMemory()))[mem_indices[ipt]] = ptsol;
+      }
+  }
+
+  void LoadPrescribedSource2D(TPZScatteringSrc *mat,
+                            const TPZVec<int64_t> &mem_indices,
+                            const TPZIntPoints &intrule,
+                            TPZCompEl *cel,
+                            wgma::scattering::Source2D src
+                            )
+  {
+
+    auto *gel = cel->Reference();
+    //number of integration points
+    const auto npts = mem_indices.size();
+    //integration point (reference element)
+    TPZManVector<REAL,3> pt_qsi(intrule.Dimension());
+    TPZManVector<REAL,3> pt_x(3);
+    REAL w{0};//wont be used
+    for(auto ipt = 0; ipt < npts; ipt++){
+        TPZScatteredSol3D ptsol;
+        intrule.Point(ipt, pt_qsi, w);
+        gel->X(pt_qsi, pt_x);
+        src.func(pt_x, ptsol.sol);
         ptsol.x = pt_x;
         (*(mat->GetMemory()))[mem_indices[ipt]] = ptsol;
       }
@@ -156,8 +183,63 @@ namespace wgma::scattering{
         (*(mat->GetMemory()))[mem_indices[ipt]] = ptsol;
       }
   }
+
+  void LoadModalAnalysisSource2D(TPZScatteringSrc *mat,
+                                 const TPZVec<int64_t> &mem_indices,
+                                 const TPZIntPoints &intrule,
+                                 TPZInterpolationSpace *cel,
+                                 TPZTransform<> t)
+  {
+
+    //number of integration points
+    const auto npts = mem_indices.size();
+    /*
+      the integration rule will be from a 1d element
+      the computational element might be the 1d
+      el itself (1d modal analysis) or a 2d neighbour(2d periodic ma)
+     */
+
+    
+    constexpr int celdim {2};
+    //integration point (reference element)
+    TPZManVector<REAL,3> pt_qsi1(intrule.Dimension());
+    TPZManVector<REAL,celdim> pt_qsi2(celdim);
+    TPZManVector<REAL,3> pt_x(3);
+    REAL w{0};//wont be used
+
+    TPZManVector<TPZMaterialDataT<CSTATE>,2> datavec;
+    auto *mfcel = dynamic_cast<TPZMultiphysicsElement*>(cel);
+    if(mfcel){
+      mfcel->InitMaterialData(datavec);
+    }else{
+      std::cout<<__PRETTY_FUNCTION__
+               <<"\nCould not obtain multiphysics element!"
+               <<"\nAborting...";
+      DebugStop();
+    }
+
+    for(auto ipt = 0; ipt < npts; ipt++){
+        TPZScatteredSol3D ptsol;
+        intrule.Point(ipt, pt_qsi1, w);
+        t.Apply(pt_qsi1, pt_qsi2);
+
+        for (auto &data : datavec){
+          data.fNeedsSol = true;
+        }
+        TPZManVector<TPZTransform<> > trvec;
+        mfcel->AffineTransform(trvec);
+        mfcel->ComputeRequiredData(pt_qsi2,trvec, datavec);
+        //x (for debugging)
+        ptsol.x = datavec[0].x;
+        //sol
+        //TODO: compute sol
+        // ptsol.sol = data.sol[0][0];
+      
+        (*(mat->GetMemory()))[mem_indices[ipt]] = ptsol;
+      }
+  }
   
-  void LoadSource(
+  void LoadSource1D(
     TPZAutoPointer<TPZCompMesh> scatt_cmesh,
     std::variant<
     wgma::scattering::Source1D,
@@ -211,8 +293,8 @@ namespace wgma::scattering{
 
       if(prescribed_source){
         auto my_src = std::get<wgma::scattering::Source1D>(source);
-        LoadPrescribedSource(mat, mem_indices, intrule,
-                             cel,my_src);
+        LoadPrescribedSource1D(mat, mem_indices, intrule,
+                               cel,my_src);
       }else{
         //1D geometric element
           auto gel = cel->Reference();
@@ -260,6 +342,94 @@ namespace wgma::scattering{
 
           LoadModalAnalysisSource<2>(mat,mem_indices,intrule,neigh_cel,t1);
         }
+      }
+    }
+
+    if(!prescribed_source){
+      gmesh->ResetReference();
+      //the geometric mesh now points back to the scattering mesh
+      scatt_cmesh->LoadReferences();
+    }
+  }
+
+  void LoadSource2D(
+    TPZAutoPointer<TPZCompMesh> scatt_cmesh,
+    std::variant<
+    wgma::scattering::Source2D,
+    wgma::scattering::SourceWgma> source
+    )
+  {
+    const bool prescribed_source =
+      std::holds_alternative<wgma::scattering::Source2D>(source);
+    const std::set<int> src_id_set = [prescribed_source, &source](){
+      if(prescribed_source){
+        return std::get<wgma::scattering::Source2D>(source).id;
+      }else{
+        return std::get<wgma::scattering::SourceWgma>(source).id;
+      }
+    }();
+    
+    auto * gmesh = scatt_cmesh->Reference();
+    //this will make it easier for us to find the correct elements from modal analysis
+    if(!prescribed_source){
+      gmesh->ResetReference();
+      //the geometric mesh will point to the modal analysis mesh
+      std::get<wgma::scattering::SourceWgma>(source).modal_cmesh->LoadReferences();
+    }
+  
+    const int modal_dim = [prescribed_source, &source](){
+      if(prescribed_source){ return 0;}
+      else{
+        auto modal_cmesh =
+          std::get<wgma::scattering::SourceWgma>(source).modal_cmesh;
+        return modal_cmesh->Dimension();
+      }
+    }();
+
+
+    if(modal_dim != 0 && modal_dim != 2){
+      PZError<<__PRETTY_FUNCTION__
+               <<"\nUnexpected dimension of modal analysis mesh! dim: "
+             <<modal_dim<<std::endl;
+        DebugStop();
+    }
+    
+    TPZVec<int64_t> mem_indices;
+    for(auto cel : scatt_cmesh->ElementVec()){
+      //check if material is source mat
+      const auto has_src = src_id_set.count(cel->Material()->Id());
+      if(!has_src){continue;}
+      
+      auto mat =
+        dynamic_cast<TPZScatteringSrc *>(cel->Material());
+      
+      if(!mat){
+        PZError<<__PRETTY_FUNCTION__
+               <<"\nUnexpected source material! id: "<<cel->Material()->Id()
+               <<std::endl;
+        DebugStop();
+      }
+
+      //get integration rule
+      auto &intrule = cel->GetIntegrationRule();
+      //get memory indices (indices for all integration points)
+      cel->GetMemoryIndices(mem_indices);
+      //just to make sure
+      assert(intrule.NPoints() == mem_indices.size());
+
+      if(prescribed_source){
+        auto my_src = std::get<wgma::scattering::Source2D>(source);
+        LoadPrescribedSource2D(mat, mem_indices, intrule,
+                             cel,my_src);
+      }else{
+        //2D geometric element
+        auto gel = cel->Reference();
+        TPZTransform<> dummy_t(1);
+        auto modal_cel = gel->Reference();
+        auto dcel =
+          dynamic_cast<TPZInterpolationSpace*>(modal_cel);
+        assert(dcel);
+        LoadModalAnalysisSource2D(mat, mem_indices, intrule, dcel, dummy_t);
       }
     }
 
@@ -387,6 +557,123 @@ namespace wgma::scattering{
       }
     }
     //now we insert the proper material
+    scatt_cmesh->SetAllCreateFunctionsHCurlWithMem();
+    //we want different memory areas for each integration point
+    gSinglePointMemory = false;
+    //create computational elements with memory for the source
+    scatt_cmesh->AutoBuild(src_id_set);
+
+    return scatt_cmesh;
+  }
+
+  TPZAutoPointer<TPZCompMesh>
+  CMeshScattering3D(TPZAutoPointer<TPZGeoMesh> gmesh,
+                    int pOrder,
+                    wgma::cmeshtools::PhysicalData &data,
+                    const std::set<int> src_id_set,
+                    const STATE lambda, const REAL scale)
+  {
+    static constexpr bool isComplex{true};
+    static constexpr int dim{3};
+    TPZAutoPointer<TPZCompMesh> scatt_cmesh =
+      new TPZCompMesh(gmesh,isComplex);
+    scatt_cmesh->SetDimModel(dim);
+
+    const int nvolmats = data.matinfovec.size();
+    //all mats (so TPZCompMesh::AutoBuild doesnt break on periodic meshes)
+    std::set<int> allmats;
+    //volumetric mats
+    std::set<int> volmats;
+    //volumetric mats - pml
+    std::set<int> realvolmats;
+    //we keep track of PML neighbours because we might need it for sources
+    std::map<int,int> pml_neighs;
+    
+    for(auto [id,er,ur] : data.matinfovec){
+      auto *mat =  new TPZScattering(id,er,ur,lambda,scale);
+      scatt_cmesh->InsertMaterialObject(mat);
+      //for pml
+      realvolmats.insert(id);
+      volmats.insert(id);
+      allmats.insert(id);
+    }
+
+    
+    for(auto pml : data.pmlvec){
+      //skip PMLs of other dimensions
+      if(pml.dim != scatt_cmesh->Dimension()){continue;}
+      const auto neighs = wgma::cmeshtools::AddRectangularPMLRegion<TPZScattering>
+        (pml, realvolmats, gmesh, scatt_cmesh);
+      for(auto id : pml.ids){
+        volmats.insert(id);
+        allmats.insert(id);
+        pml_neighs[id] = neighs.at(id);
+      }
+    }
+
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      scatt_cmesh->InsertMaterialObject(mat);
+      allmats.insert(id);
+    }
+  
+    TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
+    TPZManVector<CSTATE,1> val2(1, 0.);
+
+    /**let us associate each boundary with a given material.
+       this is important for the source boundary*/
+    for(auto &bc : data.bcvec){
+      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, volmats);
+      if(!res.has_value()){
+        std::cout<<__PRETTY_FUNCTION__
+                 <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
+      }
+      bc.volid = res.value();
+      const int bctype = wgma::bc::to_int(bc.t);
+      const int id = bc.id;
+      const int volmatid = bc.volid;
+      auto *volmat =
+        dynamic_cast<TPZMaterialT<CSTATE>*> (scatt_cmesh->FindMaterial(volmatid));
+      auto *bcmat = volmat->CreateBC(volmat, id, bctype, val1, val2);
+      scatt_cmesh->InsertMaterialObject(bcmat);
+      allmats.insert(id);
+    }
+
+    scatt_cmesh->SetAllCreateFunctionsHCurl();
+    scatt_cmesh->SetDefaultOrder(pOrder);
+    scatt_cmesh->AutoBuild(allmats);
+    scatt_cmesh->CleanUpUnconnectedNodes();
+
+
+    //we insert all the materials in the computational mesh
+    for(auto src_id : src_id_set){
+      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, src_id, volmats);
+      if(!res.has_value()){
+        PZError<<__PRETTY_FUNCTION__
+               <<"\n could not find a material adjacent to the source.\nAborting..."
+               <<std::endl;
+        DebugStop();
+      }
+      
+      const auto src_volid = [res,pml_neighs](){
+        if(pml_neighs.count(res.value())){
+          //pmlmat
+          return pml_neighs.at(res.value());
+        }else{
+          //volmat
+          return res.value();
+        }
+      }();
+      
+      for(auto [id,er,ur] : data.matinfovec){
+        if(id == src_volid){
+          auto srcMat = new TPZScatteringSrc(src_id,er,ur,lambda,scale);
+          scatt_cmesh->InsertMaterialObject(srcMat);
+        }
+      }
+    }
+    //now we insert the proper material
     scatt_cmesh->SetAllCreateFunctionsContinuousWithMem();
     //we want different memory areas for each integration point
     gSinglePointMemory = false;
@@ -407,11 +694,22 @@ namespace wgma::scattering{
     std::cout<<"Setting beta:\n"
              <<'\t'<<beta<<std::endl;
     std::setprecision(ss);
+
+    auto LoadSrc = [](auto mat,auto beta){
+      mat->SetBeta(beta);
+    };
+    
     for(auto [_,mat] : cmesh->MaterialVec()){
-      auto scatt_mat =
+      auto scatt_mat_1d =
         dynamic_cast<TPZPlanarWgScattSrc*>(mat);
-      if(scatt_mat){
-        scatt_mat->SetBeta(beta);
+      if(scatt_mat_1d){
+        LoadSrc(scatt_mat_1d,beta);
+      }else{
+        auto scatt_mat_2d =
+          dynamic_cast<TPZScatteringSrc*>(mat);
+        if(scatt_mat_2d){
+          LoadSrc(scatt_mat_2d,beta);
+        }
       }
     }
   

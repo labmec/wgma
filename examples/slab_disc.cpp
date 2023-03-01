@@ -547,7 +547,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
       std::cout<<"running source "<<isol+1<<" out of "<<nsols<<std::endl;
       src_an.LoadSolution(sources[isol]);
       auto beta = std::sqrt(src_an.GetEigenvalues()[isol]);
-      wgma::scattering::LoadSource(scatt_mesh, src);
+      wgma::scattering::LoadSource1D(scatt_mesh, src);
       wgma::scattering::SetPropagationConstant(scatt_mesh, beta);
       
       if(firstrun){
