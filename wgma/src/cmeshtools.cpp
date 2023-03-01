@@ -6,6 +6,7 @@
 #include <pzgmesh.h>
 #include <pzcmesh.h>
 #include <TPZBndCond.h>
+#include <pzvec_extras.h>
 #include <TPZSimpleTimer.h>
 
 
@@ -20,8 +21,7 @@ cmeshtools::SetupGmshMaterialData(
   const TPZVec<std::map<std::string,int>> &gmshmats,
   const std::map<std::string,std::pair<CSTATE,CSTATE>> &matmap,
   const std::map<std::string,wgma::bc::type> &bcmap,
-  const STATE alphaPMLx,
-  const STATE alphaPMLy,
+  TPZVec<STATE> alphaPML,
   wgma::cmeshtools::PhysicalData &data,
   int dim)
 {
@@ -31,9 +31,22 @@ cmeshtools::SetupGmshMaterialData(
   auto &bcvec = data.bcvec;
   pmlvec.resize(0);
 
+  if(alphaPML.size() < dim){
+    PZError<<__PRETTY_FUNCTION__
+           <<"not enough PML coefficients!\n"
+           <<"dim = "<<dim<<" # pml coeff "<<alphaPML.size()
+           <<"\nAborting...";
+    DebugStop();
+  }
+
+  
+  alphaPML.Resize(3,0);
+  const auto &alphaPMLx = alphaPML[0];
+  const auto &alphaPMLy = alphaPML[1];
+  const auto &alphaPMLz = alphaPML[2];
 
   //lambda for easier creation of PML mats
-  auto SetupIfPml = [&pmlvec, &alphaPMLx, &alphaPMLy](const std::string &name,
+  auto SetupIfPml = [&pmlvec, &alphaPMLx, &alphaPMLy, &alphaPMLz](const std::string &name,
                                                       int id,
                                                       int dim) -> bool{
     constexpr auto pmlname{"pml"};
@@ -45,14 +58,26 @@ cmeshtools::SetupGmshMaterialData(
     
     const auto pos = pmlvec.size();
     bool found{false};
-    const TPZVec<std::string> pmlnames =
-      {"xpyp", "xmyp", "xmym", "xpym", "xp", "yp", "xm", "ym"};
+
     const TPZVec<wgma::pml::type> pmltypes =
-      {wgma::pml::type::xpyp,wgma::pml::type::xmyp,
-       wgma::pml::type::xmym,wgma::pml::type::xpym,
-       wgma::pml::type::xp,wgma::pml::type::yp,
-       wgma::pml::type::xm,wgma::pml::type::ym};
-      
+      {
+        wgma::pml::type::xpypzm,wgma::pml::type::xmypzm,
+        wgma::pml::type::xmymzm,wgma::pml::type::xpymzm,
+        wgma::pml::type::xpypzp,wgma::pml::type::xmypzp,
+        wgma::pml::type::xmymzp,wgma::pml::type::xpymzp,
+        wgma::pml::type::xpyp,wgma::pml::type::xmyp,
+        wgma::pml::type::xmym,wgma::pml::type::xpym,
+        wgma::pml::type::xpzp,wgma::pml::type::xmzp,
+        wgma::pml::type::ypzp,wgma::pml::type::ymzp,
+        wgma::pml::type::xpzm,wgma::pml::type::xmzm,
+        wgma::pml::type::ypzm,wgma::pml::type::ymzm,
+        wgma::pml::type::xp,wgma::pml::type::yp,wgma::pml::type::zp,
+        wgma::pml::type::xm,wgma::pml::type::ym,wgma::pml::type::zm};
+    
+    TPZVec<std::string> pmlnames;
+    for (auto t : pmltypes){
+      AppendToVec(pmlnames, wgma::pml::to_string(t));
+    }
     for(int ipml = 0; ipml < pmlnames.size(); ipml++){
       const std::string pmlname = pmlnames[ipml];
       const auto rx = std::regex{ pmlname, std::regex_constants::icase };
@@ -62,6 +87,7 @@ cmeshtools::SetupGmshMaterialData(
         pmlvec[pos].ids = {id};
         pmlvec[pos].alphax = alphaPMLx;
         pmlvec[pos].alphay = alphaPMLy;
+        pmlvec[pos].alphaz = alphaPMLz;
         pmlvec[pos].t = pmltypes[ipml];
         pmlvec[pos].names = {name};
         pmlvec[pos].dim = dim;

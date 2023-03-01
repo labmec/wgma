@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
 
   
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, matmap, bcmap,
-                                          alphaxPML, alphayPML,
+                                          {alphaxPML, alphayPML},
                                           data);
 
 

@@ -182,8 +182,7 @@ int main(int argc, char *argv[]) {
     modal_bcs["gamma_2"] = wgma::bc::type::PERIODIC;
     modal_bcs["modal_bound"] = wgma::bc::type::PEC;
 
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs, {},
-                                            {}, modal_data);
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs, {0,0}, modal_data);
     //in the current example
     //all PML materials do not participate in the modal analysis
     modal_data.pmlvec.resize(0);
@@ -298,8 +297,8 @@ int main(int argc, char *argv[]) {
     scatt_bcs["scatt_bound"] = wgma::bc::type::PEC;
 
     constexpr STATE alphaPML {2.0};
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs, alphaPML,
-                                            alphaPML, scatt_data);
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
+                                            {alphaPML,alphaPML}, scatt_data);
 
     bool periodicPML{true};
     for(auto const& [name, value]: gmshmats[2]){

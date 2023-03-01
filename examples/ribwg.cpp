@@ -162,7 +162,7 @@ int main(int argc, char *argv[]) {
 
   wgma::cmeshtools::PhysicalData data;
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, matmap, bcmap,
-                                          alphaPML, alphaPML,
+                                          {alphaPML, alphaPML},
                                           data);
   /*
    The problem uses an H1 approximation space for the longitudinal component 

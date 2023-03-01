@@ -184,7 +184,7 @@ void RunSimulation(const STATE lambda, const int nEigenpairs, const int pOrder, 
 
   wgma::cmeshtools::PhysicalData data;
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, matmap, bcmap,
-                                          alphaPML, alphaPML,
+                                          {alphaPML, alphaPML},
                                           data);
   /*
    The problem uses an H1 approximation space for the longitudinal component 

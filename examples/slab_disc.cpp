@@ -173,8 +173,8 @@ int main(int argc, char *argv[]) {
     modal_bcs["source_left_bnd"] = wgma::bc::type::PEC;
     //dimension of the modal analysis 
     constexpr int modal_dim{1};
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs, alphaPMLx,
-                                            alphaPMLy, modal_data, modal_dim);
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
+                                            {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
     //we must now filter the 1D PMLs
     std::vector<wgma::pml::data>  pmlvec;
     for(const auto &pml : modal_data.pmlvec){
@@ -222,8 +222,8 @@ int main(int argc, char *argv[]) {
     modal_bcs["source_right_bnd"] = wgma::bc::type::PEC;
     //dimension of the modal analysis 
     constexpr int modal_dim{1};
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs, alphaPMLx,
-                                            alphaPMLy, modal_data, modal_dim);
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
+                                            {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
 
     //we must now filter the 1D PMLs
     std::vector<wgma::pml::data>  pmlvec;
@@ -279,8 +279,8 @@ int main(int argc, char *argv[]) {
     std::map<std::string, wgma::bc::type> scatt_bcs;
     scatt_bcs["scatt_bnd"] = wgma::bc::type::PEC;
 
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs, alphaPMLx,
-                                            alphaPMLy, scatt_data);
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
+                                            {alphaPMLx,alphaPMLy}, scatt_data);
     
     //materials in which we would like to evaluate the solution
     const std::string probeMats[] = {"source_clad_right", "source_core_right"};

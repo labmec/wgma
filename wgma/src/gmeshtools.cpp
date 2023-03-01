@@ -627,7 +627,7 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
   const int pmlDim,
   const int pmlId,
   const std::set<int> &volmats,
-  const REAL boundPosX, const REAL boundPosY)
+  const REAL boundPosX, const REAL boundPosY, const REAL boundPosZ)
 {
   TPZGeoEl * closestEl = nullptr;
   REAL dist = 1e16;
@@ -641,8 +641,10 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
     currentEl->CenterPoint(largerSize, qsi);
     TPZVec<REAL> xCenter(3,-1);
     currentEl->X(qsi, xCenter);
-    const REAL currentDist = (xCenter[0]-boundPosX)*(xCenter[0]-boundPosX) +
-      (xCenter[1]-boundPosY)*(xCenter[1]-boundPosY);
+    const REAL currentDist =
+      (xCenter[0]-boundPosX)*(xCenter[0]-boundPosX) +
+      (xCenter[1]-boundPosY)*(xCenter[1]-boundPosY) +
+      (xCenter[2]-boundPosZ)*(xCenter[2]-boundPosZ);
     if(currentDist < dist){
       dist = currentDist;
       closestEl = currentEl;
@@ -661,10 +663,13 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
                                const std::set<int> pmlId,
                                const wgma::pml::type type,
                                REAL &boundPosX, REAL &dX,
-                               REAL &boundPosY, REAL &dY)
+                               REAL &boundPosY, REAL &dY,
+                               REAL &boundPosZ, REAL &dZ)
 {
-  //let us find the (xmin,xmax) and (ymin,ymax) of the PML region
-  REAL xMax = -1e20, xMin = 1e20, yMax = -1e20, yMin = 1e20;
+  //let us find the (xmin,xmax), (ymin,ymax), (zmin, zmax) of the PML region
+  REAL xMax = -1e20, xMin = 1e20,
+    yMax = -1e20, yMin = 1e20,
+    zMax = -1e20, zMin = 1e20;
   for (auto geo : gmesh->ElementVec()){
     if (geo && pmlId.count(geo->MaterialId()) != 0) {
       for (int iNode = 0; iNode < geo->NCornerNodes(); ++iNode) {
@@ -672,6 +677,7 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
         geo->Node(iNode).GetCoordinates(co);
         const REAL &xP = co[0];
         const REAL &yP = co[1];
+        const REAL &zP = co[2];
         if (xP > xMax) {
           xMax = xP;
         }
@@ -684,6 +690,12 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
         if (yP < yMin) {
           yMin = yP;
         }
+        if (zP > zMax) {
+          zMax = zP;
+        }
+        if (zP < zMin) {
+          zMin = zP;
+        }
       }
     }
   }
@@ -692,27 +704,56 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
   //now we compute xBegin, yBegin, attx, atty and d for the material ctor
   const bool attx = wgma::pml::attx(type);
   const bool atty = wgma::pml::atty(type);
+  const bool attz = wgma::pml::attz(type);
   
-  REAL xBegin{-1}, yBegin{-1};
+  REAL xBegin{-1}, yBegin{-1}, zBegin{-1};
   if(attx){
     const int xdir = wgma::pml::xinfo(type);
     dX = xMax - xMin;
     xBegin = xdir > 0 ? xMin : xMax;
-    boundPosX = xBegin;
-    boundPosY = (yMax + yMin)/2;
   }
 
   if(atty){
     const int ydir = wgma::pml::yinfo(type);
     dY = yMax - yMin;
     yBegin = ydir > 0 ? yMin : yMax;
-    boundPosX = (xMax + xMin)/2;
-    boundPosY = yBegin;
   }
 
-  if(attx && atty){
+  if(attz){
+    const int zdir = wgma::pml::zinfo(type);
+    dZ = zMax - zMin;
+    zBegin = zdir > 0 ? zMin : zMax;
+  }
+  
+  if(attx && atty && attz){
     boundPosX = xBegin;
     boundPosY = yBegin;
+    boundPosZ = zBegin;
+  }
+  else if(attx && atty){
+    boundPosX = xBegin;
+    boundPosY = yBegin;
+    boundPosZ = (zMin + zMax)/2;
+  }else if(attx && attz){
+    boundPosX = xBegin;
+    boundPosY = (yMin + yMax)/2;
+    boundPosZ = zBegin;
+  }else if(atty && attz){
+    boundPosX = (xMin + xMax)/2;
+    boundPosY = yBegin;
+    boundPosZ = zBegin;
+  }else if(attx){
+    boundPosX = xBegin;
+    boundPosY = (yMax + yMin)/2;
+    boundPosZ = (zMax + zMin)/2;
+  }else if(atty){
+    boundPosX = (xMax + xMin)/2;
+    boundPosY = yBegin;
+    boundPosZ = (zMax + zMin)/2;
+  }else if(attz){
+    boundPosX = (xMax + xMin)/2;
+    boundPosY = (yMax + yMin)/2;
+    boundPosZ = zBegin;
   }
 }
 
