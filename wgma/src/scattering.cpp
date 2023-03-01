@@ -15,7 +15,7 @@
 #include <TPZSimpleTimer.h>
 #include <pzcompelwithmem.h>
 #include <pzaxestools.h>
-
+#include <TPZPardisoSolver.h>
 
 #include <cassert>
 
@@ -24,14 +24,20 @@ namespace wgma::scattering{
   Analysis::Analysis(TPZAutoPointer<TPZCompMesh> mesh,
                      const int n_threads,
                      const bool reorder_eqs,
-                     const bool filter_bound) :
+                     const bool filter_bound,
+                     const bool is_sym) :
     TPZLinearAnalysis(mesh,reorder_eqs),
-    m_filter_bound(filter_bound){
+    m_filter_bound(filter_bound), m_sym(is_sym){
     
     m_cmesh = mesh;
 
-    TPZAutoPointer<TPZStructMatrix> strmtrx =
-      new TPZSpStructMatrix<CSTATE>(m_cmesh);
+    TPZAutoPointer<TPZStructMatrix> strmtrx = nullptr;
+
+    if(m_sym){
+      strmtrx = new TPZSSpStructMatrix<CSTATE>(m_cmesh);
+    }else{
+      strmtrx = new TPZSpStructMatrix<CSTATE>(m_cmesh);
+    }
 
     strmtrx->SetNumThreads(n_threads);
     
@@ -54,7 +60,11 @@ namespace wgma::scattering{
 
     ///Setting a direct solver
     TPZStepSolver<CSTATE> step;
-    step.SetDirect(ELU);
+    if(m_sym){
+      step.SetDirect(ELDLt);
+    }else{
+      step.SetDirect(ELU);
+    }
     SetSolver(step);
   }
 
@@ -76,6 +86,22 @@ namespace wgma::scattering{
   void Analysis::Solve(){
     TPZSimpleTimer solve("Solve");
     ///solves the system
+    if(m_sym){
+      auto *pardiso = GetSolver().GetPardisoControl();
+      if(pardiso){
+        if(!pardiso->HasCustomSettings()){
+          constexpr auto str_type = TPZPardisoSolver<CSTATE>::MStructure::ESymmetric;
+          constexpr auto sys_type = TPZPardisoSolver<CSTATE>::MSystemType::ENonSymmetric;
+          constexpr auto prop = TPZPardisoSolver<CSTATE>::MProperty::EIndefinite;
+          pardiso->SetStructure(str_type);
+          pardiso->SetMatrixType(sys_type,prop);
+          auto param = pardiso->GetParam();
+          param[4] = 0;
+          pardiso->SetParam(param);
+        }
+        pardiso->SetMatrixType(6);
+      }
+    }
     TPZLinearAnalysis::Solve();
   }
   void Analysis::Run(){
@@ -194,11 +220,6 @@ namespace wgma::scattering{
 
     //number of integration points
     const auto npts = mem_indices.size();
-    /*
-      the integration rule will be from a 1d element
-      the computational element might be the 1d
-      el itself (1d modal analysis) or a 2d neighbour(2d periodic ma)
-     */
 
     
     constexpr int celdim {2};

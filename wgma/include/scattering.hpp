@@ -26,8 +26,9 @@ namespace wgma::scattering{
        @param [in] filter_bound whether to impose homogeneous dirichlet BCs by removing the equations
     */
     Analysis(const TPZAutoPointer<TPZCompMesh> cmesh,
-                       const int n_threads, const bool reorder_eqs=true,
-                       const bool filter_bound=true);
+             const int n_threads, const bool reorder_eqs=true,
+             const bool filter_bound=true,
+             const bool is_sym=true);
     //! Sets a custom linear solver to be copied to underlying TPZAnalysis(advanced)
     using TPZLinearAnalysis::SetSolver;
     /**
@@ -55,7 +56,9 @@ namespace wgma::scattering{
      */
     void Run();
 
-   [[nodiscard]] TPZAutoPointer<TPZCompMesh> GetMesh() {return m_cmesh;} 
+   [[nodiscard]] TPZAutoPointer<TPZCompMesh> GetMesh() {return m_cmesh;}
+
+    void SetSymMatrix(bool sym){m_sym = sym;}
   protected:
     //! H1 mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};
@@ -65,6 +68,8 @@ namespace wgma::scattering{
     int m_n_dofs{-1};
     //! Whether the equations have been filtered
     bool m_filter_bound{false};
+    //! Whether to use a symmetric matrix storage format
+    bool m_sym{true};
   };
 
 
