@@ -13,6 +13,7 @@ directional mesh refinement.
 #include "cmeshtools_impl.hpp"//for custom pml regions
 #include "gmeshtools.hpp"
 #include "pmltypes.hpp"
+#include <util.hpp>
 #include "slepcepshandler.hpp"
 //pz includes
 #include <MMeshType.h>                   //for MMeshType
@@ -94,8 +95,14 @@ int main(int argc, char *argv[]) {
   constexpr bool printGMesh{true};
   //whether to export the solution as a .vtk file
   constexpr bool exportVtk{true};
-  //prefix for exported files
-  const std::string prefix{"planar_wg"};
+  // path for output files
+  const std::string path {"res_planar_wg/"};
+  // common prefix for both meshes and output files
+  const std::string basisName{"planar_wg"};
+  // prefix for exported files
+  const std::string prefix{path+basisName};
+  //just to make sure we will output results
+  wgma::util::CreatePath(wgma::util::ExtractPath(prefix));
   //resolution of the .vtk file in which the solution will be exported
   constexpr int vtkRes{0};
 
@@ -184,10 +191,9 @@ int main(int argc, char *argv[]) {
   TPZSimpleTimer postProc("Post processing");
 
   TPZVec<std::string> fields = {
-    "Ez_real",
-    "Ez_abs",
-    "Et_real",
-    "Et_abs"};
+    "Field_real",
+    "Field_imag",
+    "Field_abs"};
   auto vtk = TPZVTKGenerator(cmesh, fields, plotfile, vtkRes);
   vtk.Do();
 }
