@@ -29,6 +29,9 @@ and then the subsequent scattering analysis.
 #include <pzstepsolver.h>
 #include <pzseqsolver.h>
 #include <pzmgsolver.h>
+
+#include <thread>
+
 // Sets geometric info regarding all the cylinders in the mesh
 TPZVec<wgma::gmeshtools::CylinderData> SetUpCylData(std::string_view filename,
                                                     const REAL scale);
@@ -108,8 +111,8 @@ int main(int argc, char *argv[]) {
    ******************/
 
   // number of threads to use
-  constexpr int nThreads{4};
-  constexpr int nThreadsDebug{4};
+  const int nThreads = std::thread::hardware_concurrency();
+  const int nThreadsDebug = std::thread::hardware_concurrency();
   // how to sort eigenvaluesn
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   bool usingSLEPC {true};
