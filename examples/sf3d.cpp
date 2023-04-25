@@ -590,9 +590,7 @@ void ComputeModes(wgma::wganalysis::Wgma &an,
   auto matA = an.GetSolver().MatrixA();
   auto matB = an.GetSolver().MatrixB();
 
-  matA->SetSymmetry(SymProp::Sym);
   matA->SetDefPositive(false);
-  matB->SetSymmetry(SymProp::Sym);
   matB->SetDefPositive(false);
   static constexpr bool computeVectors{true};
   an.Solve(computeVectors);
