@@ -392,7 +392,7 @@ int main(int argc, char *argv[]) {
   //   WriteVec(rhs_data, rhs_nel, prefix + "_rhs.txt");
   // }
 
-  constexpr bool direct{true};
+  constexpr bool direct{false};
   if(direct){
     //get pardiso control
     auto *pardiso = scatt_an.GetSolver().GetPardisoControl();
@@ -408,15 +408,18 @@ int main(int argc, char *argv[]) {
   }
   else{
     TPZSimpleTimer solve("precond+solve", true);
-    Precond::Type precond_type = Precond::BlockJacobi;
-    constexpr bool overlap {true};
+    Precond::Type precond_type = Precond::Element;
+    constexpr bool overlap {false};
     constexpr REAL tol = 5e-8;
-    auto precond = scatt_an.BuildPreconditioner<CSTATE>(precond_type, overlap);
-       
+    TPZAutoPointer<TPZMatrixSolver<CSTATE>> precond{nullptr};
+    {
+      TPZSimpleTimer timer("Precond",true);
+      precond = scatt_an.BuildPreconditioner<CSTATE>(precond_type, overlap);
+    }  
     auto &solver = dynamic_cast<TPZStepSolver<CSTATE>&>(scatt_an.GetSolver());
 
-    const int64_t n_iter = {40};
-    const int n_vecs = {40};
+    const int64_t n_iter = {300};
+    const int n_vecs = {300};
     constexpr int64_t from_current{0};
     solver.SetGMRES(n_iter, n_vecs, *precond, tol, from_current);
     //solves the system
