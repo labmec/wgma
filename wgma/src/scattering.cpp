@@ -730,7 +730,7 @@ namespace wgma::scattering{
       }
     }
     if(src_mats.size() + src_pml_mats.size() > 0){
-      TPZSimpleTimer tscatt("AutoBuild2",true);
+      TPZSimpleTimer tscatt("AutoBuild2");
       //now we insert the proper material
       scatt_cmesh->SetAllCreateFunctionsHCurlWithMem();
       //we want different memory areas for each integration point
