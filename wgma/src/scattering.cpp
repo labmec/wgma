@@ -92,18 +92,9 @@ namespace wgma::scattering{
     TPZSimpleTimer solve("Solve");
     ///solves the system
     if(m_sym){
-      auto *pardiso = GetSolver().GetPardisoControl();
-      if(pardiso){
-        if(!pardiso->HasCustomSettings()){
-          constexpr auto sys_type = SymProp::Sym;
-          constexpr auto prop = TPZPardisoSolver<CSTATE>::MProperty::EIndefinite;
-          pardiso->SetMatrixType(sys_type,prop);
-          auto param = pardiso->GetParam();
-          param[4] = 0;
-          pardiso->SetParam(param);
-        }
-        pardiso->SetMatrixType(6);
-      }
+      auto mat = this->GetSolver().Matrix();
+      mat->SetSymmetry(SymProp::Sym);
+      mat->SetDefPositive(false);
     }
     TPZLinearAnalysis::Solve();
   }
