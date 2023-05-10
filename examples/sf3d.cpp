@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
   // reorder the equations in order to optimize bandwidth
   constexpr bool optimizeBandwidth2D{true};
   // reorder the equations in order to optimize bandwidth
-  constexpr bool optimizeBandwidth3D{false};
+  constexpr bool optimizeBandwidth3D{true};
   /*
     The equations corresponding to homogeneous dirichlet boundary condition(PEC)
     can be filtered out of the global system in order to achieve better
