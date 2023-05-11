@@ -12,6 +12,7 @@ and then the subsequent scattering analysis.
 #include <wganalysis.hpp>
 #include <scattering.hpp>
 #include <util.hpp>
+#include <precond.hpp>
 #include <slepcepshandler.hpp>
 #include <post/orthosol.hpp>
 #include <post/solutionnorm.hpp>
@@ -118,8 +119,7 @@ int main(int argc, char *argv[]) {
   bool usingSLEPC {true};
   constexpr int nEigenvalues{1};
   constexpr CSTATE target = -2.09;//n_core*n_core;
-  constexpr bool symMat{true};
-  constexpr bool read_sol{false};
+  constexpr bool symMat{false};
   /*********************
    * exporting options *
    *********************/
@@ -158,6 +158,9 @@ int main(int argc, char *argv[]) {
     Whether to use a non-linear representation for cylinders
    */
   constexpr bool cyl3D{true};
+
+  //! Whether to use a direct solver
+  constexpr bool direct{false};
 
   /*********
    * begin *
@@ -318,37 +321,7 @@ int main(int argc, char *argv[]) {
   auto scatt_an = wgma::scattering::Analysis(scatt_cmesh, nThreadsDebug,
                                              optimizeBandwidth3D, filterBoundaryEqs3D,
                                              symMat);
-
-
-  if(read_sol)
-  {
-    TPZFMatrix<CSTATE> sol;
-    std::ifstream sol_file("sol.txt");
-    int n{0};
-    sol_file >> n;
-    sol.Resize(n,1);
-    for(int i = 0; i < n; i++){
-      STATE re{0}, im{0};
-      sol_file >> re;
-      sol_file >> im;
-      sol.PutVal(i,0, CSTATE(re,im));
-    }
-
-    TPZFMatrix<CSTATE> sol_expand(scatt_cmesh->NEquations(), 1);
-    scatt_an.StructMatrix()->EquationFilter().Scatter(sol, sol_expand);
-    scatt_an.LoadSolution(sol_expand);
-
-    TPZSimpleTimer tpostprocess("Post processing");
-    TPZVec<std::string> fvars = {
-      "Field_real",
-      "Field_imag",
-      "Field_abs"};
-    const std::string scatt_file = prefix+"_scatt_file";
-    auto vtk = TPZVTKGenerator(scatt_cmesh, fvars, scatt_file, vtkRes);
-    vtk.Do();
-    return 0;
-  }
-
+  
   {
     TPZSimpleTimer tscatt("Assemble",true);
     scatt_an.Assemble();
@@ -358,44 +331,6 @@ int main(int argc, char *argv[]) {
     mat->SetDefPositive(false);
   }
 
-
-  // {
-  //   auto mat = TPZAutoPointerDynamicCast<TPZSYsmpMatrix<CSTATE>>(scatt_an.GetSolver().Matrix());
-  //   TPZVec<int64_t> ia, ja;
-  //   TPZVec<CSTATE> a;
-  //   mat->GetData(ia,ja,a);
-
-  //   auto WriteVec = [prefix] (const auto *vec, const auto sz, auto filename){
-  //     std::stringstream stream;
-  //     stream.precision(17);
-  //     stream << sz << '\n';
-  //     for(int i = 0; i < sz; i++){
-  //       stream << std::fixed<<vec[i] << '\n';
-  //     }
-  //     std::ofstream file;
-  //     file.open(filename);
-  //     if(!file.is_open()){
-  //       std::cout<<"could not open file "<<filename<<std::endl;
-  //       perror("Error : ");
-  //       return;
-  //     }
-  //     file << stream.str();
-  //     file.close();
-  //     std::cout<<"wrote "<<filename<<std::endl;
-  //   };
-
-    
-  //   WriteVec(ia.begin(), ia.size(), prefix + "_matrix_ia.txt");
-  //   WriteVec(ja.begin(), ja.size(), prefix + "_matrix_ja.txt");
-  //   WriteVec(a.begin(), a.size(), prefix + "_matrix_a.txt");
-
-  //   TPZFMatrix<CSTATE> &rhs = scatt_an.Rhs();
-  //   const auto rhs_nel = rhs.Rows();
-  //   auto *rhs_data = rhs.Elem();
-  //   WriteVec(rhs_data, rhs_nel, prefix + "_rhs.txt");
-  // }
-
-  constexpr bool direct{false};
   if(direct){
     //get pardiso control
     auto *pardiso = scatt_an.GetSolver().GetPardisoControl();
@@ -411,16 +346,33 @@ int main(int argc, char *argv[]) {
   }
   else{
     TPZSimpleTimer solve("precond+solve", true);
-    Precond::Type precond_type = Precond::Element;
-    constexpr bool overlap {false};
     constexpr REAL tol = 5e-8;
-    TPZAutoPointer<TPZMatrixSolver<CSTATE>> precond{nullptr};
-    {
-      TPZSimpleTimer timer("Precond",true);
-      precond = scatt_an.BuildPreconditioner<CSTATE>(precond_type, overlap);
-    }  
+      
     auto &solver = dynamic_cast<TPZStepSolver<CSTATE>&>(scatt_an.GetSolver());
 
+    TPZAutoPointer<TPZMatrixSolver<CSTATE>> precond;
+    {
+      TPZSimpleTimer pre("precond",true);
+      const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
+      std::set<int> bnd_ids;
+      bnd_ids.insert(gmshmats[2].at("scatt_bnd"));
+      TPZVec<int64_t> eqgraph, eqgraphindex;
+      wgma::precond::CreateAFWBlocks(scatt_cmesh,bnd_ids, eqfilt, eqgraph,eqgraphindex);
+
+      TPZVec<int> colors(eqgraphindex.size()-1,0);
+      auto mat = scatt_an.GetSolver().Matrix();
+      const int numc =
+        wgma::precond::ColorEqGraph(eqgraph,eqgraphindex,
+                                    *mat,eqfilt.NActiveEquations(),colors);
+
+      std::cout<<"created "<<eqgraphindex.size()-1
+               <<" blocks split into "
+               <<numc<<" colors"<<std::endl;
+      precond = new wgma::precond::BlockPrecond(mat,
+                                                std::move(eqgraph),
+                                                std::move(eqgraphindex),
+                                                colors, numc);
+    }
     const int64_t n_iter = {300};
     const int n_vecs = {300};
     constexpr int64_t from_current{0};
