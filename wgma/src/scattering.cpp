@@ -5,6 +5,7 @@
 
 #include <TPZSpStructMatrix.h>
 #include <TPZSSpStructMatrix.h>
+#include <TPZCutHillMcKee.h>
 #include <pzstepsolver.h>
 #include <Electromagnetics/TPZPlanarWgScatt.h>
 #include <Electromagnetics/TPZPlanarWgScattSrc.h>
@@ -26,9 +27,11 @@ namespace wgma::scattering{
                      const bool reorder_eqs,
                      const bool filter_bound,
                      const bool is_sym) :
-    TPZLinearAnalysis(mesh,reorder_eqs),
+    TPZLinearAnalysis(),
     m_filter_bound(filter_bound), m_sym(is_sym){
-    
+
+    this->SetRenumber(new TPZCutHillMcKee());
+    this->SetCompMesh(mesh.operator->(), reorder_eqs);
     m_cmesh = mesh;
 
     TPZAutoPointer<TPZStructMatrix> strmtrx = nullptr;
