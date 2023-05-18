@@ -66,6 +66,9 @@ namespace wgma::scattering{
 
     using TPZLinearAnalysis::Rhs;
 
+    TPZAutoPointer<TPZMatrixSolver<CSTATE>> BuildBlockPrecond(const TPZVec<int64_t> &eqgraph,
+                                                              const TPZVec<int64_t> &graphindex,
+                                                              const bool overlap);
     using TPZAnalysis::BuildPreconditioner;
   protected:
     //! H1 mesh

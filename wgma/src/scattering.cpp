@@ -17,7 +17,7 @@
 #include <pzcompelwithmem.h>
 #include <pzaxestools.h>
 #include <TPZPardisoSolver.h>
-
+#include <tpzsparseblockdiagonal.h>
 #include <cassert>
 
 
@@ -101,6 +101,87 @@ namespace wgma::scattering{
   void Analysis::Run(){
     Assemble();
     Solve();
+  }
+
+
+  int ColorEqGraph(const TPZVec<int64_t> &graph, const TPZVec<int64_t> &graphindex,
+                   const TPZMatrix<CSTATE> &mat,
+                   const int64_t neqs, TPZVec<int> &colors)
+  {
+  
+    TPZVec<int> eqcolor(neqs);
+    int color = 0;
+    bool hasuncolored = true;
+    const int64_t nblocks = graphindex.NElements()-1;
+    colors.Resize(nblocks);
+    colors.Fill(-1);
+    while(hasuncolored)
+    {
+      hasuncolored = false;
+      eqcolor.Fill(-1);
+      int64_t ibl;
+      //we iterate over the blocks of the input graph
+      for(ibl=0; ibl<nblocks; ibl++)
+      {
+        if(colors[ibl] != -1) continue;
+        const int64_t first = graphindex[ibl];
+        const int64_t last = graphindex[ibl+1];
+        bool is_free = true;
+        for(auto ieq=first; ieq<last; ieq++)    
+        {
+          const auto roweq = graph[ieq];
+          TPZManVector<int64_t, 300> indices;
+          mat.GetRowIndices(roweq,indices);
+          for(auto ieq : indices){
+            if(eqcolor[ieq] == color){is_free = false;}
+          }
+        }
+        if(!is_free)
+        {
+          hasuncolored = true;
+        }
+        else
+        {
+          colors[ibl] = color;
+          for(auto ieq=first; ieq<last; ieq++)    
+          {
+            const auto roweq = graph[ieq];
+            TPZManVector<int64_t, 300> indices;
+            mat.GetRowIndices(roweq,indices);
+            for(auto ieq : indices){
+              eqcolor[ieq] = color;
+            }
+          }
+        }
+      }
+      color++;
+    }
+    return color;
+  }
+  
+  TPZAutoPointer<TPZMatrixSolver<CSTATE>>
+  Analysis::BuildBlockPrecond(const TPZVec<int64_t> &eqgraph,
+                              const TPZVec<int64_t> &graphindex,
+                              const bool overlap)
+  {
+    TPZSimpleTimer timer("BuildBlockPrecond");
+    const int64_t neq = this->StructMatrix()->EquationFilter().NActiveEquations();
+    auto mySolver = dynamic_cast<TPZMatrixSolver<CSTATE>*>(this->Solver());
+    std::cout<<"Building "<<graphindex.size()-1<<" blocks"<<std::endl;
+    if(overlap){
+      auto sp = new TPZSparseBlockDiagonal<CSTATE>(eqgraph, graphindex, neq);
+      TPZStepSolver<CSTATE> *step = new TPZStepSolver<CSTATE>(sp);
+      step->SetDirect(ELU);
+      //this will allow the TPZAnalysis::Solve to call UpdateFrom and insert values
+      step->SetReferenceMatrix(mySolver->Matrix());
+      return step;
+    }else{
+      TPZVec<int> colors(neq,0);
+      const int numcolors =
+        ColorEqGraph(eqgraph, graphindex, mySolver->Matrix(), neq, colors);
+      std::cout<<"Blocks divided into "<<numcolors<<" colors"<<std::endl;
+      return this->BuildSequenceSolver<CSTATE>(eqgraph, graphindex, neq, numcolors, colors);
+    }
   }
 
 
