@@ -194,12 +194,13 @@ cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
   for (int iCon = 0; iCon < cmesh->NConnects(); iCon++) {
     if (boundConnects.find(iCon) == boundConnects.end()) {
       TPZConnect &con = cmesh->ConnectVec()[iCon];
+      const auto condensed = con.IsCondensed();
       const auto hasdep = con.HasDependency();
       const auto seqnum = con.SequenceNumber();
       const auto pos = cmesh->Block().Position(seqnum);
       const auto blocksize = cmesh->Block().Size(seqnum);
       
-      if(hasdep || seqnum < 0 || !blocksize) { continue; }
+      if(condensed || hasdep || seqnum < 0 || !blocksize) { continue; }
       const auto vs = neq;
       for (auto ieq = 0; ieq < blocksize; ieq++) {
         activeEquations[vs + ieq] = pos + ieq;
