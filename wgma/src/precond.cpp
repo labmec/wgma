@@ -55,7 +55,10 @@ void wgma::precond::CreateAFWBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
 
   TPZVec<int64_t> facemap;
   if(dim==3){
-    std::mutex mymut;
+    //upper bound for sequence number of face connects
+    const auto nindep = cmesh->NIndependentConnects();
+    //we will set to 1 all face connects
+    TPZVec<int64_t> allcons(nindep,0);
     pzutils::ParallelFor(0, nel, [&](int iel){
       const auto el = gmesh->Element(iel);
       if(el && el->Reference() && el->Dimension() == dim){
@@ -67,7 +70,7 @@ void wgma::precond::CreateAFWBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
           TPZGeoElSide gelside(el,face);
           auto neigh = gelside.Neighbour();
           bool bcface{false};
-          const auto facecon = el->Reference()->Connect(face-ne);
+          const auto facecon = el->Reference()->Connect(itf+ne);
           if(facecon.IsCondensed() || facecon.LagrangeMultiplier()){continue;}
           const auto seqnum = facecon.SequenceNumber();
           while(neigh!=gelside){
@@ -84,16 +87,23 @@ void wgma::precond::CreateAFWBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
               DebugStop();
             }
 #endif
-            std::scoped_lock lock(mymut);
-            facemap.push_back(seqnum);
+            allcons[seqnum] = 1;
           }
         }
       }
     });
+    
+    const int n_vol_faces =
+    std::accumulate(allcons.begin(),allcons.end(),0,
+                    [](const int64_t a, const int64_t b){return a + b;});
+    //we allocate the correct size
+    facemap.Resize(n_vol_faces);
+    int64_t count = 0;
+    //now we set the correct sequence numbers
+    for(int i = 0; i < nindep; i++){
+      if(allcons[i]){facemap[count++] = i;}
+    }
   }
-
-  RemoveDuplicates(facemap);
-  std::sort(facemap.begin(),facemap.end());
   const int nvolfaces = facemap.size();
   
   //the sum of -1 positions is the number of boundary nodes
