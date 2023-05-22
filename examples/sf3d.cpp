@@ -374,7 +374,7 @@ int main(int argc, char *argv[]) {
                                                 colors, numc);
     }
     const int64_t n_iter = {300};
-    const int n_vecs = {300};
+    const int n_vecs = {30};
     constexpr int64_t from_current{0};
     solver.SetGMRES(n_iter, n_vecs, *precond, tol, from_current);
     //solves the system
