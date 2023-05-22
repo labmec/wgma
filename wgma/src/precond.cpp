@@ -393,6 +393,7 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
     std::cout<<__PRETTY_FUNCTION__;
     std::cout<<"\nDecomposing blocks...";
     //decompose blocks (coloring need not be taken into account)
+    std::mutex mymut;
     pzutils::ParallelFor(0,nbl, [&](int ibl){
       TPZManVector<int64_t,400> indices;
       const int bs = BlockSize(ibl);
@@ -406,7 +407,8 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
       block.Decompose_LU();
       blcount++;
       if(blcount%100==0){
-        std::cout<<"\rcomputed "<<blcount<<" out of "<<nbl<< "blocks";
+        std::lock_guard lock(mymut);
+        std::cout<<"\rcomputed "<<blcount<<" out of "<<nbl<< "blocks"<<std::flush;
       }
     });
     std::cout<<"\rcomputed "<<nbl<<" out of "<<nbl<<" blocks" << std::endl;;
