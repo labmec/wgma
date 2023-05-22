@@ -202,11 +202,7 @@ int wgma::precond::ColorEqGraph(const TPZVec<int64_t> &graph,
       for(auto ieq=first; ieq<last; ieq++)    
       {
         const auto roweq = graph[ieq];
-        TPZManVector<int64_t, 300> indices;
-        mat.GetRowIndices(roweq,indices);
-        for(auto ieq : indices){
-          if(eqcolor[ieq] == color){is_free = false;break;}
-        }
+        if(eqcolor[roweq] == color){is_free = false;break;}
       }
       if(!is_free)
       {
@@ -337,7 +333,7 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
         std::cout<<"\rcomputed "<<blcount<<" out of "<<nbl<< "blocks";
       }
     });
-    std::cout<<"\rcomputed "<<nbl<<" out of "<<nbl<<"blocks" << std::endl;;
+    std::cout<<"\rcomputed "<<nbl<<" out of "<<nbl<<" blocks" << std::endl;;
   }
 }
 
@@ -400,8 +396,8 @@ void
 BlockPrecond::SmoothBlock(const int bl, TPZFMatrix<CSTATE> &du,
                           const TPZFMatrix<CSTATE>&rhs)
 {
-  TPZManVector<int64_t,400> indices;
-  TPZFNMatrix<300,CSTATE> duloc;
+  TPZManVector<int64_t,100> indices;
+  TPZFNMatrix<10000,CSTATE> duloc;
 
   const auto refmat = this->fReferenceMatrix;
   
