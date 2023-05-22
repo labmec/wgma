@@ -18,6 +18,7 @@
 #include <pzaxestools.h>
 #include <TPZPardisoSolver.h>
 #include <tpzsparseblockdiagonal.h>
+#include <TPZCompMeshTools.h>
 #include <cassert>
 
 
@@ -814,9 +815,9 @@ namespace wgma::scattering{
       scatt_cmesh->AutoBuild(src_id_set);
     }
 
-    
-    scatt_cmesh->CleanUpUnconnectedNodes();
 
+    //this will already call cleanup unconnected nodes
+    TPZCompMeshTools::CreatedCondensedElements(scatt_cmesh.operator->(), false, false);
     return scatt_cmesh;
   }
 
