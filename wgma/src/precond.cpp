@@ -4,6 +4,7 @@
 #include <TPZEquationFilter.h>
 #include <tpznodesetcompute.h>
 #include <TPZParallelUtils.h>
+#include <pzvec_extras.h>
 #include <numeric> //for std::accumulate
 
 using namespace wgma::precond;
@@ -39,8 +40,10 @@ void wgma::precond::CreateAFWBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
   */
   TPZVec<int64_t> nodemap(nnodes,0);
 
-  for(auto el : gmesh->ElementVec()){
-    if(el && dirichlet_mats.count(el->MaterialId())){
+  const int nel = gmesh->NElements();
+  pzutils::ParallelFor(0,nel, [&](int iel){
+    const auto el = gmesh->Element(iel);
+    if(el && el->Reference() && dirichlet_mats.count(el->MaterialId())){
       TPZManVector<int64_t,20> nodeindices;
       el->GetNodeIndices(nodeindices);
       const auto sz = nodeindices.size();
@@ -48,7 +51,51 @@ void wgma::precond::CreateAFWBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
         nodemap[nodeindices[i]] = -1;
       }
     }
+  });
+
+  TPZVec<int64_t> facemap;
+  if(dim==3){
+    std::mutex mymut;
+    pzutils::ParallelFor(0, nel, [&](int iel){
+      const auto el = gmesh->Element(iel);
+      if(el && el->Reference() && el->Dimension() == dim){
+        const int ne = el->NSides(1);
+        const int nf = el->NSides(2);
+        const int ff = el->FirstSide(2);
+        for(auto itf = 0; itf < nf; itf++){
+          const auto face = ff+itf;
+          TPZGeoElSide gelside(el,face);
+          auto neigh = gelside.Neighbour();
+          bool bcface{false};
+          const auto facecon = el->Reference()->Connect(face-ne);
+          if(facecon.IsCondensed() || facecon.LagrangeMultiplier()){continue;}
+          const auto seqnum = facecon.SequenceNumber();
+          while(neigh!=gelside){
+            if(neigh.Element() && neigh.Element()->Dimension() < dim &&
+               dirichlet_mats.count(neigh.Element()->MaterialId())){
+              bcface=true;
+              break;
+            }
+            neigh++;
+          }
+          if(!bcface){
+#ifdef PZDEBUG
+            if(seqnum < 0){
+              DebugStop();
+            }
+#endif
+            std::scoped_lock lock(mymut);
+            facemap.push_back(seqnum);
+          }
+        }
+      }
+    });
   }
+
+  RemoveDuplicates(facemap);
+  std::sort(facemap.begin(),facemap.end());
+  const int nvolfaces = facemap.size();
+  
   //the sum of -1 positions is the number of boundary nodes
   const int n_bnd_nodes =
     -1*std::accumulate(nodemap.begin(),nodemap.end(),0,
@@ -72,13 +119,16 @@ void wgma::precond::CreateAFWBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
   //now, nodemap maps our block indices
 
   //number of blocks
-  const auto nbl = nnodes - bd_nodes.size();
+  const auto nvolnodes = nnodes - bd_nodes.size();
+  const auto nbl = dim == 3 ? nvolnodes + nvolfaces : nvolnodes;
 
   //number of edges associated with each block
   TPZVec<int64_t> bsize(nbl,0);
-  int64_t blockgraphsize = 0;
   //total number of equations in all blocks
+  int64_t blockgraphsize = 0;
+  //this will keep track of visited edges
   std::set<std::pair<int64_t,int64_t>> edgeset;
+  
   for(auto el : gmesh->ElementVec()){
     if(el && el->Dimension() == dim){
       TPZCompEl* cel = el->Reference();
@@ -110,6 +160,14 @@ void wgma::precond::CreateAFWBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
   }
   //we clear the visited edges
   edgeset.clear();
+
+  //face blocks will always have only one connect
+  pzutils::ParallelFor(0,nvolfaces,[&bsize,nvolnodes](int itf){
+    bsize[nvolnodes+itf] = 1;
+  });
+  blockgraphsize+=nvolfaces;
+  
+  
   TPZVec<int64_t> blockgraphindex(nbl+1,0);
   TPZVec<int64_t> blockgraph(blockgraphsize,0);
   for(int ibl = 0; ibl < nbl; ibl++){
@@ -159,6 +217,14 @@ void wgma::precond::CreateAFWBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
       }
     }
   }
+
+  //now we add the face blocks
+  pzutils::ParallelFor(0,nvolfaces,[&](int itf){
+    const auto pos = blockgraphindex[nvolnodes+itf];
+    blockgraph[pos] = facemap[itf];
+  });
+  
+  
 
   //we convert the graph from seqnum to eqs
   TPZManVector<int64_t> removed_blocks;
