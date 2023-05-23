@@ -9,7 +9,7 @@
 #include <TPZVTKGeoMesh.h>
 #include <TPZGmshReader.h>
 #include <tpzchangeel.h>
-
+#include <TPZParallelUtils.h>
 #include <fstream>
 
 void wgma::gmeshtools::PrintGeoMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
@@ -632,11 +632,18 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
 {
   TPZGeoEl * closestEl = nullptr;
   REAL dist = 1e16;
-  for(auto &currentEl : gmesh->ElementVec()){
+
+  const int nel = gmesh->NElements();
+  std::mutex mymut;
+  pzutils::ParallelFor(0, nel, [&](int iel){
+    auto currentEl = gmesh->Element(iel);
     if ( !currentEl ||
          currentEl->NSubElements() > 0  ||
          currentEl->Dimension() != pmlDim ||
-         volmats.count(currentEl->MaterialId()) == 0) continue;
+         volmats.count(currentEl->MaterialId()) == 0) {
+      //return from lambda, not from function
+      return;
+    }
     TPZVec<REAL> qsi(pmlDim,-1);
     const int largerSize = currentEl->NSides() - 1;
     currentEl->CenterPoint(largerSize, qsi);
@@ -647,10 +654,14 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
       (xCenter[1]-boundPosY)*(xCenter[1]-boundPosY) +
       (xCenter[2]-boundPosZ)*(xCenter[2]-boundPosZ);
     if(currentDist < dist){
-      dist = currentDist;
-      closestEl = currentEl;
+      std::lock_guard lock(mymut);
+      //just to avoid race conditions, let us check again
+      if(currentDist < dist){
+        dist = currentDist;
+        closestEl = currentEl;
+      }
     }
-  }
+  });
 
   if(!closestEl){
     return std::nullopt;
@@ -672,22 +683,30 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
     yMax = -1e20, yMin = 1e20,
     zMax = -1e20, zMin = 1e20;
   std::set<int64_t> visited_nodes;
-  for (auto geo : gmesh->ElementVec()){
+
+  std::mutex pos_mut, visited_nodes_mut;
+  const auto nel = gmesh->NElements();
+  pzutils::ParallelFor(0, nel, [&](int iel){
+    auto geo = gmesh->Element(iel);
     if (geo && pmlId.count(geo->MaterialId()) != 0) {
       const int ncornernodes = geo->NCornerNodes();
       for (int iNode = 0; iNode < geo->NCornerNodes(); ++iNode) {
         TPZManVector<REAL, 3> co(3);
         const auto node_idx = geo->NodeIndex(iNode);
+
+        {
+          std::lock_guard lock(visited_nodes_mut);
+          if(visited_nodes.count(node_idx)){continue;}
+          else {visited_nodes.insert(node_idx);}
+        }
         
-        if(visited_nodes.count(node_idx)){continue;}
-        else {visited_nodes.insert(node_idx);}
-        
-        const auto node = geo->Node(iNode);
+        const auto& node = geo->Node(iNode);
         node.GetCoordinates(co);
         
         const REAL &xP = co[0];
         const REAL &yP = co[1];
         const REAL &zP = co[2];
+        std::lock_guard lock(pos_mut);
         if (xP > xMax) {
           xMax = xP;
         }
@@ -708,7 +727,7 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
         }
       }
     }
-  }
+  });
 
 
   //now we compute xBegin, yBegin, attx, atty and d for the material ctor
