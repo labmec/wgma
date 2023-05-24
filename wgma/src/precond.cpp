@@ -279,6 +279,12 @@ int wgma::precond::ColorEqGraph(const TPZVec<int64_t> &graph,
       {
         const auto roweq = graph[ieq];
         if(eqcolor[roweq] == color){is_free = false;break;}
+        // TPZManVector<int64_t, 300> indices;
+        // mat.GetRowIndices(roweq,indices);
+        // for(auto ieq : indices){
+        //   if(eqcolor[ieq] == color){is_free = false;break;}
+        // }
+        // if(!is_free){break;}
       }
       if(!is_free)
       {
@@ -423,11 +429,12 @@ BlockPrecond::Solve(const TPZFMatrix<CSTATE> &rhs_orig,
   if(m_blockinv.size() == 0){UpdateFrom(this->fReferenceMatrix);}
 
   //du and rhs might be same, so we copy rhs
-  const auto rhs = rhs_orig;
+  this->fScratch = rhs_orig;
+  const auto &rhs = this->fScratch;
   du.Redim(rhs.Rows(),1);
   const int nc = this->m_colors.size();
 
-  const auto refmat = this->fReferenceMatrix;
+  const auto &refmat = this->fReferenceMatrix;
 
   
   
@@ -475,13 +482,13 @@ BlockPrecond::SmoothBlock(const int bl, TPZFMatrix<CSTATE> &du,
                           const TPZFMatrix<CSTATE>&rhs)
 {
   TPZManVector<int64_t,100> indices;
-  TPZFNMatrix<10000,CSTATE> duloc;
+  TPZFNMatrix<10000,CSTATE> resloc;
 
-  const auto refmat = this->fReferenceMatrix;
+  const auto &refmat = this->fReferenceMatrix;
   
   const auto bs = this->BlockSize(bl);
   indices.Resize(bs);
-  duloc.Resize(bs, 1);
+  resloc.Resize(bs, 1);
   for(int ieq = 0; ieq < bs; ieq++){
     const auto pos = m_blockindex[bl]+ieq;
     indices[ieq] = m_blockgraph[pos];
@@ -489,17 +496,19 @@ BlockPrecond::SmoothBlock(const int bl, TPZFMatrix<CSTATE> &du,
   for (size_t ieq = 0; ieq < bs; ieq++)
   {
     const auto eq = indices[ieq];
-    duloc(ieq,0) = rhs.GetVal(eq,0) - refmat->RowTimesVector (eq, du);
+    resloc(ieq,0) = rhs.GetVal(eq,0) - refmat->RowTimesVector(eq, du);
   }
         
   const auto &block_inv = *(this->m_blockinv[bl]);
-  block_inv.Substitution(&duloc);
+  block_inv.Substitution(&resloc);
   for (size_t ieq = 0; ieq < bs; ieq++)
   {
     const auto eq = indices[ieq];
-    du(eq,0) += duloc.GetVal(ieq,0);
+    du(eq,0) += resloc.GetVal(ieq,0);
   }
 }
+
+
 void
 BlockPrecond::ComputeColorVec(const TPZVec<int> &colors,
                               const int nc)
@@ -512,7 +521,11 @@ BlockPrecond::ComputeColorVec(const TPZVec<int> &colors,
   }
   m_colors.Resize(nc);
   for(int ic = 0; ic < nc; ic++){
-    m_colors[ic].Resize(colorcount[ic]);
+    const auto size  = colorcount[ic];
+    if(size == 0){
+      DebugStop();
+    }
+    m_colors[ic].Resize(size);
   }
   //now this will keep track of blockcount for each color
   colorcount = 0;
@@ -524,4 +537,20 @@ BlockPrecond::ComputeColorVec(const TPZVec<int> &colors,
   for(int ic = 0; ic < nc; ic++){
     std::sort(m_colors[ic].begin(), m_colors[ic].end());
   }
+#ifdef PZDEBUG
+  //sanity check: is the coloring correct?
+  for(int ic = 0; ic < nc; ic++){
+    std::set<int64_t> eqset;
+    int64_t count{0};
+    for(auto bl : m_colors[ic]){
+      for(auto ieq = m_blockindex[bl]; ieq < m_blockindex[bl+1]; ieq++){
+        eqset.insert(m_blockgraph[ieq]);
+        count++;
+      }
+    }
+    if(count != eqset.size()){
+      DebugStop();
+    }
+  }
+  #endif
 }
