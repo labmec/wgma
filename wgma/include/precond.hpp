@@ -67,8 +67,12 @@ namespace wgma::precond{
   protected:
     void SmoothBlock(const int bl, TPZFMatrix<CSTATE> &du,
                      const TPZFMatrix<CSTATE>&rhs);
+    void ComputeCorrectionFactor(const int bl, TPZFMatrix<CSTATE> &du,
+                                 const TPZFMatrix<CSTATE>&rhs);
     //! Computes the list of blocks by color
     void ComputeColorVec(const TPZVec<int> &colors, const int nc);
+    //! Computes the influence of each block on the residual of the full mat
+    void ComputeInfluence();
     //! whether to perform symmetric gauss seidel or not
     bool m_sym_gs{true};
     //! max block size
@@ -79,6 +83,8 @@ namespace wgma::precond{
     TPZVec<int64_t> m_blockgraph;
     //! position i will have all the blocks with color i
     TPZVec<TPZVec<int64_t>> m_colors;
+    //! list of equations that will be affected by each block
+    TPZVec<TPZVec<int64_t>> m_infl;
     //! stores the inverses of each block diag matrix
     TPZVec<TPZAutoPointer<TPZFMatrix<CSTATE>>> m_blockinv;
   };

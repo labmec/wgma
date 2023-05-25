@@ -279,12 +279,12 @@ int wgma::precond::ColorEqGraph(const TPZVec<int64_t> &graph,
       {
         const auto roweq = graph[ieq];
         if(eqcolor[roweq] == color){is_free = false;break;}
-        // TPZManVector<int64_t, 300> indices;
-        // mat.GetRowIndices(roweq,indices);
-        // for(auto ieq : indices){
-        //   if(eqcolor[ieq] == color){is_free = false;break;}
-        // }
-        // if(!is_free){break;}
+        TPZManVector<int64_t, 300> indices;
+        mat.GetRowIndices(roweq,indices);
+        for(auto ieq : indices){
+          if(eqcolor[ieq] == color){is_free = false;break;}
+        }
+        if(!is_free){break;}
       }
       if(!is_free)
       {
@@ -324,6 +324,7 @@ BlockPrecond::BlockPrecond(TPZAutoPointer<TPZMatrix<CSTATE>> refmat,
   }
   ComputeColorVec(colors,nc);
   SetReferenceMatrix(refmat);
+  ComputeInfluence();
 }
 
 BlockPrecond::BlockPrecond(TPZAutoPointer<TPZMatrix<CSTATE>> refmat,
@@ -340,6 +341,7 @@ BlockPrecond::BlockPrecond(TPZAutoPointer<TPZMatrix<CSTATE>> refmat,
   }
   ComputeColorVec(colors,nc);
   SetReferenceMatrix(refmat);
+  ComputeInfluence();
 }
 
 BlockPrecond::BlockPrecond(const BlockPrecond &cp) :
@@ -348,7 +350,8 @@ BlockPrecond::BlockPrecond(const BlockPrecond &cp) :
   m_max_bs(cp.m_max_bs),
   m_blockindex(cp.m_blockindex),
   m_blockgraph(cp.m_blockgraph),
-  m_colors(cp.m_colors)
+  m_colors(cp.m_colors),
+  m_infl(cp.m_infl)
 {
   if(cp.m_blockinv.size()){
     const int nbl = m_blockindex.size()-1;
@@ -369,6 +372,7 @@ BlockPrecond::operator=(const BlockPrecond &cp)
   m_blockindex = cp.m_blockindex;
   m_blockgraph = cp.m_blockgraph;
   m_colors = cp.m_colors;
+  m_infl = cp.m_infl;
   if(cp.m_blockinv.size()){
     const int nbl = m_blockindex.size()-1;
     m_blockinv.Resize(nbl);
@@ -423,7 +427,7 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
 
 void
 BlockPrecond::Solve(const TPZFMatrix<CSTATE> &rhs_orig,
-                    TPZFMatrix<CSTATE> &du,
+                    TPZFMatrix<CSTATE> &du_total,
                     TPZFMatrix<CSTATE> *res)
 {
   if(m_blockinv.size() == 0){UpdateFrom(this->fReferenceMatrix);}
@@ -431,14 +435,19 @@ BlockPrecond::Solve(const TPZFMatrix<CSTATE> &rhs_orig,
   //du and rhs might be same, so we copy rhs
   this->fScratch = rhs_orig;
   const auto &rhs = this->fScratch;
-  du.Redim(rhs.Rows(),1);
+  du_total.Redim(rhs.Rows(),1);
+  TPZFMatrix<CSTATE> du = du_total;
+  TPZFMatrix<CSTATE> rhscp;
+  if(res){
+    rhscp = rhs;
+  }
   const int nc = this->m_colors.size();
 
   const auto &refmat = this->fReferenceMatrix;
 
   
   
-  constexpr  bool mt{true};
+  constexpr bool mt{true};
   for(int ic = 0; ic < nc; ic++){
     const int nbl_color = this->m_colors[ic].size();
     if constexpr (mt){
@@ -453,9 +462,26 @@ BlockPrecond::Solve(const TPZFMatrix<CSTATE> &rhs_orig,
         SmoothBlock(bl,du,rhs);
       }
     }
+    
+    //now we compute alpha
+    if constexpr (mt){
+        pzutils::ParallelFor(0,nbl_color, [&](int ibl){
+        const auto bl = this->m_colors[ic][ibl];
+        ComputeCorrectionFactor(bl,du,rhs);
+      });
+    }
+    else{
+      for(int ibl = 0; ibl < nbl_color; ibl++){
+        const auto bl = this->m_colors[ic][ibl];
+        ComputeCorrectionFactor(bl,du,rhs);
+      }
+    }
+    refmat->Residual(du,rhs,fScratch);
+    du_total += du;
+    du.Zero();
   }
   if(m_sym_gs){
-    for(int ic = nc-1; ic >= 0; ic--){
+    for(int ic = nc-2; ic >= 0; ic--){
       const int nbl_color = this->m_colors[ic].size();
       if constexpr (mt){
         pzutils::ParallelFor(0,nbl_color, [&](int ibl){
@@ -469,11 +495,28 @@ BlockPrecond::Solve(const TPZFMatrix<CSTATE> &rhs_orig,
           SmoothBlock(bl,du,rhs);
         }
       }
+      
+      //now we compute alpha
+      if constexpr (mt){
+        pzutils::ParallelFor(0,nbl_color, [&](int ibl){
+          const auto bl = this->m_colors[ic][ibl];
+          ComputeCorrectionFactor(bl,du,rhs);
+        });
+      }
+      else{
+        for(int ibl = 0; ibl < nbl_color; ibl++){
+          const auto bl = this->m_colors[ic][ibl];
+          ComputeCorrectionFactor(bl,du,rhs);
+        }
+      }
+      refmat->Residual(du,rhs,fScratch);
+      du_total += du;
+      du.Zero();
     }
   }
 
   if(res){
-    refmat->Residual(du, rhs, *res);
+    refmat->Residual(du_total, rhscp, *res);
   }
 }
 
@@ -496,7 +539,7 @@ BlockPrecond::SmoothBlock(const int bl, TPZFMatrix<CSTATE> &du,
   for (size_t ieq = 0; ieq < bs; ieq++)
   {
     const auto eq = indices[ieq];
-    resloc(ieq,0) = rhs.GetVal(eq,0) - refmat->RowTimesVector(eq, du);
+    resloc(ieq,0) = rhs.GetVal(eq,0);// - refmat->RowTimesVector(eq, du);
   }
         
   const auto &block_inv = *(this->m_blockinv[bl]);
@@ -508,6 +551,57 @@ BlockPrecond::SmoothBlock(const int bl, TPZFMatrix<CSTATE> &du,
   }
 }
 
+void
+BlockPrecond::ComputeCorrectionFactor(const int bl, TPZFMatrix<CSTATE> &du,
+                                      const TPZFMatrix<CSTATE>&rhs)
+{
+  TPZManVector<int64_t,100> indices;
+  TPZFNMatrix<1000,CSTATE> resloc, kduloc;
+
+  const auto &refmat = this->fReferenceMatrix;
+  //block size
+  const auto bsz = this->BlockSize(bl);
+  //size of influenced eqs
+  const auto &infl_eqs = this->m_infl[bl];
+  const auto inflsz = infl_eqs.size();
+  //total size
+  const auto sz = bsz+inflsz;
+  indices.Resize(bsz);
+  resloc.Resize(sz, 1);
+  kduloc.Resize(sz, 1);
+  for(int ieq = 0; ieq < bsz; ieq++){
+    const auto pos = m_blockindex[bl]+ieq;
+    const auto eq = m_blockgraph[pos];
+    indices[ieq] = eq;
+  }
+
+  for(int ieq = 0; ieq < bsz; ieq++){
+    const auto eq = indices[ieq];
+    resloc.PutVal(ieq,0,rhs.GetVal(eq,0));
+    kduloc.PutVal(ieq,0,refmat->RowTimesVector (eq, du));
+  }
+  
+  for (size_t ieq = 0; ieq < inflsz; ieq++)
+  {
+    const auto eq = infl_eqs[ieq];
+    kduloc.PutVal(bsz+ieq,0,refmat->RowTimesVector (eq, du));
+    resloc.PutVal(bsz+ieq,0,rhs.GetVal(eq,0));
+  }
+
+  auto normkdu = Norm(kduloc);
+  normkdu *= normkdu;
+  
+  if(normkdu == 0){
+    return;
+  }
+  const auto alpha = Dot(kduloc,resloc).real()/normkdu;
+  for (size_t ieq = 0; ieq < bsz; ieq++)
+  {
+    const auto eq = indices[ieq];
+    const auto val = alpha*du.GetVal(eq,0);
+    du.PutVal(eq,0,val);
+  }
+}
 
 void
 BlockPrecond::ComputeColorVec(const TPZVec<int> &colors,
@@ -537,9 +631,12 @@ BlockPrecond::ComputeColorVec(const TPZVec<int> &colors,
   for(int ic = 0; ic < nc; ic++){
     std::sort(m_colors[ic].begin(), m_colors[ic].end());
   }
-#ifdef PZDEBUG
+  //#ifdef PZDEBUG
   //sanity check: is the coloring correct?
   for(int ic = 0; ic < nc; ic++){
+    if(colorcount[ic]!=m_colors[ic].size()){
+      DebugStop();
+    }
     std::set<int64_t> eqset;
     int64_t count{0};
     for(auto bl : m_colors[ic]){
@@ -552,5 +649,65 @@ BlockPrecond::ComputeColorVec(const TPZVec<int> &colors,
       DebugStop();
     }
   }
-  #endif
+  //#endif
+}
+
+void BlockPrecond::ComputeInfluence()
+{
+  const auto &refmat = this->fReferenceMatrix;
+#ifdef PZDEBUG
+  if(!refmat){
+    DebugStop();
+  }
+#endif
+  const auto nbl = this->NBlocks();
+  m_infl.Resize(nbl);
+  for(int ibl = 0; ibl < nbl; ibl++){
+    TPZManVector<int64_t,400> indices;
+    const int bs = BlockSize(ibl);
+    indices.Resize(bs);
+    TPZManVector<int64_t,800> infl;
+    for(int ieq = 0; ieq < bs; ieq++){
+      TPZManVector<int64_t, 400> loc_infl;
+      const auto pos = m_blockindex[ibl]+ieq;
+      const auto eq = m_blockgraph[pos];
+      indices[ieq] = eq;
+      refmat->GetRowIndices(eq, loc_infl);
+      const auto oldsz = infl.size();
+      const auto locsz = loc_infl.size();
+      const auto newsz = oldsz+locsz;
+      infl.Resize(newsz);
+      for(auto it = 0; it < locsz; it++){
+        infl[oldsz+it] = loc_infl[it];
+      }
+    }
+    RemoveDuplicates(infl);
+    const auto sz_orig = infl.size();
+    //we must have the memory already allocated
+    m_infl[ibl].Resize(sz_orig);
+    const auto pos = std::set_difference(infl.begin(),infl.end(),indices.begin(),indices.end(),m_infl[ibl].begin());
+    const auto newsz = pos - m_infl[ibl].begin();
+    m_infl[ibl].Resize(newsz);
+  }
+
+  // //sanity check: is the coloring correct?
+  // //this is SLOW
+  // const auto nc = m_colors.size();
+  // TPZManVector<int64_t,1000> intervec;
+  // for(int ic = 0; ic < nc; ic++){
+  //   for(auto ibl : m_colors[ic]){
+  //     const auto & infl_eqs = m_infl[ibl];
+  //     for(auto jbl : m_colors[ic]){
+  //       if(ibl == jbl){continue;}
+  //       const auto first = m_blockindex[jbl];
+  //       const auto sz = this->BlockSize(jbl);
+  //       const auto pos =
+  //         std::set_intersection(&m_blockgraph[first], &m_blockgraph[first]+sz,
+  //                               infl_eqs.begin(),infl_eqs.end(),
+  //                               intervec.begin());
+  //       const auto inter_sz = pos - intervec.begin();
+  //       if(inter_sz!=0){DebugStop();}
+  //     }
+  //   }
+  // }
 }
