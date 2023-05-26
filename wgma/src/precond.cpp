@@ -651,7 +651,7 @@ void BlockPrecond::ComputeInfluence()
 #endif
   const auto nbl = this->NBlocks();
   m_infl.Resize(nbl);
-  for(int ibl = 0; ibl < nbl; ibl++){
+  pzutils::ParallelFor(0,nbl, [&](int ibl){
     const int bs = BlockSize(ibl);
     TPZManVector<int64_t,800> infl;
     for(int ieq = 0; ieq < bs; ieq++){
@@ -670,7 +670,6 @@ void BlockPrecond::ComputeInfluence()
     RemoveDuplicates(infl);
     const auto sz_orig = infl.size();
     //we must have the memory already allocated
-  }
     m_infl[ibl].Resize(sz_orig-bs);
 
     TPZManVector<int64_t,400> indices;
@@ -682,6 +681,7 @@ void BlockPrecond::ComputeInfluence()
     if(pos - m_infl[ibl].begin() !=sz_orig-bs){
       DebugStop();
     }
+  });
 
   // //sanity check: is the coloring correct?
   // //this is SLOW
