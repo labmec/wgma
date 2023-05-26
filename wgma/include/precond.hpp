@@ -60,7 +60,20 @@ namespace wgma::precond{
 
     inline int NBlocks() const {return m_blockindex.size()-1;}
     inline int BlockSize(const int i) const {return m_blockindex[i+1]-m_blockindex[i];}
-
+    
+    inline void BlockIndices(const int i, TPZVec<int64_t> &indices) const{
+      const auto beg = m_blockindex[i];
+      const auto end = m_blockindex[i+1];
+      const auto sz = end-beg;
+      indices.Resize(sz);
+      for(int ieq = beg; ieq < end; ieq++){
+        indices[ieq-beg] = m_blockgraph[ieq];
+      }
+      // if(!std::is_sorted(indices.begin(),indices.end())){
+      //   DebugStop();
+      // }
+    }
+    
     BlockPrecond *Clone() const override{
       return new BlockPrecond(*this);
     }

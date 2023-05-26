@@ -405,14 +405,9 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
     //decompose blocks (coloring need not be taken into account)
     std::mutex mymut;
     pzutils::ParallelFor(0,nbl, [&](int ibl){
-      TPZManVector<int64_t,400> indices;
-      const int bs = BlockSize(ibl);
-      indices.Resize(bs);
-      for(int ieq = 0; ieq < bs; ieq++){
-        const auto pos = m_blockindex[ibl]+ieq;
-        indices[ieq] = m_blockgraph[pos];
-      }
       auto &block = *(this->m_blockinv[ibl]);
+      TPZManVector<int64_t,400> indices;
+      this->BlockIndices(ibl,indices);
       refmat->GetSub(indices,block);
       block.Decompose_LU();
       blcount++;
@@ -524,18 +519,15 @@ void
 BlockPrecond::SmoothBlock(const int bl, TPZFMatrix<CSTATE> &du,
                           const TPZFMatrix<CSTATE>&rhs)
 {
-  TPZManVector<int64_t,100> indices;
   TPZFNMatrix<10000,CSTATE> resloc;
 
   const auto &refmat = this->fReferenceMatrix;
+
+  TPZManVector<int64_t,400> indices;
+  this->BlockIndices(bl,indices);
   
   const auto bs = this->BlockSize(bl);
-  indices.Resize(bs);
   resloc.Resize(bs, 1);
-  for(int ieq = 0; ieq < bs; ieq++){
-    const auto pos = m_blockindex[bl]+ieq;
-    indices[ieq] = m_blockgraph[pos];
-  }
   for (size_t ieq = 0; ieq < bs; ieq++)
   {
     const auto eq = indices[ieq];
@@ -555,7 +547,6 @@ void
 BlockPrecond::ComputeCorrectionFactor(const int bl, TPZFMatrix<CSTATE> &du,
                                       const TPZFMatrix<CSTATE>&rhs)
 {
-  TPZManVector<int64_t,100> indices;
   TPZFNMatrix<1000,CSTATE> resloc, kduloc;
 
   const auto &refmat = this->fReferenceMatrix;
@@ -566,14 +557,12 @@ BlockPrecond::ComputeCorrectionFactor(const int bl, TPZFMatrix<CSTATE> &du,
   const auto inflsz = infl_eqs.size();
   //total size
   const auto sz = bsz+inflsz;
-  indices.Resize(bsz);
   resloc.Resize(sz, 1);
   kduloc.Resize(sz, 1);
-  for(int ieq = 0; ieq < bsz; ieq++){
-    const auto pos = m_blockindex[bl]+ieq;
-    const auto eq = m_blockgraph[pos];
-    indices[ieq] = eq;
-  }
+
+
+  TPZManVector<int64_t,400> indices;
+  this->BlockIndices(bl,indices);
 
   for(int ieq = 0; ieq < bsz; ieq++){
     const auto eq = indices[ieq];
@@ -663,15 +652,12 @@ void BlockPrecond::ComputeInfluence()
   const auto nbl = this->NBlocks();
   m_infl.Resize(nbl);
   for(int ibl = 0; ibl < nbl; ibl++){
-    TPZManVector<int64_t,400> indices;
     const int bs = BlockSize(ibl);
-    indices.Resize(bs);
     TPZManVector<int64_t,800> infl;
     for(int ieq = 0; ieq < bs; ieq++){
       TPZManVector<int64_t, 400> loc_infl;
       const auto pos = m_blockindex[ibl]+ieq;
       const auto eq = m_blockgraph[pos];
-      indices[ieq] = eq;
       refmat->GetRowIndices(eq, loc_infl);
       const auto oldsz = infl.size();
       const auto locsz = loc_infl.size();
@@ -684,11 +670,18 @@ void BlockPrecond::ComputeInfluence()
     RemoveDuplicates(infl);
     const auto sz_orig = infl.size();
     //we must have the memory already allocated
-    m_infl[ibl].Resize(sz_orig);
-    const auto pos = std::set_difference(infl.begin(),infl.end(),indices.begin(),indices.end(),m_infl[ibl].begin());
-    const auto newsz = pos - m_infl[ibl].begin();
-    m_infl[ibl].Resize(newsz);
   }
+    m_infl[ibl].Resize(sz_orig-bs);
+
+    TPZManVector<int64_t,400> indices;
+    this->BlockIndices(ibl,indices);
+    
+    const auto pos =
+      std::set_difference(infl.begin(),infl.end(),indices.begin(),indices.end(),m_infl[ibl].begin());
+
+    if(pos - m_infl[ibl].begin() !=sz_orig-bs){
+      DebugStop();
+    }
 
   // //sanity check: is the coloring correct?
   // //this is SLOW
