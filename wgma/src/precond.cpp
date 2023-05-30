@@ -422,7 +422,7 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
 
 void
 BlockPrecond::Solve(const TPZFMatrix<CSTATE> &rhs_orig,
-                    TPZFMatrix<CSTATE> &du_total,
+                    TPZFMatrix<CSTATE> &du,
                     TPZFMatrix<CSTATE> *res)
 {
   if(m_blockinv.size() == 0){UpdateFrom(this->fReferenceMatrix);}
@@ -430,8 +430,7 @@ BlockPrecond::Solve(const TPZFMatrix<CSTATE> &rhs_orig,
   //du and rhs might be same, so we copy rhs
   this->fScratch = rhs_orig;
   const auto &rhs = this->fScratch;
-  du_total.Redim(rhs.Rows(),1);
-  TPZFMatrix<CSTATE> du = du_total;
+  du.Redim(rhs.Rows(),1);
   TPZFMatrix<CSTATE> rhscp;
   if(res){
     rhscp = rhs;
@@ -457,23 +456,6 @@ BlockPrecond::Solve(const TPZFMatrix<CSTATE> &rhs_orig,
         SmoothBlock(bl,du,rhs);
       }
     }
-    
-    //now we compute alpha
-    if constexpr (mt){
-        pzutils::ParallelFor(0,nbl_color, [&](int ibl){
-        const auto bl = this->m_colors[ic][ibl];
-        ComputeCorrectionFactor(bl,du,rhs);
-      });
-    }
-    else{
-      for(int ibl = 0; ibl < nbl_color; ibl++){
-        const auto bl = this->m_colors[ic][ibl];
-        ComputeCorrectionFactor(bl,du,rhs);
-      }
-    }
-    refmat->Residual(du,rhs,fScratch);
-    du_total += du;
-    du.Zero();
   }
   if(m_sym_gs){
     for(int ic = nc-2; ic >= 0; ic--){
@@ -490,28 +472,11 @@ BlockPrecond::Solve(const TPZFMatrix<CSTATE> &rhs_orig,
           SmoothBlock(bl,du,rhs);
         }
       }
-      
-      //now we compute alpha
-      if constexpr (mt){
-        pzutils::ParallelFor(0,nbl_color, [&](int ibl){
-          const auto bl = this->m_colors[ic][ibl];
-          ComputeCorrectionFactor(bl,du,rhs);
-        });
-      }
-      else{
-        for(int ibl = 0; ibl < nbl_color; ibl++){
-          const auto bl = this->m_colors[ic][ibl];
-          ComputeCorrectionFactor(bl,du,rhs);
-        }
-      }
-      refmat->Residual(du,rhs,fScratch);
-      du_total += du;
-      du.Zero();
     }
   }
 
   if(res){
-    refmat->Residual(du_total, rhscp, *res);
+    refmat->Residual(du, rhscp, *res);
   }
 }
 
@@ -531,7 +496,7 @@ BlockPrecond::SmoothBlock(const int bl, TPZFMatrix<CSTATE> &du,
   for (size_t ieq = 0; ieq < bs; ieq++)
   {
     const auto eq = indices[ieq];
-    resloc(ieq,0) = rhs.GetVal(eq,0);// - refmat->RowTimesVector(eq, du);
+    resloc(ieq,0) = rhs.GetVal(eq,0) - refmat->RowTimesVector(eq, du);
   }
         
   const auto &block_inv = *(this->m_blockinv[bl]);
