@@ -9,6 +9,217 @@
 
 using namespace wgma::precond;
 
+
+void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
+                                     const std::set<int> dirichlet_mats,
+                                     const TPZEquationFilter &eqfilt,
+                                     TPZVec<int64_t> &eqgraph,
+                                     TPZVec<int64_t> &eqgraphindex
+                                     )
+{
+  /*
+    we need to count number of edges and number of faces
+    the resulting precond mat will be
+    
+    |K0    |
+    |  Ke  |
+    |    Kf|
+    K0 -> lowest order edge eqs, sparse matrix that will be solved directly
+    Ke -> high order edge eqs, one block per edge
+    Kf -> face eqs, one block per face
+
+    number of blocks = 1 + nedges + nfaces
+    
+   */
+  TPZSimpleTimer timer("CreateZaglBlocks");
+  if(!eqfilt.IsActive() && dirichlet_mats.size() > 0){
+    DebugStop();
+  }
+  
+  auto gmesh = cmesh->Reference();
+  const auto dim = gmesh->Dimension();
+  const auto nel = gmesh->NElements();
+  
+
+  //sequence number of the connect associated with a given edge
+  TPZVec<int64_t> edgemap;
+  {
+    //upper bound for sequence number of edge connects
+    const auto nindep = cmesh->NIndependentConnects();
+    //we will set to 1 all edge connects
+    TPZVec<int64_t> allcons(nindep,0);
+    
+    std::set<std::pair<int64_t,int64_t>> edgeset;
+    for(auto el : gmesh->ElementVec()){
+      if(el && el->Dimension() == dim){
+        TPZCompEl* cel = el->Reference();
+        if(!cel){continue;}
+        //first edge
+        const auto fe = el->FirstSide(1);
+        //number of edges
+        const auto ne = el->NSides(1);
+        //iterate on element edges
+        for(auto ie = 0; ie < ne; ie++){
+          const auto edge = fe+ie;
+          TPZGeoElSide gelside(el,edge);
+          auto neigh = gelside.Neighbour();
+          bool bcedge{false};
+          while(neigh!=gelside){
+            if(neigh.Element() && neigh.Element()->Dimension() < dim &&
+               dirichlet_mats.count(neigh.Element()->MaterialId())){
+              bcedge=true;
+              break;
+            }
+            neigh++;
+          }
+          if(bcedge){ continue;}
+          const auto edgecon = el->Reference()->Connect(ie);
+          if(edgecon.IsCondensed() || edgecon.LagrangeMultiplier()){continue;}
+          const auto seqnum = edgecon.SequenceNumber();
+#ifdef PZDEBUG
+          if(seqnum<0){
+            DebugStop();
+          }
+#endif
+          allcons[seqnum]=1;
+        }
+      }
+    }
+
+    const int n_vol_edges =
+    std::accumulate(allcons.begin(),allcons.end(),0,
+                    [](const int64_t a, const int64_t b){return a + b;});
+    //we allocate the correct size
+    edgemap.Resize(n_vol_edges);
+    int64_t count = 0;
+    //now we set the correct sequence numbers
+    for(int i = 0; i < nindep; i++){
+      if(allcons[i]){edgemap[count++] = i;}
+    }
+  }
+  
+  
+  //sequence number of the connect associated with a given face
+  TPZVec<int64_t> facemap;
+  if(dim==3){
+    //upper bound for sequence number of face connects
+    const auto nindep = cmesh->NIndependentConnects();
+    //we will set to 1 all face connects
+    TPZVec<int64_t> allcons(nindep,0);
+    pzutils::ParallelFor(0, nel, [&](int iel){
+      const auto el = gmesh->Element(iel);
+      if(el && el->Reference() && el->Dimension() == dim){
+        const int ne = el->NSides(1);
+        const int nf = el->NSides(2);
+        const int ff = el->FirstSide(2);
+        for(auto itf = 0; itf < nf; itf++){
+          const auto face = ff+itf;
+          TPZGeoElSide gelside(el,face);
+          auto neigh = gelside.Neighbour();
+          bool bcface{false};
+          const auto facecon = el->Reference()->Connect(itf+ne);
+          if(facecon.IsCondensed() || facecon.LagrangeMultiplier()){continue;}
+          const auto seqnum = facecon.SequenceNumber();
+          while(neigh!=gelside){
+            if(neigh.Element() && neigh.Element()->Dimension() < dim &&
+               dirichlet_mats.count(neigh.Element()->MaterialId())){
+              bcface=true;
+              break;
+            }
+            neigh++;
+          }
+          if(!bcface){
+#ifdef PZDEBUG
+            if(seqnum < 0){
+              DebugStop();
+            }
+#endif
+            allcons[seqnum] = 1;
+          }
+        }
+      }
+    });
+    
+    const int n_vol_faces =
+    std::accumulate(allcons.begin(),allcons.end(),0,
+                    [](const int64_t a, const int64_t b){return a + b;});
+    //we allocate the correct size
+    facemap.Resize(n_vol_faces);
+    int64_t count = 0;
+    //now we set the correct sequence numbers
+    for(int i = 0; i < nindep; i++){
+      if(allcons[i]){facemap[count++] = i;}
+    }
+  }
+
+  
+
+  //the size of the first block is simply the number of edges
+  int64_t eqcount{edgemap.size()};
+  int64_t blcount{1};
+  //we add the equations of the edge blocks
+  for(auto seq : edgemap){
+    const int bsize = cmesh->Block().Size(seq) - 1;
+    if(bsize>0){
+      eqcount += bsize;
+      blcount++;
+    }
+  }
+  //we add the equations of the face blocks
+  for(auto seq : facemap){
+    const int bsize = cmesh->Block().Size(seq);
+    if(bsize>0){
+      eqcount += bsize;
+      blcount++;
+    }
+  }
+
+  const int nbl = blcount;
+  eqgraphindex.Resize(nbl+1);
+  eqgraph.Resize(eqcount);
+
+  blcount = 0;
+  eqcount = 0;
+  eqgraphindex[0] = 0;
+  //we get the first eq of each edge connect
+  for(auto seq : edgemap){
+    eqgraph[eqcount++] = cmesh->Block().Position(seq);
+  }
+  std::sort(eqgraph.begin(), eqgraph.begin()+eqcount);
+  eqgraphindex[++blcount] = eqcount;
+  for(auto seq : edgemap){
+    const int bsize = cmesh->Block().Size(seq) -1;
+    if(bsize>0){
+      const int first = cmesh->Block().Position(seq) + 1;
+      const int first_graph = eqcount;
+      for(int ieq = 0; ieq < bsize; ieq++){
+        eqgraph[eqcount++] = first + ieq;
+      }
+      std::sort(eqgraph.begin()+first_graph, eqgraph.begin()+eqcount);
+      eqgraphindex[++blcount] = eqcount;
+    }
+  }
+
+  for(auto seq : facemap){
+    const int bsize = cmesh->Block().Size(seq);
+    if(bsize>0){
+      const int first = cmesh->Block().Position(seq);
+      const int first_graph = eqcount;
+      for(int ieq = 0; ieq < bsize; ieq++){
+        eqgraph[eqcount++] = first + ieq;
+      }
+      std::sort(eqgraph.begin()+first_graph, eqgraph.begin()+eqcount);
+      eqgraphindex[++blcount] = eqcount;
+    }
+  }
+  //now we take filtered equations into account
+  if(eqfilt.IsActive()){
+    TPZManVector<int64_t> removed_blocks;
+    TPZNodesetCompute::FilterGraph(eqfilt,eqgraph,eqgraphindex, removed_blocks);
+  }
+}
+
+
 void wgma::precond::CreateAFWBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
                                     const std::set<int> dirichlet_mats,
                                     const TPZEquationFilter &eqfilt,

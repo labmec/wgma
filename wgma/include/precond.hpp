@@ -13,6 +13,17 @@ class TPZEquationFilter;
 //! Contains a set of routines for creating and manipulating preconditioners
 namespace wgma::precond{
   /**
+     @brief This function will create blocks based on Zaglmayr's approach,
+     defining one block with the lowest order edge functions (which is solved directly)
+     and blocks for (high order) edges and faces
+  */
+  void CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
+                        const std::set<int> dirichlet_mats,
+                        const TPZEquationFilter &eqfilt,
+                        TPZVec<int64_t> &eqgraph,
+                        TPZVec<int64_t> &eqgraphindex
+                        );
+  /**
      @brief This function will create AFW blocks for preconditioning a matrix created
      with hcurl elements
   */
