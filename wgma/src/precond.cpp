@@ -4,6 +4,7 @@
 #include <TPZEquationFilter.h>
 #include <tpznodesetcompute.h>
 #include <TPZParallelUtils.h>
+#include <TPZYSMPPardiso.h>
 #include <pzvec_extras.h>
 #include <numeric> //for std::accumulate
 
@@ -525,10 +526,13 @@ BlockPrecond::BlockPrecond(TPZAutoPointer<TPZMatrix<CSTATE>> refmat,
                            TPZVec<int64_t> &&block,
                            TPZVec<int64_t> &&block_index,
                            const TPZVec<int> &colors,
-                           const int nc) :
+                           const int nc,
+                           const TPZVec<int64_t> &sparse_mats) :
   m_blockgraph(std::move(block)), m_blockindex(std::move(block_index))
 {
   const int nbl = m_blockindex.size()-1;
+  m_sparse_mats.Resize(nbl,0);
+  for(auto m : sparse_mats){m_sparse_mats[m] = true;}
   for(int ibl = 0; ibl < nbl; ibl++){
     const auto bs = this->BlockSize(ibl);
     if(m_max_bs < bs){m_max_bs = bs;}
@@ -542,10 +546,13 @@ BlockPrecond::BlockPrecond(TPZAutoPointer<TPZMatrix<CSTATE>> refmat,
                            const TPZVec<int64_t> &block,
                            const TPZVec<int64_t> &block_index,
                            const TPZVec<int> &colors,
-                           const int nc) :
+                           const int nc,
+                           const TPZVec<int64_t> &sparse_mats) :
   m_blockgraph(block), m_blockindex(block_index)
 {
   const int nbl = m_blockindex.size()-1;
+  m_sparse_mats.Resize(nbl,0);
+  for(auto m : sparse_mats){m_sparse_mats[m] = true;}
   for(int ibl = 0; ibl < nbl; ibl++){
     const auto bs = this->BlockSize(ibl);
     if(m_max_bs < bs){m_max_bs = bs;}
@@ -562,13 +569,14 @@ BlockPrecond::BlockPrecond(const BlockPrecond &cp) :
   m_blockindex(cp.m_blockindex),
   m_blockgraph(cp.m_blockgraph),
   m_colors(cp.m_colors),
-  m_infl(cp.m_infl)
+  m_infl(cp.m_infl),
+  m_sparse_mats(cp.m_sparse_mats)
 {
   if(cp.m_blockinv.size()){
     const int nbl = m_blockindex.size()-1;
     m_blockinv.Resize(nbl);
     for(int ibl = 0; ibl < nbl; ibl++){
-      auto mat = dynamic_cast<TPZFMatrix<CSTATE>*>(cp.m_blockinv[ibl]->Clone());
+      auto mat = dynamic_cast<TPZMatrix<CSTATE>*>(cp.m_blockinv[ibl]->Clone());
       m_blockinv[ibl] = mat;
     }
   }
@@ -584,11 +592,12 @@ BlockPrecond::operator=(const BlockPrecond &cp)
   m_blockgraph = cp.m_blockgraph;
   m_colors = cp.m_colors;
   m_infl = cp.m_infl;
+  m_sparse_mats = cp.m_sparse_mats;
   if(cp.m_blockinv.size()){
     const int nbl = m_blockindex.size()-1;
     m_blockinv.Resize(nbl);
     for(int ibl = 0; ibl < nbl; ibl++){
-      auto mat = dynamic_cast<TPZFMatrix<CSTATE>*>(cp.m_blockinv[ibl]->Clone());
+      auto mat = dynamic_cast<TPZMatrix<CSTATE>*>(cp.m_blockinv[ibl]->Clone());
       m_blockinv[ibl] = mat;
     }
   }
@@ -606,25 +615,52 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
       this->m_blockinv.Resize(nbl,nullptr);
       for(int ibl = 0; ibl < nbl; ibl++){
         const int bs = BlockSize(ibl);
-        m_blockinv[ibl] = new TPZFMatrix<CSTATE>(bs,bs);
+        if(m_sparse_mats[ibl]){
+          auto ref_sparse = TPZAutoPointerDynamicCast<TPZFYsmpMatrix<CSTATE>>(refmat);
+          TPZVec<int64_t> indices;
+          this->BlockIndices(ibl,indices);
+          const int neq = indices.size();
+          TPZVec<int64_t> ia, ja;
+          TPZVec<CSTATE> aa;
+          ref_sparse->GetSubSparseMatrix(indices,ia,ja,aa);
+          auto sparse_mat = new TPZFYsmpMatrixPardiso<CSTATE>(neq,neq);
+          sparse_mat->SetData(std::move(ia), std::move(ja), std::move(aa));
+          m_blockinv[ibl] = sparse_mat;
+        }else{
+          m_blockinv[ibl] = new TPZFMatrix<CSTATE>(bs,bs);
+        }
+        
       }
     }
 
     std::atomic<int> blcount{0};
     std::cout<<__PRETTY_FUNCTION__;
-    std::cout<<"\nDecomposing blocks...";
+    std::cout<<"\nDecomposing sparse blocks ..."<<std::flush;
+    //first we decompose sparse blocks
+    for(auto ibl = 0; ibl < nbl; ibl++){
+      if(!m_sparse_mats[ibl]){continue;}
+      auto block = TPZAutoPointerDynamicCast<TPZFYsmpMatrixPardiso<CSTATE>>(this->m_blockinv[ibl]);
+      //pardiso can be way too verbose sometimes
+      auto &prds = block->GetPardisoControl();
+      prds.SetMessageLevel(0);
+      block->Decompose(ELU);
+      blcount++;
+      std::cout<<"\rcomputed "<<blcount<<" out of "<<nbl<< " blocks"<<std::flush;
+    }
+    std::cout<<"\rDecomposing full mat blocks ..."<<std::flush;
     //decompose blocks (coloring need not be taken into account)
     std::mutex mymut;
     pzutils::ParallelFor(0,nbl, [&](int ibl){
-      auto &block = *(this->m_blockinv[ibl]);
+      if(m_sparse_mats[ibl]){return;}
+      auto block = TPZAutoPointerDynamicCast<TPZFMatrix<CSTATE>>(this->m_blockinv[ibl]);
       TPZManVector<int64_t,400> indices;
       this->BlockIndices(ibl,indices);
-      refmat->GetSub(indices,block);
-      block.Decompose_LU();
+      refmat->GetSub(indices,*block);
+      block->Decompose_LU();
       blcount++;
       if(blcount%100==0){
         std::lock_guard lock(mymut);
-        std::cout<<"\rcomputed "<<blcount<<" out of "<<nbl<< "blocks"<<std::flush;
+        std::cout<<"\rcomputed "<<blcount<<" out of "<<nbl<< " blocks"<<std::flush;
       }
     });
     std::cout<<"\rcomputed "<<nbl<<" out of "<<nbl<<" blocks" << std::endl;;
@@ -656,8 +692,16 @@ BlockPrecond::Solve(const TPZFMatrix<CSTATE> &rhs_orig,
   for(int ic = 0; ic < nc; ic++){
     const int nbl_color = this->m_colors[ic].size();
     if constexpr (mt){
+      //serial substitution of sparse blocks
+      for(int ibl = 0; ibl < nbl_color; ibl++){
+        const auto bl = this->m_colors[ic][ibl];
+        if(!m_sparse_mats[bl]){continue;}
+        SmoothBlock(bl,du,rhs);
+      }
+      //parallel subs of full blocks
       pzutils::ParallelFor(0,nbl_color, [&](int ibl){
         const auto bl = this->m_colors[ic][ibl];
+        if(m_sparse_mats[bl]){return;}
         SmoothBlock(bl,du,rhs);
       });
     }
@@ -672,8 +716,16 @@ BlockPrecond::Solve(const TPZFMatrix<CSTATE> &rhs_orig,
     for(int ic = nc-2; ic >= 0; ic--){
       const int nbl_color = this->m_colors[ic].size();
       if constexpr (mt){
+        //serial substitution of sparse blocks
+        for(int ibl = 0; ibl < nbl_color; ibl++){
+          const auto bl = this->m_colors[ic][ibl];
+          if(!m_sparse_mats[bl]){continue;}
+          SmoothBlock(bl,du,rhs);
+        }
+        //parallel subs of full blocks
         pzutils::ParallelFor(0,nbl_color, [&](int ibl){
           const auto bl = this->m_colors[ic][ibl];
+          if(m_sparse_mats[bl]){return;}
           SmoothBlock(bl,du,rhs);
         });
       }
@@ -711,7 +763,15 @@ BlockPrecond::SmoothBlock(const int bl, TPZFMatrix<CSTATE> &du,
   }
         
   const auto &block_inv = *(this->m_blockinv[bl]);
-  block_inv.Substitution(&resloc);
+  if(m_sparse_mats[bl]){
+    auto s_inv = TPZAutoPointerDynamicCast<TPZFYsmpMatrix<CSTATE>>(this->m_blockinv[bl]);
+    s_inv->SolveDirect(resloc, ELU);
+  }
+  else{
+    auto f_inv = TPZAutoPointerDynamicCast<TPZFMatrix<CSTATE>>(this->m_blockinv[bl]);
+    f_inv->Substitution(&resloc);
+  }
+  
   for (size_t ieq = 0; ieq < bs; ieq++)
   {
     const auto eq = indices[ieq];

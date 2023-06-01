@@ -44,13 +44,15 @@ namespace wgma::precond{
                  TPZVec<int64_t> &&block,
                  TPZVec<int64_t> &&block_index,
                  const TPZVec<int> &colors,
-                 const int numcolors);
+                 const int numcolors,
+                 const TPZVec<int64_t> &sparse_mats = TPZVec<int64_t>());
     
     BlockPrecond(TPZAutoPointer<TPZMatrix<CSTATE>> refmat,
                  const TPZVec<int64_t> &block,
                  const TPZVec<int64_t> &block_index,
                  const TPZVec<int> &colors,
-                 const int numcolors);
+                 const int numcolors,
+                 const TPZVec<int64_t> &sparse_mats = TPZVec<int64_t>());
 
     BlockPrecond(const BlockPrecond&);
     BlockPrecond(BlockPrecond&&) = default;
@@ -101,6 +103,8 @@ namespace wgma::precond{
     bool m_sym_gs{true};
     //! max block size
     size_t m_max_bs{0};
+    //! which matrices are sparse instead of full
+    TPZVec<bool> m_sparse_mats;
     //! position i will have the first position in blockgraph of block i
     TPZVec<int64_t> m_blockindex;
     //! all equations for the blocks
@@ -110,7 +114,7 @@ namespace wgma::precond{
     //! list of equations that will be affected by each block
     TPZVec<TPZVec<int64_t>> m_infl;
     //! stores the inverses of each block diag matrix
-    TPZVec<TPZAutoPointer<TPZFMatrix<CSTATE>>> m_blockinv;
+    TPZVec<TPZAutoPointer<TPZMatrix<CSTATE>>> m_blockinv;
   };
 };
 
