@@ -84,9 +84,9 @@ int main(int argc, char *argv[]) {
    *  fem options   *
    ******************/
   // polynomial order to be used in the modal analysis
-  constexpr int pOrder2D{0};
+  constexpr int pOrder2D{1};
   // polynomial order to be used in the scattering analysis
-  constexpr int pOrder3D{0};
+  constexpr int pOrder3D{1};
   //PML attenuation constant
   /*//working for lambda = 30
   constexpr STATE modal_alphaPMLx{0.5};
@@ -357,7 +357,7 @@ int main(int argc, char *argv[]) {
       std::set<int> bnd_ids;
       bnd_ids.insert(gmshmats[2].at("scatt_bnd"));
       TPZVec<int64_t> eqgraph, eqgraphindex;
-      wgma::precond::CreateAFWBlocks(scatt_cmesh,bnd_ids, eqfilt, eqgraph,eqgraphindex);
+      wgma::precond::CreateZaglBlocks(scatt_cmesh,bnd_ids, eqfilt, eqgraph,eqgraphindex);
 
       TPZVec<int> colors(eqgraphindex.size()-1,0);
       auto mat = scatt_an.GetSolver().Matrix();
@@ -368,10 +368,12 @@ int main(int argc, char *argv[]) {
       std::cout<<"created "<<eqgraphindex.size()-1
                <<" blocks split into "
                <<numc<<" colors"<<std::endl;
+      TPZVec<int64_t> sparse_blocks = {0};
       precond = new wgma::precond::BlockPrecond(mat,
                                                 std::move(eqgraph),
                                                 std::move(eqgraphindex),
-                                                colors, numc);
+                                                colors, numc,
+                                                sparse_blocks);
     }
     const int64_t n_iter = {300};
     const int n_vecs = {30};
