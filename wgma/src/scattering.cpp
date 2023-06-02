@@ -5,6 +5,7 @@
 
 #include <TPZSpStructMatrix.h>
 #include <TPZSSpStructMatrix.h>
+#include <pzstrmatrixot.h>
 #include <TPZCutHillMcKee.h>
 #include <pzstepsolver.h>
 #include <Electromagnetics/TPZPlanarWgScatt.h>
@@ -38,9 +39,9 @@ namespace wgma::scattering{
     TPZAutoPointer<TPZStructMatrix> strmtrx = nullptr;
 
     if(m_sym){
-      strmtrx = new TPZSSpStructMatrix<CSTATE>(m_cmesh);
+      strmtrx = new TPZSSpStructMatrix<CSTATE,TPZStructMatrixOT<CSTATE>>(m_cmesh);
     }else{
-      strmtrx = new TPZSpStructMatrix<CSTATE>(m_cmesh);
+      strmtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOT<CSTATE>>(m_cmesh);
     }
 
     strmtrx->SetNumThreads(n_threads);
