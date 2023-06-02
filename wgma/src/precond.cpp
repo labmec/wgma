@@ -491,12 +491,12 @@ int wgma::precond::ColorEqGraph(const TPZVec<int64_t> &graph,
       {
         const auto roweq = graph[ieq];
         if(eqcolor[roweq] == color){is_free = false;break;}
-        TPZManVector<int64_t, 300> indices;
-        mat.GetRowIndices(roweq,indices);
-        for(auto ieq : indices){
-          if(eqcolor[ieq] == color){is_free = false;break;}
-        }
-        if(!is_free){break;}
+        // TPZManVector<int64_t, 300> indices;
+        // mat.GetRowIndices(roweq,indices);
+        // for(auto ieq : indices){
+        //   if(eqcolor[ieq] == color){is_free = false;break;}
+        // }
+        // if(!is_free){break;}
       }
       if(!is_free)
       {
@@ -539,7 +539,7 @@ BlockPrecond::BlockPrecond(TPZAutoPointer<TPZMatrix<CSTATE>> refmat,
   }
   ComputeColorVec(colors,nc);
   SetReferenceMatrix(refmat);
-  ComputeInfluence();
+  // ComputeInfluence();
 }
 
 BlockPrecond::BlockPrecond(TPZAutoPointer<TPZMatrix<CSTATE>> refmat,
@@ -559,7 +559,7 @@ BlockPrecond::BlockPrecond(TPZAutoPointer<TPZMatrix<CSTATE>> refmat,
   }
   ComputeColorVec(colors,nc);
   SetReferenceMatrix(refmat);
-  ComputeInfluence();
+  // ComputeInfluence();
 }
 
 BlockPrecond::BlockPrecond(const BlockPrecond &cp) :
