@@ -3,7 +3,7 @@
 //
 #include "slepcepshandler.hpp"
 
-#include "pzysmp.h"
+#include "TPZYSMPMatrix.h"
 #include "TPZSimpleTimer.h"
 
 #ifdef WGMA_USING_SLEPC

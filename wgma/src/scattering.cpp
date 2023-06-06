@@ -92,10 +92,8 @@ namespace wgma::scattering{
       auto *pardiso = GetSolver().GetPardisoControl();
       if(pardiso){
         if(!pardiso->HasCustomSettings()){
-          constexpr auto str_type = TPZPardisoSolver<CSTATE>::MStructure::ESymmetric;
-          constexpr auto sys_type = TPZPardisoSolver<CSTATE>::MSystemType::ENonSymmetric;
+          constexpr auto sys_type = SymProp::Sym;
           constexpr auto prop = TPZPardisoSolver<CSTATE>::MProperty::EIndefinite;
-          pardiso->SetStructure(str_type);
           pardiso->SetMatrixType(sys_type,prop);
           auto param = pardiso->GetParam();
           param[4] = 0;
