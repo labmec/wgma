@@ -108,6 +108,19 @@ remap_tags([vol], clad_map)
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
+
+#we divide it at the y=0 plane to avoid issues when finding the PML
+horiz_plane = RectData()
+horiz_plane.xc = -d_box
+horiz_plane.yc = 0
+horiz_plane.zc = -l_domain
+horiz_plane.h = 2*d_box
+horiz_plane.w = l_domain
+
+create_rect(horiz_plane, el_clad,'y')
+
+gmsh.model.occ.remove_all_duplicates()
+gmsh.model.occ.synchronize()
 src = RectData()
 src.xc = -d_box
 src.yc = -d_box
@@ -120,7 +133,8 @@ create_rect(src, el_clad)
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
-cut_vol_with_plane([vol, cyl], [src], el_clad)
+cut_vol_with_plane([vol, cyl], [src, horiz_plane], el_clad)
+
 
 
 # let us split the source domains
@@ -264,15 +278,6 @@ gmsh.model.mesh.field.setAsBackgroundMesh(field_ct)
 gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
 gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
-
-
-dim = 2
-gmsh.model.mesh.set_compound(dim,src_clad_tags)
-gmsh.model.mesh.set_compound(dim,src_core_tags)
-gmsh.model.mesh.set_compound(dim,[cyl.matid for cyl in all_cyl_data])
-dim = 3
-gmsh.model.mesh.set_compound(dim,vol.tag)
-gmsh.model.mesh.set_compound(dim,cyl.tag)
 
 domain_physical_ids_3d = {
     "core": 1,
