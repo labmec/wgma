@@ -37,9 +37,9 @@ namespace wgma::slepc{
 
   ::KSPType ConvertKSP(KSPSolver in);
 
-  Precond ConvertPrecond(PCType in);
+  PC ConvertPrecond(PCType in);
   
-  ::PCType ConvertPrecond(Precond in);
+  ::PCType ConvertPrecond(PC in);
   
 #endif
 
@@ -569,7 +569,7 @@ namespace wgma::slepc{
   }
   
   template<class TVar>
-  void EPSHandler<TVar>::SetPrecond(const Precond pre, RTVar zero){
+  void EPSHandler<TVar>::SetPrecond(const PC pre, RTVar zero){
     fPc = pre;
     fPcZero = zero;
   }
@@ -810,68 +810,68 @@ namespace wgma::slepc{
   }
 
 
-  Precond ConvertPrecond(PCType in){
+  PC ConvertPrecond(PCType in){
     
-    if(!strcmp(in,PCNONE)) return Precond::NONE;
-    else if(!strcmp(in,PCJACOBI)) return Precond::JACOBI;
-    else if(!strcmp(in,PCSOR)) return Precond::SOR;
-    else if(!strcmp(in,PCLU)) return Precond::LU;
-    else if(!strcmp(in,PCSHELL)) return Precond::SHELL;
-    else if(!strcmp(in,PCBJACOBI)) return Precond::BJACOBI;
-    else if(!strcmp(in,PCMG)) return Precond::MG;
-    else if(!strcmp(in,PCEISENSTAT)) return Precond::EISENSTAT;
-    else if(!strcmp(in,PCILU)) return Precond::ILU;
-    else if(!strcmp(in,PCICC)) return Precond::ICC;
-    else if(!strcmp(in,PCASM)) return Precond::ASM;
-    else if(!strcmp(in,PCGASM)) return Precond::GASM;
-    else if(!strcmp(in,PCKSP)) return Precond::KSP;
-    else if(!strcmp(in,PCREDUNDANT)) return Precond::REDUNDANT;
-    else if(!strcmp(in,PCCHOLESKY)) return Precond::CHOLESKY;
-    else if(!strcmp(in,PCPBJACOBI)) return Precond::PBJACOBI;
-    else if(!strcmp(in,PCVPBJACOBI)) return Precond::VPBJACOBI;
-    else if(!strcmp(in,PCSVD)) return Precond::SVD;
-    else if(!strcmp(in,PCBDDC)) return Precond::BDDC;
-    else if(!strcmp(in,PCKACZMARZ)) return Precond::KACZMARZ;
-    else if(!strcmp(in,PCTELESCOPE)) return Precond::TELESCOPE;
-    else if(!strcmp(in,PCPATCH)) return Precond::PATCH;
-    else if(!strcmp(in,PCLMVM)) return Precond::LMVM;
-    else if(!strcmp(in,PCHMG)) return Precond::HMG;
-    else if(!strcmp(in,PCDEFLATION)) return Precond::DEFLATION;
+    if(!strcmp(in,PCNONE)) return PC::NONE;
+    else if(!strcmp(in,PCJACOBI)) return PC::JACOBI;
+    else if(!strcmp(in,PCSOR)) return PC::SOR;
+    else if(!strcmp(in,PCLU)) return PC::LU;
+    else if(!strcmp(in,PCSHELL)) return PC::SHELL;
+    else if(!strcmp(in,PCBJACOBI)) return PC::BJACOBI;
+    else if(!strcmp(in,PCMG)) return PC::MG;
+    else if(!strcmp(in,PCEISENSTAT)) return PC::EISENSTAT;
+    else if(!strcmp(in,PCILU)) return PC::ILU;
+    else if(!strcmp(in,PCICC)) return PC::ICC;
+    else if(!strcmp(in,PCASM)) return PC::ASM;
+    else if(!strcmp(in,PCGASM)) return PC::GASM;
+    else if(!strcmp(in,PCKSP)) return PC::KSP;
+    else if(!strcmp(in,PCREDUNDANT)) return PC::REDUNDANT;
+    else if(!strcmp(in,PCCHOLESKY)) return PC::CHOLESKY;
+    else if(!strcmp(in,PCPBJACOBI)) return PC::PBJACOBI;
+    else if(!strcmp(in,PCVPBJACOBI)) return PC::VPBJACOBI;
+    else if(!strcmp(in,PCSVD)) return PC::SVD;
+    else if(!strcmp(in,PCBDDC)) return PC::BDDC;
+    else if(!strcmp(in,PCKACZMARZ)) return PC::KACZMARZ;
+    else if(!strcmp(in,PCTELESCOPE)) return PC::TELESCOPE;
+    else if(!strcmp(in,PCPATCH)) return PC::PATCH;
+    else if(!strcmp(in,PCLMVM)) return PC::LMVM;
+    else if(!strcmp(in,PCHMG)) return PC::HMG;
+    else if(!strcmp(in,PCDEFLATION)) return PC::DEFLATION;
     else{
       PZError<<__PRETTY_FUNCTION__
              <<"\nUnsupported type.\nAborting...\n";
       DebugStop();
     }
-    return Precond::NONE;
+    return PC::NONE;
   }
   
-  ::PCType ConvertPrecond(Precond in){
+  ::PCType ConvertPrecond(PC in){
     switch(in){
-    case Precond::NONE: return PCNONE;
-    case Precond::JACOBI: return PCJACOBI;
-    case Precond::SOR: return PCSOR;
-    case Precond::LU: return PCLU;
-    case Precond::SHELL: return PCSHELL;
-    case Precond::BJACOBI: return PCBJACOBI;
-    case Precond::MG: return PCMG;
-    case Precond::EISENSTAT: return PCEISENSTAT;
-    case Precond::ILU: return PCILU;
-    case Precond::ICC: return PCICC;
-    case Precond::ASM: return PCASM;
-    case Precond::GASM: return PCGASM;
-    case Precond::KSP: return PCKSP;
-    case Precond::REDUNDANT: return PCREDUNDANT;
-    case Precond::CHOLESKY: return PCCHOLESKY;
-    case Precond::PBJACOBI: return PCPBJACOBI;
-    case Precond::VPBJACOBI: return PCVPBJACOBI;
-    case Precond::SVD: return PCSVD;
-    case Precond::BDDC: return PCBDDC;
-    case Precond::KACZMARZ: return PCKACZMARZ;
-    case Precond::TELESCOPE: return PCTELESCOPE;
-    case Precond::PATCH: return PCPATCH;
-    case Precond::LMVM: return PCLMVM;
-    case Precond::HMG: return PCHMG;
-    case Precond::DEFLATION: return PCDEFLATION;
+    case PC::NONE: return PCNONE;
+    case PC::JACOBI: return PCJACOBI;
+    case PC::SOR: return PCSOR;
+    case PC::LU: return PCLU;
+    case PC::SHELL: return PCSHELL;
+    case PC::BJACOBI: return PCBJACOBI;
+    case PC::MG: return PCMG;
+    case PC::EISENSTAT: return PCEISENSTAT;
+    case PC::ILU: return PCILU;
+    case PC::ICC: return PCICC;
+    case PC::ASM: return PCASM;
+    case PC::GASM: return PCGASM;
+    case PC::KSP: return PCKSP;
+    case PC::REDUNDANT: return PCREDUNDANT;
+    case PC::CHOLESKY: return PCCHOLESKY;
+    case PC::PBJACOBI: return PCPBJACOBI;
+    case PC::VPBJACOBI: return PCVPBJACOBI;
+    case PC::SVD: return PCSVD;
+    case PC::BDDC: return PCBDDC;
+    case PC::KACZMARZ: return PCKACZMARZ;
+    case PC::TELESCOPE: return PCTELESCOPE;
+    case PC::PATCH: return PCPATCH;
+    case PC::LMVM: return PCLMVM;
+    case PC::HMG: return PCHMG;
+    case PC::DEFLATION: return PCDEFLATION;
     }
   }
 
