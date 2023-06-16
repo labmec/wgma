@@ -217,7 +217,7 @@ int main(int argc, char *argv[]) {
 
     solver->SetTarget(beta*beta);
     modal_an.SetSolver(*solver);
-    modal_an.Assemble(TPZEigenAnalysis::Mat::B);
+    modal_an.AssembleMat(TPZEigenAnalysis::Mat::B);
 
     auto matB = modal_an.GetSolver().MatrixB();
   
@@ -227,7 +227,7 @@ int main(int argc, char *argv[]) {
       solver->SetTarget(beta*beta);
       modal_an.SetSolver(*solver);
       modal_an.SetBeta(beta);
-      modal_an.Assemble(TPZEigenAnalysis::Mat::A);
+      modal_an.AssembleMat(TPZEigenAnalysis::Mat::A);
       modal_an.GetSolver().SetMatrixB(matB);
       modal_an.Solve(computeVectors);
       beta = std::sqrt(modal_an.GetEigenvalues()[0]);
@@ -245,7 +245,7 @@ int main(int argc, char *argv[]) {
     solver->SetTarget(beta*beta);
     modal_an.SetSolver(*solver);
     modal_an.SetBeta(beta);
-    modal_an.Assemble(TPZEigenAnalysis::Mat::A);
+    modal_an.AssembleMat(TPZEigenAnalysis::Mat::A);
     modal_an.GetSolver().SetMatrixB(matB);
     modal_an.Solve(computeVectors);
   }

@@ -40,7 +40,7 @@ TPZVec<wgma::gmeshtools::CylinderData> SetUpCylData(std::string_view filename,
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const CSTATE target, const int nEigen, TPZEigenSort sorting, bool &usingSLEPC);
 
-void ComputeModes(wgma::wganalysis::Wgma &an,
+void ComputeModes(wgma::wganalysis::Wgma2D &an,
                   TPZAutoPointer<TPZCompMesh> cmesh,
                   const bool orthogonalise,
                   const int nThreads);
@@ -531,15 +531,14 @@ SetupSolver(const CSTATE target,const int neigenpairs,
   return solver;
 }
 
-void ComputeModes(wgma::wganalysis::Wgma &an,
+void ComputeModes(wgma::wganalysis::Wgma2D &an,
                   TPZAutoPointer<TPZCompMesh> cmesh,
                   const bool orthogonalise,
                   const int nThreads)
 {
   
   TPZSimpleTimer analysis("Modal analysis");
-  an.Assemble(TPZEigenAnalysis::Mat::A);
-  an.Assemble(TPZEigenAnalysis::Mat::B);
+  an.Assemble();
 
   auto matA = an.GetSolver().MatrixA();
   auto matB = an.GetSolver().MatrixB();

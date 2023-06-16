@@ -29,7 +29,6 @@ namespace wgma::wganalysis{
     }
     std::cout<<"\rAssembled!"<<std::endl;
     
-    TPZEigenAnalysis::SetComputeEigenvectors(compute_eigenvectors);
     TPZEigenSolver<CSTATE> *solv =
       dynamic_cast<TPZEigenSolver<CSTATE>*>(this->Solver());
     if(!solv){
@@ -44,16 +43,9 @@ namespace wgma::wganalysis{
     Solve(compute_eigenvectors);
     
   }
-
-  void Wgma::Assemble(TPZEigenAnalysis::Mat mat){
-    std::cout<<"Assembling..."<<std::flush;
-    TPZSimpleTimer assemble("Assemble");
-    TPZEigenAnalysis::AssembleMat(mat);
-    std::cout<<"\rAssembled!"<<std::endl;
-  }
   
   void Wgma::Solve(bool compute_eigenvectors){
-    TPZEigenAnalysis::SetComputeEigenvectors(compute_eigenvectors);
+    TPZEigenAnalysisBase::SetComputeEigenvectors(compute_eigenvectors);
     TPZEigenSolver<CSTATE> *solv =
       dynamic_cast<TPZEigenSolver<CSTATE>*>(this->Solver());
     if(!solv){
@@ -68,7 +60,7 @@ namespace wgma::wganalysis{
 
     TPZSimpleTimer tsolv("Solve");
     std::cout<<"Solving..."<<std::flush;
-    TPZEigenAnalysis::Solve();
+    this->Solve();
     std::cout<<"\rSolved!"<<std::endl;
 
     std::ios cout_state(nullptr);

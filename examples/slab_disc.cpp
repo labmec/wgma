@@ -395,8 +395,7 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
 {
   
   TPZSimpleTimer analysis("Modal analysis");
-  an.Assemble(TPZEigenAnalysis::Mat::A);
-  an.Assemble(TPZEigenAnalysis::Mat::B);
+  an.Assemble();
   static constexpr bool computeVectors{true};
   an.Solve(computeVectors);
   //let us discard all solutions with negative real part of beta
