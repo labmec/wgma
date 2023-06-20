@@ -5,7 +5,9 @@ target_link_libraries(wr90 PUBLIC wgma)
 
 add_pz_target(
   NAME stepfiber
-  SOURCES stepfiber.cpp)
+  SOURCES stepfiber.cpp
+  FILES meshes/stepfiber.msh meshes/stepfiber_circdata.csv
+  )
 target_link_libraries(stepfiber PUBLIC wgma)
 
 add_pz_target(
