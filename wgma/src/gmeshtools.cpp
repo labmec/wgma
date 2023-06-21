@@ -669,7 +669,7 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
 void
 wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
                                const std::set<int> pmlId,
-                               const wgma::pml::type type,
+                               const wgma::pml::cart::type type,
                                REAL &boundPosX, REAL &dX,
                                REAL &boundPosY, REAL &dY,
                                REAL &boundPosZ, REAL &dZ)
@@ -727,25 +727,25 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
 
 
   //now we compute xBegin, yBegin, attx, atty and d for the material ctor
-  const bool attx = wgma::pml::attx(type);
-  const bool atty = wgma::pml::atty(type);
-  const bool attz = wgma::pml::attz(type);
+  const bool attx = wgma::pml::cart::attx(type);
+  const bool atty = wgma::pml::cart::atty(type);
+  const bool attz = wgma::pml::cart::attz(type);
   
   REAL xBegin{-1}, yBegin{-1}, zBegin{-1};
   if(attx){
-    const int xdir = wgma::pml::xinfo(type);
+    const int xdir = wgma::pml::cart::xinfo(type);
     dX = xMax - xMin;
     xBegin = xdir > 0 ? xMin : xMax;
   }
 
   if(atty){
-    const int ydir = wgma::pml::yinfo(type);
+    const int ydir = wgma::pml::cart::yinfo(type);
     dY = yMax - yMin;
     yBegin = ydir > 0 ? yMin : yMax;
   }
 
   if(attz){
-    const int zdir = wgma::pml::zinfo(type);
+    const int zdir = wgma::pml::cart::zinfo(type);
     dZ = zMax - zMin;
     zBegin = zdir > 0 ? zMin : zMax;
   }

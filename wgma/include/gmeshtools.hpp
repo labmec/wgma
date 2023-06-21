@@ -141,7 +141,7 @@ namespace wgma::gmeshtools{
   */
   void
   FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
-               const std::set<int> pmlId, const wgma::pml::type type,
+               const std::set<int> pmlId, const wgma::pml::cart::type type,
                REAL &boundPosX, REAL &pmlWidthX,
                REAL &boundPosY, REAL &pmlWidthY,
                REAL &boundPosZ, REAL &pmlWidthZ);
