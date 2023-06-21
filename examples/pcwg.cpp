@@ -38,9 +38,9 @@ SetupSolver(const CSTATE target, TPZEigenSort sorting, bool usingSLEPC);
 
 
 //Combine PML regions if using periodic PMLs
-std::vector<wgma::pml::data>
+std::vector<TPZAutoPointer<wgma::pml::data>>
 CombinePMLRegions(const TPZVec<std::map<std::string, int>> &gmshmats,
-                  const std::vector<wgma::pml::data> &orig_pmlvec);
+                  const std::vector<TPZAutoPointer<wgma::pml::data>> &orig_pmlvec);
 
 int main(int argc, char *argv[]) {
 #ifdef PZ_LOG
@@ -478,31 +478,34 @@ SetupSolver(const CSTATE target,TPZEigenSort sorting, bool usingSLEPC)
   return solver;
 }
 
-std::vector<wgma::pml::data>
+std::vector<TPZAutoPointer<wgma::pml::data>>
 CombinePMLRegions(const TPZVec<std::map<std::string, int>> &gmshmats,
-                  const std::vector<wgma::pml::data> &orig_pmlvec)
+                  const std::vector<
+                  TPZAutoPointer<wgma::pml::data>> &orig_pmlvec)
 {
-  std::vector<wgma::pml::data>  pmlvec;
+  std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
   for(const auto &pml : orig_pmlvec){
     const std::string air{"pml_air"};
     const auto rx = std::regex{air, std::regex_constants::icase };
     
-    const bool found_air = std::regex_search(*(pml.names.begin()), rx);
+    const bool found_air = std::regex_search(*(pml->names.begin()), rx);
     if(found_air){
-      wgma::pml::data new_pml;
-      new_pml = pml;
+      TPZAutoPointer<wgma::pml::cart::data> new_pml = new wgma::pml::cart::data();
+      *new_pml = * TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
       //add first neighbour
-      new_pml.neigh[*(pml.ids.begin())] = gmshmats[2].at("air_1");
+      new_pml->neigh[*(pml->ids.begin())] = gmshmats[2].at("air_1");
       //now we search for the corresponding GaAs pml
       const std::string gaas{"pml_GaAs"};
       const auto rx = std::regex{gaas, std::regex_constants::icase };
 
-      for(const auto &other_pmls : orig_pmlvec){
-        const bool found_type = other_pmls.t == new_pml.t;
-        const bool found_gaas = std::regex_search(*(other_pmls.names.begin()), rx);
+      for(const auto &other_pmls_base : orig_pmlvec){
+        auto other_pmls =
+          TPZAutoPointerDynamicCast<wgma::pml::cart::data>(other_pmls_base);
+        const bool found_type = other_pmls->t == new_pml->t;
+        const bool found_gaas = std::regex_search(*(other_pmls->names.begin()), rx);
         if(found_type && found_gaas){
-          new_pml.ids.insert(*(other_pmls.ids.begin()));
-          new_pml.neigh[*(other_pmls.ids.begin())] = gmshmats[2].at("GaAs_1");
+          new_pml->ids.insert(*(other_pmls->ids.begin()));
+          new_pml->neigh[*(other_pmls->ids.begin())] = gmshmats[2].at("GaAs_1");
         }
       }
       pmlvec.push_back(new_pml);

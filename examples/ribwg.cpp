@@ -154,12 +154,6 @@ int main(int argc, char *argv[]) {
 
   
   //setting up cmesh data
-  TPZVec<int> volMatIdVec;
-  TPZVec<CSTATE> urVec;
-  TPZVec<CSTATE> erVec;
-  TPZVec<wgma::pml::data> pmlDataVec;
-  TPZVec<wgma::bc::data> bcDataVec;
-
   wgma::cmeshtools::PhysicalData data;
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, matmap, bcmap,
                                           {alphaPML, alphaPML},
