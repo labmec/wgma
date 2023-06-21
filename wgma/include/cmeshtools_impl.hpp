@@ -6,13 +6,14 @@
 
 #include <pzgmesh.h>
 #include <pzcmesh.h>
-#include <Electromagnetics/TPZMatPML.h>
+#include <Electromagnetics/TPZCartesianPML.h>
 #include <TPZMatSingleSpace.h>
 #include <TPZMatCombinedSpaces.h>
 #include <TPZSimpleTimer.h>
+
 template<class MATVOL>
 std::map<int,int>
-wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::data data,
+wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::cart::data data,
                                           const std::set<int> &volmats,
                                           TPZAutoPointer<TPZGeoMesh> gmesh,
                                           TPZAutoPointer<TPZCompMesh> cmesh)
@@ -59,16 +60,16 @@ wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::data data,
       DebugStop();
     }
   
-    TPZMatPML<MATVOL> *pmlMat{nullptr};
+    TPZCartesianPML<MATVOL> *pmlMat{nullptr};
     if constexpr (std::is_base_of_v<TPZMatCombinedSpaces, MATVOL>){
-      pmlMat = new TPZCombinedSpacesPML<MATVOL>(id, *neighMat);
+      pmlMat = new TPZCombinedSpacesCartesianPML<MATVOL>(id, *neighMat);
     }else{
-      pmlMat = new TPZSingleSpacePML<MATVOL>(id, *neighMat);
+      pmlMat = new TPZSingleSpaceCartesianPML<MATVOL>(id, *neighMat);
     }
 
-    const bool attx = wgma::pml::attx(data.t);
-    const bool atty = wgma::pml::atty(data.t);
-    const bool attz = wgma::pml::attz(data.t);
+    const bool attx = wgma::pml::cart::attx(data.t);
+    const bool atty = wgma::pml::cart::atty(data.t);
+    const bool attz = wgma::pml::cart::attz(data.t);
   
     if(attx) pmlMat->SetAttX(boundPosX, data.alphax, dX);
     if(atty) pmlMat->SetAttY(boundPosY, data.alphay, dY);

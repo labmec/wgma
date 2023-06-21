@@ -45,67 +45,6 @@ cmeshtools::SetupGmshMaterialData(
   const auto &alphaPMLy = alphaPML[1];
   const auto &alphaPMLz = alphaPML[2];
 
-  //lambda for easier creation of PML mats
-  auto SetupIfPml = [&pmlvec, &alphaPMLx, &alphaPMLy, &alphaPMLz](const std::string &name,
-                                                      int id,
-                                                      int dim) -> bool{
-    constexpr auto pmlname{"pml"};
-
-    //std::regex_constants::icase - ignores case
-    const auto rx = std::regex{ pmlname ,std::regex_constants::icase };
-    const bool ispml = std::regex_search(name, rx);
-    if(!ispml) return false;
-    
-    const auto pos = pmlvec.size();
-    bool found{false};
-
-    const TPZVec<wgma::pml::type> pmltypes =
-      {
-        wgma::pml::type::xmymzm, wgma::pml::type::xmymzp,
-        wgma::pml::type::xmypzm, wgma::pml::type::xmypzp,
-        wgma::pml::type::xpymzm, wgma::pml::type::xpymzp,
-        wgma::pml::type::xpypzm, wgma::pml::type::xpypzp,
-        wgma::pml::type::xmym,wgma::pml::type::xmyp,
-        wgma::pml::type::xpym,wgma::pml::type::xpyp,
-        wgma::pml::type::xmzm,wgma::pml::type::xmzp,
-        wgma::pml::type::xpzm,wgma::pml::type::xpzp,
-        wgma::pml::type::ymzm,wgma::pml::type::ymzp,
-        wgma::pml::type::ypzm,wgma::pml::type::ypzp,
-        wgma::pml::type::xp,wgma::pml::type::yp,wgma::pml::type::zp,
-        wgma::pml::type::xm,wgma::pml::type::ym,wgma::pml::type::zm
-      };
-    
-    TPZVec<std::string> pmlnames;
-    for (auto t : pmltypes){
-      AppendToVec(pmlnames, wgma::pml::to_string(t));
-    }
-    for(int ipml = 0; ipml < pmlnames.size(); ipml++){
-      const std::string pmlname = pmlnames[ipml];
-      const auto rx = std::regex{ pmlname, std::regex_constants::icase };
-      const bool test = std::regex_search(name, rx);
-      if(test){
-        pmlvec.resize(pos+1);
-        pmlvec[pos].ids = {id};
-        pmlvec[pos].alphax = alphaPMLx;
-        pmlvec[pos].alphay = alphaPMLy;
-        pmlvec[pos].alphaz = alphaPMLz;
-        pmlvec[pos].t = pmltypes[ipml];
-        pmlvec[pos].names = {name};
-        pmlvec[pos].dim = dim;
-        found = true;
-        break;
-      }
-    }
-
-    if(!found){
-      std::cout<<"error: mat "<<name<<" id "<<id<<" not found"
-               <<"\nAborting..."<<std::endl;
-      DebugStop();
-    }
-    
-    return true;
-  };
-  
   if(dim == -1){
     //find maximum dim
     for(int idim = 3; idim >=0; idim--){
@@ -115,13 +54,40 @@ cmeshtools::SetupGmshMaterialData(
       }
     }
   }
+
+
+  //lambda for easier creation of PML mats
+  auto SetupIfPml = [&pmlvec, &alphaPMLx, &alphaPMLy, &alphaPMLz](const std::string &name,
+                                                                  int id,
+                                                                  int dim) -> bool{
+
+    constexpr auto pmlname{"pml"};
+    //std::regex_constants::icase - ignores case
+    const auto rx = std::regex{ pmlname ,std::regex_constants::icase };
+    const bool ispml = std::regex_search(name, rx);
+    if(ispml){
+      auto cart_pml = wgma::pml::cart::IdentifyAndSetupPML(name, id, dim,
+                                                           alphaPMLx,alphaPMLy,
+                                                           alphaPMLz);
+      if(cart_pml){
+        pmlvec.push_back(cart_pml);
+        return true;
+      }
+      std::cout<<"material "<<name
+               <<" with id "<<id
+               <<" could not be identified as a PML material!"<<std::endl;
+      DebugStop();
+    
+      return true;
+    }
+    return false;
+  };
   
   for(auto mat : gmshmats[dim]){
     const std::string name = mat.first;
     const auto id = mat.second;
 
-    if(SetupIfPml(name,id,dim)){continue;}
-    else{
+    if(auto ispml = SetupIfPml(name,id,dim); !ispml){
       if(matmap.find(name) == matmap.end()){//material not found
         std::cout<<"info: mat "<<name<<" id "<<id<<" not found"
                  <<"\nSkipping..."<<std::endl;
@@ -141,8 +107,7 @@ cmeshtools::SetupGmshMaterialData(
       const std::string name = bc.first;
       const auto id = bc.second;
 
-      if(SetupIfPml(name,id,dim-1)){continue;}
-      else{
+      if(auto ispml = SetupIfPml(name,id,dim-1); !ispml){
         /*sometimes we need 1d materials with a given id for other purposes,
           such as circumference arcs. soo, not finding it is not a problem*/
         if(bcmap.find(name) != bcmap.end()){
