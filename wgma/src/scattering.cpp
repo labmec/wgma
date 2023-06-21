@@ -583,13 +583,17 @@ namespace wgma::scattering{
       //skip PMLs of other dimensions
       if(pml->dim != scatt_cmesh->Dimension()){continue;}
       auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
+      auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
       if(cart_pml){
-        pml->neigh =
-          wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgScatt>
-        (*cart_pml, realvolmats, gmesh, scatt_cmesh);
+        cart_pml->neigh =
+          cmeshtools::AddRectangularPMLRegion<TPZWgma>(*cart_pml, realvolmats, gmesh, scatt_cmesh);
+      }else if (cyl_pml){
+        cyl_pml->neigh =
+          cmeshtools::AddCylindricalPMLRegion<TPZWgma>(*cyl_pml, realvolmats, gmesh, scatt_cmesh);
       }else{
         DebugStop();
       }
+      
       for(auto [id, _] : pml->neigh){
         volmats.insert(id);
       }
@@ -713,10 +717,13 @@ namespace wgma::scattering{
         //skip PMLs of other dimensions
         if(pml->dim != scatt_cmesh->Dimension()){continue;}
         auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
+        auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
         if(cart_pml){
-          pml->neigh =
-            wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgScatt>
-            (*cart_pml, realvolmats, gmesh, scatt_cmesh);
+          cart_pml->neigh =
+            cmeshtools::AddRectangularPMLRegion<TPZWgma>(*cart_pml, realvolmats, gmesh, scatt_cmesh);
+        }else if (cyl_pml){
+          cyl_pml->neigh =
+            cmeshtools::AddCylindricalPMLRegion<TPZWgma>(*cyl_pml, realvolmats, gmesh, scatt_cmesh);
         }else{
           DebugStop();
         }
@@ -805,10 +812,15 @@ namespace wgma::scattering{
             if(pml->dim == scatt_cmesh->Dimension()){continue;}
             if (pml->ids.count(src_id)){
               auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
+              auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
               if(cart_pml){
                 pml->neigh =
                   wgma::cmeshtools::AddRectangularPMLRegion<TPZScatteringSrc>
                   (*cart_pml, src_mats, gmesh, scatt_cmesh);
+              }if(cyl_pml){
+                pml->neigh =
+                  wgma::cmeshtools::AddCylindricalPMLRegion<TPZScatteringSrc>
+                  (*cyl_pml, src_mats, gmesh, scatt_cmesh);
               }else{
                 DebugStop();
               }
