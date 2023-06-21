@@ -125,10 +125,7 @@ namespace wgma::gmeshtools{
   FindPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,
                            const int pmlDim,
                            const int pmlId,
-                           const std::set<int> &volmats,
-                           const REAL boundPosX,
-                           const REAL boundPosY,
-                           const REAL boundPosZ);
+                           const std::set<int> &volmats);
 
   /**
      @brief Finds the width of a given pml region

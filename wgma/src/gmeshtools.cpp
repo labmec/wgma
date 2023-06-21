@@ -627,15 +627,17 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
   TPZAutoPointer<TPZGeoMesh> gmesh,
   const int pmlDim,
   const int pmlId,
-  const std::set<int> &volmats,
-  const REAL boundPosX, const REAL boundPosY, const REAL boundPosZ)
+  const std::set<int> &volmats)
 {
   TPZGeoEl * closestEl = nullptr;
   REAL dist = 1e16;
 
   const int nel = gmesh->NElements();
   std::mutex mymut;
+  bool found=false;
   pzutils::ParallelFor(0, nel, [&](int iel){
+    //return from lambda, not from function
+    if(closestEl){return;}
     auto currentEl = gmesh->Element(iel);
     if ( !currentEl ||
          currentEl->NSubElements() > 0  ||
@@ -644,21 +646,15 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
       //return from lambda, not from function
       return;
     }
-    TPZVec<REAL> qsi(pmlDim,-1);
-    const int largerSize = currentEl->NSides() - 1;
-    currentEl->CenterPoint(largerSize, qsi);
-    TPZVec<REAL> xCenter(3,-1);
-    currentEl->X(qsi, xCenter);
-    const REAL currentDist =
-      (xCenter[0]-boundPosX)*(xCenter[0]-boundPosX) +
-      (xCenter[1]-boundPosY)*(xCenter[1]-boundPosY) +
-      (xCenter[2]-boundPosZ)*(xCenter[2]-boundPosZ);
-    if(currentDist < dist){
-      std::lock_guard lock(mymut);
-      //just to avoid race conditions, let us check again
-      if(currentDist < dist){
-        dist = currentDist;
+
+    const int fside = 0;
+    const int lside = currentEl->FirstSide(pmlDim);
+
+    for(int side = fside; side < lside; side++){
+      TPZGeoElSide gside(currentEl, side);
+      if(gside.HasNeighbour(pmlId)){
         closestEl = currentEl;
+        return;
       }
     }
   });
