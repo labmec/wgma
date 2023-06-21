@@ -48,7 +48,7 @@ namespace wgma::cmeshtools{
    alphaPMLx/alphaPMLy are ignored if no PML regions are detected. 
    PML regions' name are mandatory 
    to contain pml and the appropriate pml type (both are case insensitive).
-   See cartesian_pml.hpp for naming conventions.
+   See cartesian_pml.hpp and cylindrical_pml.hpp for naming conventions.
    e.g. 
    pmlxp    -- ok
    pml_ym   -- ok
@@ -58,7 +58,7 @@ namespace wgma::cmeshtools{
    @param [in] gmshmats vector returned from ReadGmshMesh
    @param [in] matmap for a given region name, contains the pairs (er,ur) for non pml regions
    @param [in] bcmap for a given boundary name, contains the bc type
-   @param [in] alphaPML PML attenuation constant in the x,y and z direction
+   @param [in] alphaPML PML attenuation constant in the x,y and z direction (or r, r and z if cylindrical)
    @param [out] data organised data for CMeshWgma2D routine
    @param [in] maxdim maximum dimension to be considered. Leave default for automatic choice.
    @note The .msh file can be read with wgma::gmeshtools::ReadGmshMesh.
@@ -90,6 +90,30 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
   template<class MATVOL>
   std::map<int,int>
   AddRectangularPMLRegion(const wgma::pml::cart::data data,
+                          const std::set<int> &volmats,
+                          TPZAutoPointer<TPZGeoMesh> gmesh,
+                          TPZAutoPointer<TPZCompMesh> cmesh);
+
+  /**
+     @brief Adds a cylindrical PML region to a computational mesh.
+     This PML region will consist of the same width and attenuation parameter,
+     but can be composed of multiple regions (as in periodic meshes).
+     If data.neigh has not been set, neighbours will be automatically identified.
+     Therefore, all the other mesh regions (excluding BCs) should have been
+     previously inserted, so the function can identify to which region 
+     the each of the PML regions is associated.
+
+     @tparam MATVOL material from which the PML inherits
+     @param[in] data PML data.
+     @param[in] volmats identifiers of valid mesh regions for pml neighbours
+     @param[in] gmesh the geometric mesh.
+     @param[in] cmesh the computational mesh.
+     @return identifier of all PML neighbours
+     @note This method calls FindPMLNeighbourMaterial internally.
+  */
+  template<class MATVOL>
+  std::map<int,int>
+  AddCylindricalPMLRegion(const wgma::pml::cyl::data data,
                           const std::set<int> &volmats,
                           TPZAutoPointer<TPZGeoMesh> gmesh,
                           TPZAutoPointer<TPZCompMesh> cmesh);

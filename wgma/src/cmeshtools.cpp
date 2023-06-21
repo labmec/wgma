@@ -73,6 +73,15 @@ cmeshtools::SetupGmshMaterialData(
         pmlvec.push_back(cart_pml);
         return true;
       }
+
+      auto cyl_pml = wgma::pml::cyl::IdentifyAndSetupPML(name, id, dim,
+                                                         alphaPMLx,
+                                                         alphaPMLz);
+      if(cyl_pml){
+        pmlvec.push_back(cyl_pml);
+        return true;
+      }
+
       std::cout<<"material "<<name
                <<" with id "<<id
                <<" could not be identified as a PML material!"<<std::endl;
