@@ -27,5 +27,6 @@ namespace wgma::pml{
 }
 
 #include <cartesian_pml.hpp>
+#include <cylindrical_pml.hpp>
 
 #endif /* _PMLTYPES_HPP_ */

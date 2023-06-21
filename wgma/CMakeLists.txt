@@ -11,6 +11,7 @@ set(headers
   include/bctypes.hpp
   include/pmltypes.hpp
   include/cartesian_pml.hpp
+  include/cylindrical_pml.hpp
   include/gmeshtools.hpp
   include/cmeshtools.hpp
   include/cmeshtools_impl.hpp
@@ -29,6 +30,7 @@ set(sources
   src/cmeshtools.cpp
   src/gmeshtools.cpp
   src/cartesian_pml.cpp
+  src/cylindrical_pml.cpp
   src/wganalysis.cpp
   src/scattering.cpp
   src/slepcepshandler.cpp
