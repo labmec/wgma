@@ -782,6 +782,68 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
   }
 }
 
+void
+wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
+                               const std::set<int> pmlId, const wgma::pml::cyl::type type,
+                               REAL &rMin, REAL &rMax,
+                               REAL &boundPosZ, REAL &dZ)
+{
+  rMin = 1e20;
+  rMax = -1e20;
+  REAL zMax = -1e20, zMin = 1e20;
+  std::set<int64_t> visited_nodes;
+
+  std::mutex pos_mut, visited_nodes_mut;
+  const auto nel = gmesh->NElements();
+  pzutils::ParallelFor(0, nel, [&](int iel){
+    auto geo = gmesh->Element(iel);
+    if (geo && pmlId.count(geo->MaterialId()) != 0) {
+      const int ncornernodes = geo->NCornerNodes();
+      for (int iNode = 0; iNode < geo->NCornerNodes(); ++iNode) {
+        TPZManVector<REAL, 3> co(3);
+        const auto node_idx = geo->NodeIndex(iNode);
+
+        {
+          std::lock_guard lock(visited_nodes_mut);
+          if(visited_nodes.count(node_idx)){continue;}
+          else {visited_nodes.insert(node_idx);}
+        }
+        
+        const auto& node = geo->Node(iNode);
+        node.GetCoordinates(co);
+        
+        const REAL &xP = co[0];
+        const REAL &yP = co[1];
+        const REAL &zP = co[2];
+        const REAL rP = sqrt(xP*xP + yP*yP);
+        std::lock_guard lock(pos_mut);
+        if (rP > rMax) {
+          rMax = rP;
+        }
+        if (rP < rMin) {
+          rMin = rP;
+        }
+        if (zP > zMax) {
+          zMax = zP;
+        }
+        if (zP < zMin) {
+          zMin = zP;
+        }
+      }
+    }
+  });
+
+  const bool attz = wgma::pml::cyl::attz(type);
+  
+  REAL zBegin{-1};
+  
+  if(attz){
+    const int zdir = wgma::pml::cyl::zinfo(type);
+    dZ = zMax - zMin;
+    zBegin = zdir > 0 ? zMin : zMax;
+  }
+}
+
 std::optional<int>
 wgma::gmeshtools::FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh> gmesh,
                                      const int mat,
