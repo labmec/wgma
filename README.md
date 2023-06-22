@@ -129,3 +129,12 @@ Illustrates
 - how to integrate a given FEM solution (for orthogonalising modes for instance)
 - how to insert probes in the mesh for visualising the solution
 - how to deal with problems of dimension `d-1` : identifying PML regions, etc
+
+
+### sf3d
+
+Modal analysis of a step index optical fiber followed by a frequency analysis
+of the propagation of the dominant mode. 
+
+Illustrates
+- how to solve large scale 3d problems using iterative solvers
