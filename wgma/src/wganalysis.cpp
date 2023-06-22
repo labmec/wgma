@@ -5,7 +5,9 @@
 
 #include <TPZSpStructMatrix.h>
 #include <TPZKrylovEigenSolver.h>
+#include <TPZQuadEigenSolver.h>
 #include <Electromagnetics/TPZWgma.h>
+#include <Electromagnetics/TPZAnisoWgma.h>
 #include <Electromagnetics/TPZPeriodicWgma.h>
 #include <Electromagnetics/TPZPlanarWgma.h>
 #include <TPZNullMaterial.h>
@@ -270,6 +272,181 @@ namespace wgma::wganalysis{
     file.close();
   }
 
+
+  WgmaAniso2D::WgmaAniso2D(const TPZVec<TPZAutoPointer<TPZCompMesh>> &meshvec,
+                 const int n_threads, const bool reorder_eqs,
+                 const bool filter_bound)
+  {
+    
+    m_filter_bound = filter_bound;
+    if(meshvec.size() != 3){
+      std::cerr<<__PRETTY_FUNCTION__
+               <<"\nThree computational meshes are required."
+               <<"Aborting...\n";
+      exit(-1);
+    }
+    //gets the multiphysics mesh (main mesh)
+    m_cmesh_mf = meshvec[0];
+    m_cmesh_h1 = meshvec[1 + TPZAnisoWgma::H1Index()];
+    m_cmesh_hcurl = meshvec[1 + TPZAnisoWgma::HCurlIndex()];
+
+    this->SetCompMeshInit(m_cmesh_mf.operator->(), reorder_eqs);
+
+    TPZAutoPointer<TPZStructMatrix> strmtrx =
+      new TPZSpStructMatrix<CSTATE>(m_cmesh_mf);
+
+    strmtrx->SetNumThreads(n_threads);
+    
+  
+    
+    
+    if(m_filter_bound){
+      TPZVec<int64_t> activeEquations;
+      int n_dofs_before = m_cmesh_mf->NEquations();
+      wgma::cmeshtools::FilterBoundaryEquations(m_cmesh_mf, activeEquations,
+                                                m_bound_cons);
+      CountActiveEqs(m_n_dofs_mf,m_n_dofs_h1,m_n_dofs_hcurl);
+      std::cout<<"neq(before): "<<n_dofs_before
+               <<"\tneq(after): "<<m_n_dofs_mf<<std::endl;
+      strmtrx->EquationFilter().SetActiveEquations(activeEquations);
+    }else{
+      CountActiveEqs(m_n_dofs_mf,m_n_dofs_h1,m_n_dofs_hcurl);
+    }
+    this->SetStructuralMatrix(strmtrx);
+  }
+
+  void WgmaAniso2D::AdjustSolver(TPZEigenSolver<CSTATE> *solver){
+    auto *krylov_solver =
+      dynamic_cast<TPZQuadEigenSolver<CSTATE>*> (solver);      
+    if(krylov_solver && krylov_solver->KrylovInitialVector().Rows() == 0){
+      /**this is to ensure that the eigenvector subspace is orthogonal to
+         the spurious solutions associated with et = 0 ez != 0*/
+      TPZFMatrix<CSTATE> initVec(2*m_n_dofs_mf, 1, 0.);
+      const auto firstHCurl = m_n_dofs_h1 * TPZAnisoWgma::HCurlIndex();
+      for (int i = 0; i < m_n_dofs_hcurl; i++) {
+        initVec(firstHCurl + i, 0) = 1;
+      }
+      const auto target = krylov_solver->Target();
+      for (int i = 0; i < m_n_dofs_hcurl; i++) {
+        initVec(m_n_dofs_mf+firstHCurl + i, 0) = target;
+      }
+      
+      krylov_solver->SetKrylovInitialVector(initVec);
+    }
+  }
+  
+  void
+  WgmaAniso2D::CountActiveEqs(int &neq,int &nH1Equations, int &nHCurlEquations)
+  {
+    auto &cmesh = m_cmesh_mf;
+    neq = nH1Equations = nHCurlEquations = 0;
+    auto &cmeshHCurl = m_cmesh_hcurl;
+    auto &cmeshH1 = m_cmesh_h1;
+    auto &boundConnects = m_bound_cons;
+    
+    for (int iCon = 0; iCon < cmesh->NConnects(); iCon++) {
+      bool isH1;
+      if (boundConnects.find(iCon) == boundConnects.end()) {
+        if (cmesh->ConnectVec()[iCon].HasDependency())
+          continue;
+        int seqnum = cmesh->ConnectVec()[iCon].SequenceNumber();
+        int blocksize = cmesh->Block().Size(seqnum);
+        if (TPZAnisoWgma::H1Index() == 0 && iCon < cmeshH1->NConnects()) {
+          isH1 = true;
+        } else if (TPZAnisoWgma::H1Index() == 1 && iCon >= cmeshHCurl->NConnects()) {
+          isH1 = true;
+        } else {
+          isH1 = false;
+        }
+        for (int ieq = 0; ieq < blocksize; ieq++) {
+          neq++;
+          isH1 == true ? nH1Equations++ : nHCurlEquations++;
+        }
+      }
+    }
+    std::cout << "------\tactive eqs\t-------" << std::endl;
+    std::cout << "# H1 equations: " << nH1Equations << std::endl;
+    std::cout << "# HCurl equations: " << nHCurlEquations << std::endl;
+    std::cout << "# equations: " << neq << std::endl;
+    std::cout << "------\t----------\t-------" << std::endl;
+    return;
+  }
+  
+  void WgmaAniso2D::LoadSolutionInternal(const int isol, const int ncols)
+  { 
+    const auto &ev = this->GetEigenvalues();
+    const auto &eigenvectors = this->GetEigenvectors();
+
+    const auto neqOriginal = eigenvectors.Rows();
+    TPZFMatrix<CSTATE> evector(neqOriginal, ncols, 0.);
+    
+    TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshVecPost(2);
+    meshVecPost[0] = m_cmesh_h1;
+    meshVecPost[1] = m_cmesh_hcurl;
+  
+    const CSTATE currentKz = [&ev,isol](){
+      auto tmp = CSTATE(-1.0*1i)*ev[isol];
+      constexpr auto epsilon = std::numeric_limits<STATE>::epsilon()/
+        (10*std::numeric_limits<STATE>::digits10);
+      //let us discard extremely small imag parts
+      if (tmp.imag() < epsilon)
+        {tmp = tmp.real();}
+      return tmp;
+    }();
+
+    
+
+    eigenvectors.GetSub(0, isol, neqOriginal, ncols, evector);
+    for(auto mat : m_cmesh_mf->MaterialVec()){
+      auto id = mat.first;
+      auto matPtr =
+        dynamic_cast<TPZWgma *>(m_cmesh_mf->FindMaterial(id));
+      if(!matPtr) continue;
+      matPtr->SetKz(currentKz);
+    }
+    this->LoadSolution(evector);
+    TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshVecPost, m_cmesh_mf);
+  }
+  
+  void WgmaAniso2D::WriteToCsv(std::string filename, STATE lambda){
+    const auto &ev = this->GetEigenvalues();
+    const int nev = ev.size();
+    if(nev < 1){
+      std::cout<<"There are no eigenvalues to write to .csv"<<std::endl;
+      return;
+    }
+    std::cout<<"Exporting eigen info..."<<std::endl;
+    std::ostringstream eigeninfo;
+    constexpr auto pres = std::numeric_limits<STATE>::max_digits10;
+    eigeninfo.precision(pres);
+    REAL hSize = -1e12;
+    TPZGeoMesh *gmesh = m_cmesh_mf->Reference();
+    for(auto *el : gmesh->ElementVec()){
+      if(el->HasSubElement()) continue;
+      const auto elRadius = el->ElementRadius();
+      hSize = elRadius > hSize ? elRadius : hSize;
+    }
+    const auto neq = m_cmesh_mf->NEquations();
+    const auto nel = m_cmesh_mf->NElements();
+    const auto porder = m_cmesh_mf->GetDefaultOrder();
+    
+    eigeninfo << std::fixed << neq << "," << nel << ",";
+    eigeninfo << std::fixed << hSize << "," << porder<<",";
+    eigeninfo << std::fixed << lambda<<",";
+    eigeninfo << nev<<",";
+    for(int i = 0; i < nev ; i++){
+      eigeninfo<<std::fixed<<std::real(ev[i])<<",";
+      eigeninfo<<std::fixed<<std::imag(ev[i]);
+      if(i != nev - 1 ) {
+        eigeninfo << ",";
+      }
+    }
+    eigeninfo << std::endl;
+
+    std::ofstream file(filename.c_str(),std::ios::app);
+    file << eigeninfo.str();
+    file.close();
+  }
 
   WgmaPlanar::WgmaPlanar(TPZAutoPointer<TPZCompMesh> cmesh,
                                  const int n_threads, const bool reorder_eqs,
@@ -536,6 +713,127 @@ namespace wgma::wganalysis{
 
     return cmeshMF;
   }
+
+  TPZAutoPointer<TPZCompMesh> CreateMfWgmaAniso2D(TPZAutoPointer<TPZGeoMesh> gmesh,
+                                                  cmeshtools::PhysicalData &data,
+                                                  const STATE lambda, const REAL &scale,
+                                                  const bool verbose)
+  {
+    constexpr int dim = 2;
+    constexpr bool isComplex{true};
+    
+    auto &pmlDataVec = data.pmlvec;
+    auto &bcDataVec = data.bcvec;
+    
+    const int nVolMats = data.matinfovec.size();
+    const int nPmlMats = pmlDataVec.size();
+    const int nBcMats = bcDataVec.size();
+    
+    TPZAutoPointer<TPZCompMesh> cmeshMF =
+      new TPZCompMesh(gmesh,isComplex);
+    cmeshMF->SetDimModel(dim);
+
+    std::set<int> volmats;
+    std::set<int> realvolmats;
+    
+    if(verbose){
+      std::cout<<"inserting materials:\n";
+    }
+    for(auto [matid, er, ur] : data.matinfovec){
+      auto *matWG = new TPZAnisoWgma(matid, er, ur, lambda, scale);
+      cmeshMF->InsertMaterialObject(matWG);
+      realvolmats.insert(matid);
+      volmats.insert(matid);
+      if(verbose){
+        std::cout<<"\t id "<<matid<<" er "<<er<<" ur "<<ur<<'\n';
+      }
+    }
+
+    if(verbose){
+      std::cout<<"inserting pmls:\n";
+    }
+    //insert PML regions
+    for(auto &pml : pmlDataVec){
+      //skip PMLs of other dimensions
+      if(pml->dim != cmeshMF->Dimension()){continue;}
+
+      auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
+      auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
+      if(cart_pml){
+        cart_pml->neigh =
+          cmeshtools::AddRectangularPMLRegion<TPZAnisoWgma>(*cart_pml, realvolmats, gmesh, cmeshMF);
+      }else if (cyl_pml){
+        cyl_pml->neigh =
+          cmeshtools::AddCylindricalPMLRegion<TPZAnisoWgma>(*cyl_pml, realvolmats, gmesh, cmeshMF);
+      }else{
+        DebugStop();
+      }
+
+      if(verbose){
+        std::cout<<"\tid (neighbour) ";
+        for(auto [id, neigh] : pml->neigh){
+          std::cout<<id<<" ("<<neigh<<") ";
+        }
+        if(cart_pml){
+          std::cout<<"att dir "<<wgma::pml::cart::to_string(cart_pml->t)
+                   <<" att coeff "<<cart_pml->alphax<<' '<<cart_pml->alphay<<std::endl;
+        }else if(cyl_pml){
+          std::cout<<"att dir "<<wgma::pml::cyl::to_string(cyl_pml->t)
+                   <<" att coeff "<<cyl_pml->alphar<<std::endl;
+        }
+        else{
+          DebugStop();
+        }
+      }
+    }
+
+    if(verbose){
+      std::cout<<"inserting probes:\n";
+    }
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterialCS<CSTATE>(id,matdim,nstate);
+      cmeshMF->InsertMaterialObject(mat);
+      if(verbose){
+        std::cout<<"\tid "<<id<<" dim "<<matdim<<std::endl;
+      }
+    }
+    
+    if(verbose){
+      std::cout<<"inserting bcs:\n";
+    }
+
+    TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
+    TPZManVector<CSTATE,1> val2(1, 0.);
+    
+    for(auto bc : bcDataVec){
+      const int bctype = wgma::bc::to_int(bc.t);
+      const int id = bc.id;
+      const int volid = bc.volid;
+      auto *matWG =
+        dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshMF->FindMaterial(volid));
+      if(!matWG){
+        PZError<<__PRETTY_FUNCTION__
+               <<"\n could not find material with id "<<id
+               <<"\n.Is it a PML? Aborting..."<<std::endl;
+        DebugStop();
+      }
+      auto *bcMat = matWG->CreateBC(matWG, id, bctype, val1, val2);
+      cmeshMF->InsertMaterialObject(bcMat);
+
+      if(verbose){
+        std::cout<<"\tid "<<id<<" vol mat "<<volid<<" type "<<wgma::bc::to_string(bc.t)<<std::endl;
+      }
+    }
+
+    cmeshMF->SetDimModel(dim);
+    cmeshMF->SetAllCreateFunctionsMultiphysicElem();
+
+    cmeshMF->AutoBuild();
+    cmeshMF->CleanUpUnconnectedNodes();
+
+    return cmeshMF;
+  }
   
   TPZVec<TPZAutoPointer<TPZCompMesh>>
   CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
@@ -616,6 +914,87 @@ namespace wgma::wganalysis{
     return meshVec;
   
   }
+
+  TPZVec<TPZAutoPointer<TPZCompMesh>>
+  CMeshWgmaAniso2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
+                   cmeshtools::PhysicalData &data,
+                   const STATE lambda, const REAL &scale,
+                   bool verbose)
+  {
+    TPZSimpleTimer timer ("Create cmesh");
+
+    constexpr int dim{2};
+
+    // let us setup data for atomic meshes
+    std::set<int> volmats;
+    for(auto [matid, _, __] : data.matinfovec){
+      volmats.insert(matid);
+    }
+    std::set<int> pmlmats;
+    for(auto &pml : data.pmlvec){
+      //skip PMLs of other dimensions
+      if(pml->dim != dim){continue;}
+      for(auto id : pml->ids){
+        pmlmats.insert(id);
+      }
+    }
+    std::set<int> allmats;
+
+    std::set_union(volmats.begin(), volmats.end(),
+                   pmlmats.begin(), pmlmats.end(),
+                   std::inserter(allmats, allmats.begin()));
+    /**let us associate each boundary with a given material.
+       this is important for any non-homogeneous BCs*/
+    for(auto &bc : data.bcvec){
+      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, allmats);
+      if(!res.has_value()){
+        std::cout<<__PRETTY_FUNCTION__
+                 <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
+      }
+      bc.volid = res.value();
+    }
+    /*
+      First we create the computational mesh associated with the H1 space
+      (ez component)
+    */
+    bool ish1 = true;
+    TPZAutoPointer<TPZCompMesh> cmeshH1 =
+      CreateAtomicWgma2D(gmesh, ish1,pOrder,volmats,pmlmats, data.bcvec,data.probevec);
+
+    /*
+      Then we create the computational mesh associated with the HCurl space
+    */
+    ish1 = false;
+    TPZAutoPointer<TPZCompMesh> cmeshHCurl =
+      CreateAtomicWgma2D(gmesh, ish1,pOrder,volmats,pmlmats, data.bcvec,data.probevec);
+
+    /*
+      Now we create the MF mesh
+    */
+    TPZAutoPointer<TPZCompMesh> cmeshMF =
+      CreateMfWgmaAniso2D(gmesh, data, lambda, scale, verbose);
+
+    TPZManVector<TPZCompMesh*,3> meshVecIn(2);
+    meshVecIn[TPZAnisoWgma::H1Index()] = cmeshH1.operator->();
+    meshVecIn[TPZAnisoWgma::HCurlIndex()] = cmeshHCurl.operator->();
+
+  
+    TPZBuildMultiphysicsMesh::AddElements(meshVecIn, cmeshMF.operator->());
+    TPZBuildMultiphysicsMesh::AddConnects(meshVecIn, cmeshMF.operator->());
+    TPZBuildMultiphysicsMesh::TransferFromMeshes(meshVecIn, cmeshMF.operator->());
+
+    cmeshMF->ExpandSolution();
+    cmeshMF->ComputeNodElCon();
+    cmeshMF->CleanUpUnconnectedNodes();
+
+    TPZVec<TPZAutoPointer<TPZCompMesh>> meshVec(3,nullptr);
+    meshVec[0] = cmeshMF;
+    meshVec[1 + TPZAnisoWgma::H1Index()] = cmeshH1;
+    meshVec[1 + TPZAnisoWgma::HCurlIndex()] = cmeshHCurl;
+    return meshVec;
+  
+  }
+  
 
   TPZVec<TPZAutoPointer<TPZCompMesh>>
   CMeshWgma2DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,

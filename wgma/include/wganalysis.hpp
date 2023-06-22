@@ -6,6 +6,7 @@
 #include <pzcmesh.h>
 #include <TPZEigenSolver.h>
 #include <TPZEigenAnalysis.h>
+#include <TPZQuadEigenAnalysis.h>
 
 namespace wgma::wganalysis{
   /**
@@ -101,6 +102,69 @@ namespace wgma::wganalysis{
      @brief  Class responsible for managing the modal analysis of waveguides with a 2D cross section
      @note The eigensolver still has to be configured.
   */
+  class WgmaAniso2D : public Wgma, private TPZQuadEigenAnalysis{
+  public:
+    /**
+       @brief Creates the analysis module based on a given set
+       of computational meshes as returned by cmeshtools::CMeshWgma2D
+       @param [in] n_threads Number of threads to be used in the analysis
+       @param [in] meshvec Vector containing the computational meshes
+       @param [in] reorder_eqs whether the equations are reordered for optimising bandwidth
+       @param [in] filter_bound whether to impose homogeneous dirichlet BCs by removing the equations
+    */
+    WgmaAniso2D(const TPZVec<TPZAutoPointer<TPZCompMesh>> &meshvec,
+                const int n_threads, const bool reorder_eqs=true,
+                const bool filter_bound=true);
+
+    /**
+       @brief Export eigenvalues to in a csv format and append it to a file.
+       The following values are exported:
+       neq , nel , h , p , lambda , nev, real(w1), imag(w1) , ... , real(wnev) , imag(wnev)
+       where:
+       - neq    = number of equations
+       - nev    = number of elements
+       - h      = radius of the biggest element in the mesh
+       - p      = default polynomial order of the hcurl mesh
+       - lambda = operational wavelength
+       - nev    = number of eigenvalues
+       @param [in] filename name of the file 
+       @param [in] lambda operational wavelength
+     */
+    void WriteToCsv(std::string filename, STATE lambda) override;
+
+    /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
+    void CountActiveEqs(int &neq, int&nh1, int &nhcurl);
+
+    [[nodiscard]] TPZAutoPointer<TPZCompMesh> GetMesh() override{return m_cmesh_mf;}
+
+    TPZQuadEigenSolver<CSTATE> & GetSolver(){
+      return TPZQuadEigenAnalysis::EigenSolver<CSTATE>();
+    }
+    
+    using TPZQuadEigenAnalysis::SetSolver;
+    using TPZQuadEigenAnalysis::Assemble;
+    using TPZQuadEigenAnalysis::AssembleMat;
+    using Wgma::Solve;
+  private:
+
+    void Solve() override {TPZQuadEigenAnalysis::Solve();}
+    void LoadSolutionInternal(const int isol, const int ncols) override;
+    
+    void AdjustSolver(TPZEigenSolver<CSTATE> *solv) override;
+    //! Combined computational mesh (hcurl and h1)
+    TPZAutoPointer<TPZCompMesh> m_cmesh_mf{nullptr};
+    //! H1 mesh
+    TPZAutoPointer<TPZCompMesh> m_cmesh_h1{nullptr};
+    //! Hcurl mesh
+    TPZAutoPointer<TPZCompMesh> m_cmesh_hcurl{nullptr};
+    //! Total number of dofs
+    int m_n_dofs_mf{-1};
+    //! Number of H1 dofs
+    int m_n_dofs_h1{-1};
+    //! Number of HCurl dofs
+    int m_n_dofs_hcurl{-1};
+  };
+
   class Wgma2D : public Wgma, private TPZEigenAnalysis{
   public:
     /**
@@ -274,6 +338,12 @@ namespace wgma::wganalysis{
                       std::map<int64_t,int64_t> &periodic_els,
                       const STATE lambda, const REAL &scale,
                       bool verbose);
+  
+  TPZVec<TPZAutoPointer<TPZCompMesh>>
+  CMeshWgmaAniso2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
+                   cmeshtools::PhysicalData &data,
+                   const STATE lambda, const REAL &scale,
+                   bool verbose=false);
   /**
      @brief Creates the computational meshes used for approximating the waveguide EVP in one dimension, for planar waveguides.
      @param[in] gmesh geometrical mesh
