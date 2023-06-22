@@ -40,7 +40,7 @@ TPZVec<wgma::gmeshtools::CylinderData> SetUpCylData(std::string_view filename,
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const CSTATE target, const int nEigen, TPZEigenSort sorting, bool &usingSLEPC);
 
-void ComputeModes(wgma::wganalysis::Wgma &an,
+void ComputeModes(wgma::wganalysis::Wgma2D &an,
                   TPZAutoPointer<TPZCompMesh> cmesh,
                   const bool orthogonalise,
                   const int nThreads);
@@ -215,12 +215,12 @@ int main(int argc, char *argv[]) {
                                             {modal_alphaPMLx,modal_alphaPMLy},
                                             modal_data, modal_dim);
     //we must now filter the 2D PMLs
-    std::vector<wgma::pml::data>  pmlvec;
+    std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
     for(const auto &pml : modal_data.pmlvec){
       const std::string pattern{"src_clad"};
       const auto rx = std::regex{pattern, std::regex_constants::icase };
     
-      const bool found_pattern = std::regex_search(*(pml.names.begin()), rx);
+      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
       if(found_pattern){pmlvec.push_back(pml);}
     }
     modal_data.pmlvec = pmlvec;
@@ -262,9 +262,9 @@ int main(int argc, char *argv[]) {
       const std::string pattern{"src_clad"};
       const auto rx = std::regex{pattern, std::regex_constants::icase };
     
-      const bool found_pattern = std::regex_search(*(pml.names.begin()), rx);
+      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
       if(found_pattern){
-        for (auto p : pml.ids){
+        for (auto p : pml->ids){
           src_ids.insert(p);
         }
       }
@@ -531,15 +531,14 @@ SetupSolver(const CSTATE target,const int neigenpairs,
   return solver;
 }
 
-void ComputeModes(wgma::wganalysis::Wgma &an,
+void ComputeModes(wgma::wganalysis::Wgma2D &an,
                   TPZAutoPointer<TPZCompMesh> cmesh,
                   const bool orthogonalise,
                   const int nThreads)
 {
   
   TPZSimpleTimer analysis("Modal analysis");
-  an.Assemble(TPZEigenAnalysis::Mat::A);
-  an.Assemble(TPZEigenAnalysis::Mat::B);
+  an.Assemble();
 
   auto matA = an.GetSolver().MatrixA();
   auto matB = an.GetSolver().MatrixB();

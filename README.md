@@ -25,7 +25,9 @@ of waveguides with 2D cross-section.
 files and directional *h*-refinement
 - `cmeshtools`: auxiliary routines for dealing with computational meshes and PML
 - `bctype`: `enum` class with commonly used electromagnetic boundary conditions
-- `pmltype`: `enum` class for identifying direction of attenuation of a given PML region
+- `pml`: base class for PML types
+- `pml::cart`: class for cartesian PMLs
+- `pml::cyl`: class for cylindrical PMLs
 - `modetype`: `enum` class for distinguishing between TE/TM modes in the analysis of
 planar waveguides
 - `slepc`: a few handlers for solving the eigensystem using the EPS module of SLEPc (usage is optional)
@@ -78,9 +80,9 @@ Illustrates
 Analysis of a step-index optical fiber. 
 
 Illustrates 
-- usage of PML
+- usage of cylindrical PML
 - usage of the `wgma::slepc::EPSHandler` for using SLEPc solvers
-- creation of more complex geometries in NeoPZ
+- usage of non-linear mapped elements for representing curved geometries
 
 ### ribwg
 

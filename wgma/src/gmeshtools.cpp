@@ -627,15 +627,17 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
   TPZAutoPointer<TPZGeoMesh> gmesh,
   const int pmlDim,
   const int pmlId,
-  const std::set<int> &volmats,
-  const REAL boundPosX, const REAL boundPosY, const REAL boundPosZ)
+  const std::set<int> &volmats)
 {
   TPZGeoEl * closestEl = nullptr;
   REAL dist = 1e16;
 
   const int nel = gmesh->NElements();
   std::mutex mymut;
+  bool found=false;
   pzutils::ParallelFor(0, nel, [&](int iel){
+    //return from lambda, not from function
+    if(closestEl){return;}
     auto currentEl = gmesh->Element(iel);
     if ( !currentEl ||
          currentEl->NSubElements() > 0  ||
@@ -644,21 +646,15 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
       //return from lambda, not from function
       return;
     }
-    TPZVec<REAL> qsi(pmlDim,-1);
-    const int largerSize = currentEl->NSides() - 1;
-    currentEl->CenterPoint(largerSize, qsi);
-    TPZVec<REAL> xCenter(3,-1);
-    currentEl->X(qsi, xCenter);
-    const REAL currentDist =
-      (xCenter[0]-boundPosX)*(xCenter[0]-boundPosX) +
-      (xCenter[1]-boundPosY)*(xCenter[1]-boundPosY) +
-      (xCenter[2]-boundPosZ)*(xCenter[2]-boundPosZ);
-    if(currentDist < dist){
-      std::lock_guard lock(mymut);
-      //just to avoid race conditions, let us check again
-      if(currentDist < dist){
-        dist = currentDist;
+
+    const int fside = 0;
+    const int lside = currentEl->FirstSide(pmlDim);
+
+    for(int side = fside; side < lside; side++){
+      TPZGeoElSide gside(currentEl, side);
+      if(gside.HasNeighbour(pmlId)){
         closestEl = currentEl;
+        return;
       }
     }
   });
@@ -673,7 +669,7 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
 void
 wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
                                const std::set<int> pmlId,
-                               const wgma::pml::type type,
+                               const wgma::pml::cart::type type,
                                REAL &boundPosX, REAL &dX,
                                REAL &boundPosY, REAL &dY,
                                REAL &boundPosZ, REAL &dZ)
@@ -731,25 +727,25 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
 
 
   //now we compute xBegin, yBegin, attx, atty and d for the material ctor
-  const bool attx = wgma::pml::attx(type);
-  const bool atty = wgma::pml::atty(type);
-  const bool attz = wgma::pml::attz(type);
+  const bool attx = wgma::pml::cart::attx(type);
+  const bool atty = wgma::pml::cart::atty(type);
+  const bool attz = wgma::pml::cart::attz(type);
   
   REAL xBegin{-1}, yBegin{-1}, zBegin{-1};
   if(attx){
-    const int xdir = wgma::pml::xinfo(type);
+    const int xdir = wgma::pml::cart::xinfo(type);
     dX = xMax - xMin;
     xBegin = xdir > 0 ? xMin : xMax;
   }
 
   if(atty){
-    const int ydir = wgma::pml::yinfo(type);
+    const int ydir = wgma::pml::cart::yinfo(type);
     dY = yMax - yMin;
     yBegin = ydir > 0 ? yMin : yMax;
   }
 
   if(attz){
-    const int zdir = wgma::pml::zinfo(type);
+    const int zdir = wgma::pml::cart::zinfo(type);
     dZ = zMax - zMin;
     zBegin = zdir > 0 ? zMin : zMax;
   }
@@ -783,6 +779,68 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
     boundPosX = (xMax + xMin)/2;
     boundPosY = (yMax + yMin)/2;
     boundPosZ = zBegin;
+  }
+}
+
+void
+wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
+                               const std::set<int> pmlId, const wgma::pml::cyl::type type,
+                               REAL &rMin, REAL &rMax,
+                               REAL &boundPosZ, REAL &dZ)
+{
+  rMin = 1e20;
+  rMax = -1e20;
+  REAL zMax = -1e20, zMin = 1e20;
+  std::set<int64_t> visited_nodes;
+
+  std::mutex pos_mut, visited_nodes_mut;
+  const auto nel = gmesh->NElements();
+  pzutils::ParallelFor(0, nel, [&](int iel){
+    auto geo = gmesh->Element(iel);
+    if (geo && pmlId.count(geo->MaterialId()) != 0) {
+      const int ncornernodes = geo->NCornerNodes();
+      for (int iNode = 0; iNode < geo->NCornerNodes(); ++iNode) {
+        TPZManVector<REAL, 3> co(3);
+        const auto node_idx = geo->NodeIndex(iNode);
+
+        {
+          std::lock_guard lock(visited_nodes_mut);
+          if(visited_nodes.count(node_idx)){continue;}
+          else {visited_nodes.insert(node_idx);}
+        }
+        
+        const auto& node = geo->Node(iNode);
+        node.GetCoordinates(co);
+        
+        const REAL &xP = co[0];
+        const REAL &yP = co[1];
+        const REAL &zP = co[2];
+        const REAL rP = sqrt(xP*xP + yP*yP);
+        std::lock_guard lock(pos_mut);
+        if (rP > rMax) {
+          rMax = rP;
+        }
+        if (rP < rMin) {
+          rMin = rP;
+        }
+        if (zP > zMax) {
+          zMax = zP;
+        }
+        if (zP < zMin) {
+          zMin = zP;
+        }
+      }
+    }
+  });
+
+  const bool attz = wgma::pml::cyl::attz(type);
+  
+  REAL zBegin{-1};
+  
+  if(attz){
+    const int zdir = wgma::pml::cyl::zinfo(type);
+    dZ = zMax - zMin;
+    zBegin = zdir > 0 ? zMin : zMax;
   }
 }
 

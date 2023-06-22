@@ -29,7 +29,6 @@ namespace wgma::wganalysis{
     }
     std::cout<<"\rAssembled!"<<std::endl;
     
-    TPZEigenAnalysis::SetComputeEigenvectors(compute_eigenvectors);
     TPZEigenSolver<CSTATE> *solv =
       dynamic_cast<TPZEigenSolver<CSTATE>*>(this->Solver());
     if(!solv){
@@ -44,16 +43,9 @@ namespace wgma::wganalysis{
     Solve(compute_eigenvectors);
     
   }
-
-  void Wgma::Assemble(TPZEigenAnalysis::Mat mat){
-    std::cout<<"Assembling..."<<std::flush;
-    TPZSimpleTimer assemble("Assemble");
-    TPZEigenAnalysis::AssembleMat(mat);
-    std::cout<<"\rAssembled!"<<std::endl;
-  }
   
   void Wgma::Solve(bool compute_eigenvectors){
-    TPZEigenAnalysis::SetComputeEigenvectors(compute_eigenvectors);
+    TPZEigenAnalysisBase::SetComputeEigenvectors(compute_eigenvectors);
     TPZEigenSolver<CSTATE> *solv =
       dynamic_cast<TPZEigenSolver<CSTATE>*>(this->Solver());
     if(!solv){
@@ -64,11 +56,10 @@ namespace wgma::wganalysis{
       exit(-1);
     }
 
-    AdjustSolver(solv);
 
     TPZSimpleTimer tsolv("Solve");
     std::cout<<"Solving..."<<std::flush;
-    TPZEigenAnalysis::Solve();
+    this->Solve();
     std::cout<<"\rSolved!"<<std::endl;
 
     std::ios cout_state(nullptr);
@@ -464,20 +455,37 @@ namespace wgma::wganalysis{
     //insert PML regions
     for(auto &pml : pmlDataVec){
       //skip PMLs of other dimensions
-      if(pml.dim != cmeshMF->Dimension()){continue;}
-      pml.neigh = cmeshtools::AddRectangularPMLRegion<
-        TPZWgma
-        >(pml, realvolmats, gmesh, cmeshMF);
-      for(auto [id, _] : pml.neigh){
+      if(pml->dim != cmeshMF->Dimension()){continue;}
+      auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
+      auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
+      if(cart_pml){
+        cart_pml->neigh =
+          cmeshtools::AddRectangularPMLRegion<TPZWgma>(*cart_pml, realvolmats, gmesh, cmeshMF);
+      }else if (cyl_pml){
+        cyl_pml->neigh =
+          cmeshtools::AddCylindricalPMLRegion<TPZWgma>(*cyl_pml, realvolmats, gmesh, cmeshMF);
+      }else{
+        DebugStop();
+      }
+      
+      for(auto [id, _] : pml->neigh){
         volmats.insert(id);
       }
       if(verbose){
         std::cout<<"\tid (neighbour) ";
-        for(auto [id, neigh] : pml.neigh){
+        for(auto [id, neigh] : pml->neigh){
           std::cout<<id<<" ("<<neigh<<") ";
         }
-        std::cout<<"att dir "<<wgma::pml::to_string(pml.t)<<" att coeff ";
-        std::cout<<pml.alphax<<' '<<pml.alphay<<std::endl;
+        if(cart_pml){
+          std::cout<<"att dir "<<wgma::pml::cart::to_string(cart_pml->t)
+                   <<" att coeff "<<cart_pml->alphax<<' '<<cart_pml->alphay<<std::endl;
+        }else if(cyl_pml){
+          std::cout<<"att dir "<<wgma::pml::cyl::to_string(cyl_pml->t)
+                   <<" att coeff "<<cyl_pml->alphar<<std::endl;
+        }
+        else{
+          DebugStop();
+        }
       }
     }
 
@@ -547,8 +555,8 @@ namespace wgma::wganalysis{
     std::set<int> pmlmats;
     for(auto &pml : data.pmlvec){
       //skip PMLs of other dimensions
-      if(pml.dim != dim){continue;}
-      for(auto id : pml.ids){
+      if(pml->dim != dim){continue;}
+      for(auto id : pml->ids){
         pmlmats.insert(id);
       }
     }
@@ -628,8 +636,8 @@ namespace wgma::wganalysis{
     std::set<int> pmlmats;
     for(auto &pml : data.pmlvec){
       //skip PMLs of other dimensions
-      if(pml.dim != dim){continue;}
-      for(auto id : pml.ids){
+      if(pml->dim != dim){continue;}
+      for(auto id : pml->ids){
         pmlmats.insert(id);
       }
     }
@@ -777,10 +785,20 @@ namespace wgma::wganalysis{
 
     for (auto &pml : data.pmlvec) {
       //skip PMLs of other dimensions
-      if(pml.dim != cmeshH1->Dimension()){continue;}
-      pml.neigh = wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgma>(
-        pml, volmats, gmesh, cmeshH1);
-      for( auto id : pml.ids){
+      if(pml->dim != cmeshH1->Dimension()){continue;}
+      auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
+      auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
+      if(cart_pml){
+        cart_pml->neigh =
+          cmeshtools::AddRectangularPMLRegion<TPZWgma>(*cart_pml, volmats, gmesh, cmeshH1);
+      }else if (cyl_pml){
+        cyl_pml->neigh =
+          cmeshtools::AddCylindricalPMLRegion<TPZWgma>(*cyl_pml, volmats, gmesh, cmeshH1);
+      }else{
+        DebugStop();
+      }
+      
+      for( auto id : pml->ids){
         allmats.insert(id);
       }
     }
@@ -872,10 +890,20 @@ namespace wgma::wganalysis{
 
     for (auto &pml : data.pmlvec) {
       //skip PMLs of other dimensions
-      if(pml.dim != cmeshH1->Dimension()){continue;}
-      pml.neigh = wgma::cmeshtools::AddRectangularPMLRegion<TPZPeriodicWgma>(
-        pml, volmats, gmesh, cmeshH1);
-      for( auto id : pml.ids){
+      if(pml->dim != cmeshH1->Dimension()){continue;}
+      auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
+      auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
+      if(cart_pml){
+        cart_pml->neigh =
+          cmeshtools::AddRectangularPMLRegion<TPZWgma>(*cart_pml, volmats, gmesh, cmeshH1);
+      }else if (cyl_pml){
+        cyl_pml->neigh =
+          cmeshtools::AddCylindricalPMLRegion<TPZWgma>(*cyl_pml, volmats, gmesh, cmeshH1);
+      }else{
+        DebugStop();
+      }
+      
+      for( auto id : pml->ids){
         allmats.insert(id);
       }
     }

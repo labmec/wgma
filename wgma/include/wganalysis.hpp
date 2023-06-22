@@ -11,7 +11,7 @@ namespace wgma::wganalysis{
   /**
      @brief  Abstract base class responsible for managing the modal analysis of waveguides
   */
-  class Wgma : private TPZEigenAnalysis{
+  class Wgma : protected virtual TPZEigenAnalysisBase{
   public:
     //! Default constructor
     Wgma() = default;
@@ -26,24 +26,6 @@ namespace wgma::wganalysis{
     //! Default destructor
     virtual ~Wgma();
     //default dtor in the cpp file to ensure correct creation of vtable (https://stackoverflow.com/a/57504289/1870801)
-    
-    //! Sets a custom eigensolver to be copied to this instance
-    using TPZEigenAnalysis::SetSolver;
-    /**
-       @brief Gets a copy of the eigensolver for easier configuration
-       @note A call to Wgma2D::SetSolver must be made afterwards.
-    */
-    TPZEigenSolver<CSTATE> & GetSolver(){
-      return TPZEigenAnalysis::EigenSolver<CSTATE>();
-    }
-    /**
-       @brief Assemble both FEM matrices
-    */
-    using TPZEigenAnalysis::Assemble;
-    /**
-       @brief Assemble one of the FEM matrices (usefull for nlin problems) 
-     */
-    void Assemble(TPZEigenAnalysis::Mat mat);
     /**
        @brief Run the analysis
        @param [in] compute_eigenvectors whether to compute eigenvectors (or just eigenvalues)
@@ -54,6 +36,7 @@ namespace wgma::wganalysis{
        @param [in] compute_eigenvectors whether to compute eigenvectors (or just eigenvalues)
      */
     void Solve(bool compute_eigenvectors);
+    
 
     /*
       @brief Loads the isol-th solution (eigenvector) in the computational mesh.
@@ -68,15 +51,15 @@ namespace wgma::wganalysis{
     /*
       @brief Gets calculated eigenvalues
      */
-    using TPZEigenAnalysis::GetEigenvalues;
+    using TPZEigenAnalysisBase::GetEigenvalues;
     //! Sets eigenvalues
-    using TPZEigenAnalysis::SetEigenvalues;
+    using TPZEigenAnalysisBase::SetEigenvalues;
     /*
       @brief Gets calculated eigenvectors
      */
-    using TPZEigenAnalysis::GetEigenvectors;
+    using TPZEigenAnalysisBase::GetEigenvectors;
     //! Sets eigenvectors
-    using TPZEigenAnalysis::SetEigenvectors;
+    using TPZEigenAnalysisBase::SetEigenvectors;
 
     /**
        @brief Export eigenvalues to in a csv format and append it to a file.
@@ -99,8 +82,9 @@ namespace wgma::wganalysis{
     using TPZAnalysis::StructMatrix;
   protected:
 
+    virtual void Solve() = 0;
     virtual void LoadSolutionInternal(const int isol, const int nsol) = 0;
-    using TPZEigenAnalysis::LoadSolution;
+    using TPZEigenAnalysisBase::LoadSolution;
     using TPZAnalysis::SetCompMeshInit;
     using TPZAnalysis::SetStructuralMatrix;
     //! Perform necessary adjustments on the eigensolver
@@ -117,7 +101,7 @@ namespace wgma::wganalysis{
      @brief  Class responsible for managing the modal analysis of waveguides with a 2D cross section
      @note The eigensolver still has to be configured.
   */
-  class Wgma2D : public Wgma{
+  class Wgma2D : public Wgma, private TPZEigenAnalysis{
   public:
     /**
        @brief Creates the analysis module based on a given set
@@ -151,7 +135,18 @@ namespace wgma::wganalysis{
     void CountActiveEqs(int &neq, int&nh1, int &nhcurl);
 
     [[nodiscard]] TPZAutoPointer<TPZCompMesh> GetMesh() override{return m_cmesh_mf;}
+
+    TPZLinearEigenSolver<CSTATE> & GetSolver(){
+      return TPZEigenAnalysis::EigenSolver<CSTATE>();
+    }
+    
+    using TPZEigenAnalysis::SetSolver;
+    using TPZEigenAnalysis::Assemble;
+    using TPZEigenAnalysis::AssembleMat;
+    using Wgma::Solve;
   private:
+
+    void Solve() override {TPZEigenAnalysis::Solve();}
     void LoadSolutionInternal(const int isol, const int ncols) override;
     
     void AdjustSolver(TPZEigenSolver<CSTATE> *solv) override;
@@ -173,7 +168,7 @@ namespace wgma::wganalysis{
      @brief Base class for performing modal analysis of planar waveguides.
      See slab_disc example for usage.
    */
-  class WgmaPlanar : public Wgma{
+  class WgmaPlanar : public Wgma, private TPZEigenAnalysis{
   public:
     /**
        @brief Creates the analysis module based on a given set
@@ -206,7 +201,18 @@ namespace wgma::wganalysis{
     void CountActiveEqs(int &neq);
 
     [[nodiscard]] TPZAutoPointer<TPZCompMesh> GetMesh() override{return m_cmesh;}
+
+
+    TPZLinearEigenSolver<CSTATE> & GetSolver(){
+      return TPZEigenAnalysis::EigenSolver<CSTATE>();
+    }
+
+    using TPZEigenAnalysis::SetSolver;
+    using TPZEigenAnalysis::Assemble;
+    using TPZEigenAnalysis::AssembleMat;
+    using Wgma::Solve;
   protected:
+    void Solve() override {TPZEigenAnalysis::Solve();}
     void LoadSolutionInternal(const int isol, const int nsol) override;
     //! Computational mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};

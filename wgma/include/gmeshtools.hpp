@@ -125,10 +125,7 @@ namespace wgma::gmeshtools{
   FindPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,
                            const int pmlDim,
                            const int pmlId,
-                           const std::set<int> &volmats,
-                           const REAL boundPosX,
-                           const REAL boundPosY,
-                           const REAL boundPosZ);
+                           const std::set<int> &volmats);
 
   /**
      @brief Finds the width of a given pml region
@@ -144,9 +141,25 @@ namespace wgma::gmeshtools{
   */
   void
   FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
-               const std::set<int> pmlId, const wgma::pml::type type,
+               const std::set<int> pmlId, const wgma::pml::cart::type type,
                REAL &boundPosX, REAL &pmlWidthX,
                REAL &boundPosY, REAL &pmlWidthY,
+               REAL &boundPosZ, REAL &pmlWidthZ);
+
+  /**
+     @brief Finds the dimensions of a given cylindrical pml region
+     @param[in] gmesh geometrical mesh
+     @param[in] pmlId identifiers of pml region
+     @param[in] type attenuation direction of the PML
+     @param[out] rmin minimum radius
+     @param[out] rmax maximum radius
+     @param[out] boundPosZ Z coordinate of the PML interface with domain (for x-attenuating PMLS, X coordinate of the center of the PML)
+     @param[out] pmlWidthZ PML width in the Z direction (only for relevant types)
+  */
+  void
+  FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
+               const std::set<int> pmlId, const wgma::pml::cyl::type type,
+               REAL &rmin, REAL &rmax,
                REAL &boundPosZ, REAL &pmlWidthZ);
   
   /**

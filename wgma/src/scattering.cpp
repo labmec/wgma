@@ -576,23 +576,31 @@ namespace wgma::scattering{
       scatt_cmesh->InsertMaterialObject(mat);
       //for pml
       realvolmats.insert(id);
-      volmats.insert(id);
-      allmats.insert(id);
     }
 
-    
+    volmats = realvolmats;
     for(auto pml : data.pmlvec){
       //skip PMLs of other dimensions
-      if(pml.dim != scatt_cmesh->Dimension()){continue;}
-      const auto neighs = wgma::cmeshtools::AddRectangularPMLRegion<TPZPlanarWgScatt>
-        (pml, realvolmats, gmesh, scatt_cmesh);
-      for(auto id : pml.ids){
+      if(pml->dim != scatt_cmesh->Dimension()){continue;}
+      auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
+      auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
+      if(cart_pml){
+        cart_pml->neigh =
+          cmeshtools::AddRectangularPMLRegion<TPZWgma>(*cart_pml, realvolmats, gmesh, scatt_cmesh);
+      }else if (cyl_pml){
+        cyl_pml->neigh =
+          cmeshtools::AddCylindricalPMLRegion<TPZWgma>(*cyl_pml, realvolmats, gmesh, scatt_cmesh);
+      }else{
+        DebugStop();
+      }
+      
+      for(auto [id, _] : pml->neigh){
         volmats.insert(id);
-        allmats.insert(id);
-        pml_neighs[id] = neighs.at(id);
       }
     }
 
+    allmats = volmats;
+    
     for(auto [id,matdim] : data.probevec){
       static constexpr int nstate{1};
       auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
@@ -698,26 +706,35 @@ namespace wgma::scattering{
       scatt_cmesh->InsertMaterialObject(mat);
       //for pml
       realvolmats.insert(id);
-      volmats.insert(id);
-      allmats.insert(id);
     }
 
+    //volumetric mats
+    volmats = realvolmats;
 
     {
       TPZSimpleTimer t("PML");
-    for(auto pml : data.pmlvec){
-      //skip PMLs of other dimensions
-      if(pml.dim != scatt_cmesh->Dimension()){continue;}
-      const auto neighs = wgma::cmeshtools::AddRectangularPMLRegion<TPZScattering>
-        (pml, realvolmats, gmesh, scatt_cmesh);
-      for(auto id : pml.ids){
-        volmats.insert(id);
-        allmats.insert(id);
-        pml_neighs[id] = neighs.at(id);
+      for(auto pml : data.pmlvec){
+        //skip PMLs of other dimensions
+        if(pml->dim != scatt_cmesh->Dimension()){continue;}
+        auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
+        auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
+        if(cart_pml){
+          cart_pml->neigh =
+            cmeshtools::AddRectangularPMLRegion<TPZWgma>(*cart_pml, realvolmats, gmesh, scatt_cmesh);
+        }else if (cyl_pml){
+          cyl_pml->neigh =
+            cmeshtools::AddCylindricalPMLRegion<TPZWgma>(*cyl_pml, realvolmats, gmesh, scatt_cmesh);
+        }else{
+          DebugStop();
+        }
+        for(auto [id, _] : pml->neigh){
+          volmats.insert(id);
+        }
       }
     }
-    }
 
+    allmats = volmats;
+    
     for(auto [id,matdim] : data.probevec){
       static constexpr int nstate{1};
       auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
@@ -792,10 +809,21 @@ namespace wgma::scattering{
         if(!found_this_src){
           //probably a PML material then
           for(auto &pml : data.pmlvec){
-            if(pml.dim == scatt_cmesh->Dimension()){continue;}
-            if (pml.ids.count(src_id)){
-              pml.neigh = wgma::cmeshtools::AddRectangularPMLRegion<TPZScatteringSrc>
-                (pml, src_mats, gmesh, scatt_cmesh);
+            if(pml->dim == scatt_cmesh->Dimension()){continue;}
+            if (pml->ids.count(src_id)){
+              auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
+              auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
+              if(cart_pml){
+                pml->neigh =
+                  wgma::cmeshtools::AddRectangularPMLRegion<TPZScatteringSrc>
+                  (*cart_pml, src_mats, gmesh, scatt_cmesh);
+              }if(cyl_pml){
+                pml->neigh =
+                  wgma::cmeshtools::AddCylindricalPMLRegion<TPZScatteringSrc>
+                  (*cyl_pml, src_mats, gmesh, scatt_cmesh);
+              }else{
+                DebugStop();
+              }
             }
             src_pml_mats.insert(src_id);
             found_this_src = true;

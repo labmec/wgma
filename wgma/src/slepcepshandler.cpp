@@ -442,7 +442,7 @@ namespace wgma::slepc{
   
   template<class TVar>
   void EPSHandler<TVar>::SetAsGeneralised(bool isGeneralised){
-    TPZEigenSolver<TVar>::SetAsGeneralised(isGeneralised);
+    TPZLinearEigenSolver<TVar>::SetAsGeneralised(isGeneralised);
     if(fProbType == EPSProblemType::EPS_NOTSET){
       std::cout<<__PRETTY_FUNCTION__
                <<"\nWARNING: call SetProblemType instead"

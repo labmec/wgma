@@ -176,12 +176,12 @@ int main(int argc, char *argv[]) {
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
                                             {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
     //we must now filter the 1D PMLs
-    std::vector<wgma::pml::data>  pmlvec;
+    std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
     for(const auto &pml : modal_data.pmlvec){
       const std::string pattern{"source_clad_left"};
       const auto rx = std::regex{pattern, std::regex_constants::icase };
     
-      const bool found_pattern = std::regex_search(*(pml.names.begin()), rx);
+      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
       if(found_pattern){pmlvec.push_back(pml);}
     }
     modal_data.pmlvec = pmlvec;
@@ -226,12 +226,12 @@ int main(int argc, char *argv[]) {
                                             {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
 
     //we must now filter the 1D PMLs
-    std::vector<wgma::pml::data>  pmlvec;
+    std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
     for(const auto &pml : modal_data.pmlvec){
       const std::string pattern{"source_clad_right"};
       const auto rx = std::regex{pattern, std::regex_constants::icase };
     
-      const bool found_pattern = std::regex_search(*(pml.names.begin()), rx);
+      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
       if(found_pattern){pmlvec.push_back(pml);}
     }
     modal_data.pmlvec = pmlvec;
@@ -395,8 +395,7 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
 {
   
   TPZSimpleTimer analysis("Modal analysis");
-  an.Assemble(TPZEigenAnalysis::Mat::A);
-  an.Assemble(TPZEigenAnalysis::Mat::B);
+  an.Assemble();
   static constexpr bool computeVectors{true};
   an.Solve(computeVectors);
   //let us discard all solutions with negative real part of beta

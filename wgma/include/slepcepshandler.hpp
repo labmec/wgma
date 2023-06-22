@@ -5,7 +5,7 @@
 #ifndef WGMASLEPCHANDLER_H
 #define WGMASLEPCHANDLER_H
 
-#include <TPZEigenSolver.h>
+#include <TPZLinearEigenSolver.h>
 
 namespace wgma::slepc{
   /*
@@ -160,7 +160,7 @@ namespace wgma::slepc{
      with the TPZEigenAnalysis instance.
   */
   template<class TVar>
-  class EPSHandler : public TPZEigenSolver<TVar> {
+  class EPSHandler : public TPZLinearEigenSolver<TVar> {
   public:
     //! Initializes SLEPc
     static void InitSLEPc();
@@ -176,14 +176,6 @@ namespace wgma::slepc{
     ~EPSHandler() = default;
     //! This function does NOT clone the instance. It merely passes a pointer to it.
     EPSHandler * Clone() const override;
-    
-    int SolveEigenProblem(TPZVec<CTVar> &w,TPZFMatrix<CTVar> &eigenVectors) override;
-    int SolveEigenProblem(TPZVec<CTVar> &w) override;
-
-    int SolveGeneralisedEigenProblem(TPZVec<CTVar> &w,
-                                     TPZFMatrix<CTVar> &eigenVectors) override;
-
-    int SolveGeneralisedEigenProblem(TPZVec<CTVar> &w) override;
 
     void SetNEigenpairs(int n) override;
 
@@ -275,6 +267,13 @@ namespace wgma::slepc{
     TPZPardisoSolver<TVar> *GetPardisoControlB() override
     {return nullptr;}
   private:
+    int SolveEigenProblem(TPZVec<CTVar> &w,TPZFMatrix<CTVar> &eigenVectors) override;
+    int SolveEigenProblem(TPZVec<CTVar> &w) override;
+
+    int SolveGeneralisedEigenProblem(TPZVec<CTVar> &w,
+                                     TPZFMatrix<CTVar> &eigenVectors) override;
+
+    int SolveGeneralisedEigenProblem(TPZVec<CTVar> &w) override;
     //! Actual solver implementation with SLEPc calls
     int SolveImpl(TPZVec<CTVar> &w,TPZFMatrix<CTVar> &eigenVectors,
                   bool calcVectors);
