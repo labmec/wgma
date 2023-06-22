@@ -2,7 +2,7 @@
 #define _TWISTED_WGMA_H_
 
 #include <Electromagnetics/TPZAnisoWgma.h>
-
+#include <Electromagnetics/TPZCylindricalPML.h>
 namespace wgma::materials{
     class TwistedWgma : public TPZAnisoWgma{
     public:
@@ -22,10 +22,22 @@ namespace wgma::materials{
 
         [[nodiscard]] int IntegrationRuleOrder(const TPZVec<int> &elPMaxOrder) const override{
             return TPZAnisoWgma::IntegrationRuleOrder(elPMaxOrder)+2;
-  }
+        }
+        
+        void Solution(const TPZVec<TPZMaterialDataT<CSTATE>> &datavec,
+                      int var, TPZVec<CSTATE> &solout) override;
     protected:
         void TransformationMatrix(TPZFMatrix<CSTATE> &mat, const TPZVec<REAL> &x) const;
         STATE m_alpha{1};
+    };
+
+    class TwistedWgmaPML : public TPZCombinedSpacesCylindricalPML<TwistedWgma>{
+    public:
+        using TPZCombinedSpacesCylindricalPML<TwistedWgma>::TPZCombinedSpacesCylindricalPML;
+        //! Gets the permeability of the material
+        void GetPermeability(const TPZVec<REAL> &x,TPZFMatrix<CSTATE> &ur) const override;
+        //! Gets the permittivity of the material
+        void GetPermittivity(const TPZVec<REAL> &x,TPZFMatrix<CSTATE> &er) const override;
     };
 };
 #endif /* _TWISTED_WGMA_H_ */
