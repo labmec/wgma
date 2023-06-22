@@ -7,7 +7,7 @@
 #include <pzfmatrix.h>
 
 #include <functional>
-
+#include <optional>
 namespace wgma::gmeshtools{
 
   enum class ElType {Tri, Quad};
@@ -119,13 +119,16 @@ namespace wgma::gmeshtools{
      @param[in] pmlId pml material identifier.
      @param[in] boundPosX x-coordinate of the pml with the inner domain
      @param[in] boundPosY y-coordinate of the pml with the inner domain
+     @param[in] boundPosZ z-coordinate of the pml with the inner domain
   */
   [[nodiscard]] std::optional<int>
   FindPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,
                            const int pmlDim,
                            const int pmlId,
                            const std::set<int> &volmats,
-                           const REAL boundPosX, const REAL boundPosY);
+                           const REAL boundPosX,
+                           const REAL boundPosY,
+                           const REAL boundPosZ);
 
   /**
      @brief Finds the width of a given pml region
@@ -136,12 +139,15 @@ namespace wgma::gmeshtools{
      @param[out] pmlWidthX PML width in the X direction (only for relevant types)
      @param[out] boundPosY Y coordinate of the PML interface with domain (for x-attenuating PMLS, X coordinate of the center of the PML)
      @param[out] pmlWidthY PML width in the Y direction (only for relevant types)
+     @param[out] boundPosZ Z coordinate of the PML interface with domain (for x-attenuating PMLS, X coordinate of the center of the PML)
+     @param[out] pmlWidthZ PML width in the Z direction (only for relevant types)
   */
   void
   FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
                const std::set<int> pmlId, const wgma::pml::type type,
                REAL &boundPosX, REAL &pmlWidthX,
-               REAL &boundPosY, REAL &pmlWidthY);
+               REAL &boundPosY, REAL &pmlWidthY,
+               REAL &boundPosZ, REAL &pmlWidthZ);
   
   /**
      @brief Finds a valid neighbouring material for a given boundary material.

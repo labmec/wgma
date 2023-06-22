@@ -36,6 +36,7 @@ thickness = 2*max(h1, h2)
 el_clad = 0.75
 d_pmlx = 3
 d_pmly = 1
+nlayerspml = 5
 
 
 gmsh.initialize()
@@ -218,19 +219,19 @@ ll, lr = split_region_dir(lower, "x")
 # setting up the PMLs
 
 pmlmap = {}
-pmlmap.update(create_pml_region(left, "xm", d_pmlx))
-pmlmap.update(create_pml_region(right, "xp", d_pmlx))
-pmlmap.update(create_pml_region(upper, "yp", d_pmly))
-pmlmap.update(create_pml_region(lower, "ym", d_pmly))
+pmlmap.update(create_pml_region(left, "xm", d_pmlx, nlayerspml))
+pmlmap.update(create_pml_region(right, "xp", d_pmlx, nlayerspml))
+pmlmap.update(create_pml_region(upper, "yp", d_pmly, nlayerspml))
+pmlmap.update(create_pml_region(lower, "ym", d_pmly, nlayerspml))
 
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
 dpml = [d_pmlx, d_pmly]
-pmlmap.update(create_pml_corner(ll, "xmym", dpml))
-pmlmap.update(create_pml_corner(lr, "xpym", dpml))
-pmlmap.update(create_pml_corner(ul, "xmyp", dpml))
-pmlmap.update(create_pml_corner(ur, "xpyp", dpml))
+pmlmap.update(create_pml_corner(ll, "xmym", dpml, nlayerspml))
+pmlmap.update(create_pml_corner(lr, "xpym", dpml, nlayerspml))
+pmlmap.update(create_pml_corner(ul, "xmyp", dpml, nlayerspml))
+pmlmap.update(create_pml_corner(ur, "xpyp", dpml, nlayerspml))
 
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()

@@ -120,7 +120,7 @@ namespace wgma::slepc{
   /**
      @brief Preconditioner to be used.
      @note Its choice is thightly related to the KSPSolver.*/
-  enum class Precond{
+  enum class PC{
     NONE,///< Uses just KSP Solver
     JACOBI,///< Check PETSc manual
     SOR,///< Check PETSc manual
@@ -266,7 +266,7 @@ namespace wgma::slepc{
     //!Gets tolerances regarding the linear solver
     void GetLinearSolverTol(RTVar &rtol, RTVar &atol, RTVar &dtol, int &max_its);
     //!Sets preconditioner to be used and tolerance for zero pivot
-    void SetPrecond(const Precond precond,
+    void SetPrecond(const PC precond,
                     RTVar zero = std::numeric_limits<RTVar>::epsilon());
 
     //! Returns nullptr since pardiso is not used in this solver
@@ -315,7 +315,7 @@ namespace wgma::slepc{
     //! Maximum iterations of the linear solver
     RTVar fKspMaxIts{-1};
     //! Preconditioner for the linear solver
-    Precond fPc{Precond::LU};
+    PC fPc{PC::LU};
     //! Zero pivot tolerance for the preconditioner
     RTVar fPcZero{std::numeric_limits<RTVar>::epsilon()};
     //! Whether SLEPc has been initialized

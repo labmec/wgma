@@ -16,6 +16,7 @@ set(headers
   include/wganalysis.hpp
   include/scattering.hpp
   include/slepcepshandler.hpp
+  include/precond.hpp
   include/util.hpp
   include/post/eldata.hpp
   include/post/integrator.hpp
@@ -29,6 +30,7 @@ set(sources
   src/wganalysis.cpp
   src/scattering.cpp
   src/slepcepshandler.cpp
+  src/precond.cpp
   src/util.cpp
   src/post/integrator.cpp
   src/post/solutionnorm.cpp

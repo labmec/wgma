@@ -182,8 +182,7 @@ int main(int argc, char *argv[]) {
     modal_bcs["gamma_2"] = wgma::bc::type::PERIODIC;
     modal_bcs["modal_bound"] = wgma::bc::type::PEC;
 
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs, {},
-                                            {}, modal_data);
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs, {0,0}, modal_data);
     //in the current example
     //all PML materials do not participate in the modal analysis
     modal_data.pmlvec.resize(0);
@@ -298,8 +297,8 @@ int main(int argc, char *argv[]) {
     scatt_bcs["scatt_bound"] = wgma::bc::type::PEC;
 
     constexpr STATE alphaPML {2.0};
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs, alphaPML,
-                                            alphaPML, scatt_data);
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
+                                            {alphaPML,alphaPML}, scatt_data);
 
     bool periodicPML{true};
     for(auto const& [name, value]: gmshmats[2]){
@@ -318,7 +317,7 @@ int main(int argc, char *argv[]) {
   wgma::scattering::SourceWgma src;
   src.id = {srcId};
   src.modal_cmesh = modal_cmesh;
-  wgma::scattering::LoadSource(scatt_cmesh, src);
+  wgma::scattering::LoadSource1D(scatt_cmesh, src);
   wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
   /*********************
    * solve(scattering) *  
@@ -431,7 +430,7 @@ SetupSolver(const CSTATE target,TPZEigenSort sorting, bool usingSLEPC)
     constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_REL;
     constexpr EPSWhich eps_which = EPSWhich::EPS_TARGET_REAL;
     
-    constexpr Precond pc = Precond::LU;
+    constexpr PC pc = PC::LU;
     constexpr KSPSolver linsolver = KSPSolver::PREONLY;
     constexpr STATE ksp_rtol = -1;//PETSC_DECIDE
     constexpr STATE ksp_atol = -1;//PETSC_DECIDE

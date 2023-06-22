@@ -26,8 +26,9 @@ namespace wgma::scattering{
        @param [in] filter_bound whether to impose homogeneous dirichlet BCs by removing the equations
     */
     Analysis(const TPZAutoPointer<TPZCompMesh> cmesh,
-                       const int n_threads, const bool reorder_eqs=true,
-                       const bool filter_bound=true);
+             const int n_threads, const bool reorder_eqs=true,
+             const bool filter_bound=true,
+             const bool is_sym=true);
     //! Sets a custom linear solver to be copied to underlying TPZAnalysis(advanced)
     using TPZLinearAnalysis::SetSolver;
     /**
@@ -55,7 +56,20 @@ namespace wgma::scattering{
      */
     void Run();
 
-   [[nodiscard]] TPZAutoPointer<TPZCompMesh> GetMesh() {return m_cmesh;} 
+   [[nodiscard]] TPZAutoPointer<TPZCompMesh> GetMesh() {return m_cmesh;}
+
+    void SetSymMatrix(bool sym){m_sym = sym;}
+
+    using TPZAnalysis::StructMatrix;
+
+    using TPZAnalysis::LoadSolution;
+
+    using TPZLinearAnalysis::Rhs;
+
+    TPZAutoPointer<TPZMatrixSolver<CSTATE>> BuildBlockPrecond(const TPZVec<int64_t> &eqgraph,
+                                                              const TPZVec<int64_t> &graphindex,
+                                                              const bool overlap);
+    using TPZAnalysis::BuildPreconditioner;
   protected:
     //! H1 mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};
@@ -65,19 +79,32 @@ namespace wgma::scattering{
     int m_n_dofs{-1};
     //! Whether the equations have been filtered
     bool m_filter_bound{false};
+    //! Whether to use a symmetric matrix storage format
+    bool m_sym{true};
   };
 
 
-  using srcfunc = std::function<void (const TPZVec<REAL> &loc,
+  using srcfunc1d = std::function<void (const TPZVec<REAL> &loc,
                                       CSTATE &val,
                                       TPZVec<CSTATE> &deriv)>;
   /**
      @brief Struct using for using prescribed (analytical) sources in
-     scattering analysis.
+     scattering analysis in two dimensions.
    */
   struct Source1D{
     std::set<int> id;//< material identifiers for all regions with a prescribed source
-    srcfunc func;//function
+    srcfunc1d func;//function
+  };
+
+  using srcfunc2d = std::function<void (const TPZVec<REAL> &loc,
+                                        TPZVec<CSTATE> &val)>;
+  /**
+     @brief Struct using for using prescribed (analytical) sources in
+     scattering analysis in three dimensions.
+   */
+  struct Source2D{
+    std::set<int> id;//< material identifiers for all regions with a prescribed source
+    srcfunc2d func;//function
   };
 
   /**
@@ -112,7 +139,28 @@ namespace wgma::scattering{
                     const STATE lambda, const REAL scale);
 
   /**
+     @brief Creates the computational mesh used for the scattering analysis in 3D.
+Usually the source will be the result of a previously computed modal analysis.
+     The mesh will be a Hcurl conforming approximation space and it will approximate
+     the electric field.
+     For loading a source, see scattering::LoadSource and scattering::SetPropagationConstant. 
+     @param[in] gmesh geometrical mesh
+     @param[in] pOrder polynomial order
+     @param[in] data information regarding domain's regions
+     @param[in] source_ids contains the ids of the excitation source regions
+     @param[in] lambda operational wavelength
+     @param[in] scale geometric scaling (characteristic length) for better floating point precision
+  */
+  TPZAutoPointer<TPZCompMesh>
+  CMeshScattering3D(TPZAutoPointer<TPZGeoMesh> gmesh,
+                    int pOrder,
+                    cmeshtools::PhysicalData &data,
+                    const std::set<int> source_ids,
+                    const STATE lambda, const REAL scale);
+
+  /**
      @brief Set the propagation constant value for the source of the scattering analysis.
+     @tparam[in] type of the material corresponding to the source
      @param[in] cmesh computational mesh of the scattering problem
      @param[in] beta propagation constant
   */
@@ -121,7 +169,29 @@ namespace wgma::scattering{
                          const CSTATE beta);
 
   /**
-     @brief Loads a source for the scattering analysis.
+     @brief Loads a source for the scattering analysis in two dimensions.
+     The source can be either an analytical source or
+     a source from the modal analysis.
+
+     The source can be provided by two different means:
+     either by 
+     - providing a computational mesh and a material identifier where
+     the solution will be evaluated
+     - providing an analytical source via wgma::scattering::source1D
+
+     The value of the propagation constant beta is set by SetPropagationConstant.
+
+     @param[in] scatt_cmesh computational mesh of the scattering problem
+     @param[in] source source for the scattering problem
+  */
+  void
+  LoadSource1D(TPZAutoPointer<TPZCompMesh> cmesh,
+             std::variant<
+             wgma::scattering::Source1D,
+             wgma::scattering::SourceWgma> source);
+
+  /**
+     @brief Loads a source for the scattering analysis in three dimensions.
      The source can be either an analytical source or
      a source from the modal analysis.
 
@@ -137,9 +207,9 @@ namespace wgma::scattering{
      @param[in] source source for the scattering problem
   */
   void
-  LoadSource(TPZAutoPointer<TPZCompMesh> cmesh,
+  LoadSource2D(TPZAutoPointer<TPZCompMesh> cmesh,
              std::variant<
-             wgma::scattering::Source1D,
+             wgma::scattering::Source2D,
              wgma::scattering::SourceWgma> source);
 };
 

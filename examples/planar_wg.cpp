@@ -13,6 +13,7 @@ directional mesh refinement.
 #include "cmeshtools_impl.hpp"//for custom pml regions
 #include "gmeshtools.hpp"
 #include "pmltypes.hpp"
+#include <util.hpp>
 #include "slepcepshandler.hpp"
 //pz includes
 #include <MMeshType.h>                   //for MMeshType
@@ -31,7 +32,7 @@ directional mesh refinement.
    n strip = 1.55
    n air = 1
 */
-std::pair<wgma::scattering::srcfunc, CSTATE>
+std::pair<wgma::scattering::srcfunc1d, CSTATE>
 GetSourceFunc(const REAL scale, const REAL lambda);
 
 int main(int argc, char *argv[]) {
@@ -94,8 +95,14 @@ int main(int argc, char *argv[]) {
   constexpr bool printGMesh{true};
   //whether to export the solution as a .vtk file
   constexpr bool exportVtk{true};
-  //prefix for exported files
-  const std::string prefix{"planar_wg"};
+  // path for output files
+  const std::string path {"res_planar_wg/"};
+  // common prefix for both meshes and output files
+  const std::string basisName{"planar_wg"};
+  // prefix for exported files
+  const std::string prefix{path+basisName};
+  //just to make sure we will output results
+  wgma::util::CreatePath(wgma::util::ExtractPath(prefix));
   //resolution of the .vtk file in which the solution will be exported
   constexpr int vtkRes{0};
 
@@ -142,7 +149,7 @@ int main(int argc, char *argv[]) {
 
   
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, matmap, bcmap,
-                                          alphaxPML, alphayPML,
+                                          {alphaxPML, alphayPML},
                                           data);
 
 
@@ -172,7 +179,7 @@ int main(int argc, char *argv[]) {
   wgma::scattering::Source1D sources;
   sources.func = mysource.first;
   sources.id = source_ids;
-  wgma::scattering::LoadSource(cmesh, sources);
+  wgma::scattering::LoadSource1D(cmesh, sources);
   wgma::scattering::SetPropagationConstant(cmesh, beta);
 
   auto an = wgma::scattering::Analysis(cmesh, nThreads,
@@ -184,16 +191,15 @@ int main(int argc, char *argv[]) {
   TPZSimpleTimer postProc("Post processing");
 
   TPZVec<std::string> fields = {
-    "Ez_real",
-    "Ez_abs",
-    "Et_real",
-    "Et_abs"};
+    "Field_real",
+    "Field_imag",
+    "Field_abs"};
   auto vtk = TPZVTKGenerator(cmesh, fields, plotfile, vtkRes);
   vtk.Do();
 }
 
 
-std::pair<wgma::scattering::srcfunc, CSTATE>
+std::pair<wgma::scattering::srcfunc1d, CSTATE>
 GetSourceFunc(const REAL scale, const REAL lambda)
 {
   /*
@@ -214,7 +220,7 @@ GetSourceFunc(const REAL scale, const REAL lambda)
   const STATE beta = k0 * nev;
   
   
-  wgma::scattering::srcfunc sourcefunc =
+  wgma::scattering::srcfunc1d sourcefunc =
     [d, kx, gammax, beta](const TPZVec<REAL> &loc,
                           CSTATE &val,
                           TPZVec<CSTATE> &deriv){

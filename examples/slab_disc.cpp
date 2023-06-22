@@ -173,8 +173,8 @@ int main(int argc, char *argv[]) {
     modal_bcs["source_left_bnd"] = wgma::bc::type::PEC;
     //dimension of the modal analysis 
     constexpr int modal_dim{1};
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs, alphaPMLx,
-                                            alphaPMLy, modal_data, modal_dim);
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
+                                            {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
     //we must now filter the 1D PMLs
     std::vector<wgma::pml::data>  pmlvec;
     for(const auto &pml : modal_data.pmlvec){
@@ -222,8 +222,8 @@ int main(int argc, char *argv[]) {
     modal_bcs["source_right_bnd"] = wgma::bc::type::PEC;
     //dimension of the modal analysis 
     constexpr int modal_dim{1};
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs, alphaPMLx,
-                                            alphaPMLy, modal_data, modal_dim);
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
+                                            {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
 
     //we must now filter the 1D PMLs
     std::vector<wgma::pml::data>  pmlvec;
@@ -279,8 +279,8 @@ int main(int argc, char *argv[]) {
     std::map<std::string, wgma::bc::type> scatt_bcs;
     scatt_bcs["scatt_bnd"] = wgma::bc::type::PEC;
 
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs, alphaPMLx,
-                                            alphaPMLy, scatt_data);
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
+                                            {alphaPMLx,alphaPMLy}, scatt_data);
     
     //materials in which we would like to evaluate the solution
     const std::string probeMats[] = {"source_clad_right", "source_core_right"};
@@ -340,7 +340,7 @@ SetupSolver(const CSTATE target,const int neigenpairs,
     constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_REL;
     constexpr EPSWhich eps_which = EPSWhich::EPS_TARGET_REAL;
     
-    constexpr Precond pc = Precond::LU;
+    constexpr PC pc = PC::LU;
     constexpr KSPSolver linsolver = KSPSolver::PREONLY;
     constexpr STATE ksp_rtol = -1;//PETSC_DECIDE
     constexpr STATE ksp_atol = -1;//PETSC_DECIDE
@@ -547,7 +547,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
       std::cout<<"running source "<<isol+1<<" out of "<<nsols<<std::endl;
       src_an.LoadSolution(sources[isol]);
       auto beta = std::sqrt(src_an.GetEigenvalues()[isol]);
-      wgma::scattering::LoadSource(scatt_mesh, src);
+      wgma::scattering::LoadSource1D(scatt_mesh, src);
       wgma::scattering::SetPropagationConstant(scatt_mesh, beta);
       
       if(firstrun){

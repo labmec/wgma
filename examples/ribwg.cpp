@@ -162,7 +162,7 @@ int main(int argc, char *argv[]) {
 
   wgma::cmeshtools::PhysicalData data;
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, matmap, bcmap,
-                                          alphaPML, alphaPML,
+                                          {alphaPML, alphaPML},
                                           data);
   /*
    The problem uses an H1 approximation space for the longitudinal component 
@@ -289,7 +289,7 @@ SetupSolver(const int neigenpairs, const CSTATE target,
     constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_REL;
     constexpr EPSWhich eps_which = EPSWhich::EPS_TARGET_REAL;
     
-    constexpr Precond pc = Precond::LU;
+    constexpr PC pc = PC::LU;
     constexpr KSPSolver linsolver = KSPSolver::PREONLY;
     constexpr STATE ksp_rtol = -1;//PETSC_DECIDE
     constexpr STATE ksp_atol = -1;//PETSC_DECIDE

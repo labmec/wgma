@@ -8,7 +8,8 @@
 #include <tpzgeoblend.h>
 #include <TPZVTKGeoMesh.h>
 #include <TPZGmshReader.h>
-
+#include <tpzchangeel.h>
+#include <TPZParallelUtils.h>
 #include <fstream>
 
 void wgma::gmeshtools::PrintGeoMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
@@ -627,27 +628,40 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
   const int pmlDim,
   const int pmlId,
   const std::set<int> &volmats,
-  const REAL boundPosX, const REAL boundPosY)
+  const REAL boundPosX, const REAL boundPosY, const REAL boundPosZ)
 {
   TPZGeoEl * closestEl = nullptr;
   REAL dist = 1e16;
-  for(auto &currentEl : gmesh->ElementVec()){
+
+  const int nel = gmesh->NElements();
+  std::mutex mymut;
+  pzutils::ParallelFor(0, nel, [&](int iel){
+    auto currentEl = gmesh->Element(iel);
     if ( !currentEl ||
          currentEl->NSubElements() > 0  ||
          currentEl->Dimension() != pmlDim ||
-         volmats.count(currentEl->MaterialId()) == 0) continue;
+         volmats.count(currentEl->MaterialId()) == 0) {
+      //return from lambda, not from function
+      return;
+    }
     TPZVec<REAL> qsi(pmlDim,-1);
     const int largerSize = currentEl->NSides() - 1;
     currentEl->CenterPoint(largerSize, qsi);
     TPZVec<REAL> xCenter(3,-1);
     currentEl->X(qsi, xCenter);
-    const REAL currentDist = (xCenter[0]-boundPosX)*(xCenter[0]-boundPosX) +
-      (xCenter[1]-boundPosY)*(xCenter[1]-boundPosY);
+    const REAL currentDist =
+      (xCenter[0]-boundPosX)*(xCenter[0]-boundPosX) +
+      (xCenter[1]-boundPosY)*(xCenter[1]-boundPosY) +
+      (xCenter[2]-boundPosZ)*(xCenter[2]-boundPosZ);
     if(currentDist < dist){
-      dist = currentDist;
-      closestEl = currentEl;
+      std::lock_guard lock(mymut);
+      //just to avoid race conditions, let us check again
+      if(currentDist < dist){
+        dist = currentDist;
+        closestEl = currentEl;
+      }
     }
-  }
+  });
 
   if(!closestEl){
     return std::nullopt;
@@ -661,17 +675,38 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
                                const std::set<int> pmlId,
                                const wgma::pml::type type,
                                REAL &boundPosX, REAL &dX,
-                               REAL &boundPosY, REAL &dY)
+                               REAL &boundPosY, REAL &dY,
+                               REAL &boundPosZ, REAL &dZ)
 {
-  //let us find the (xmin,xmax) and (ymin,ymax) of the PML region
-  REAL xMax = -1e20, xMin = 1e20, yMax = -1e20, yMin = 1e20;
-  for (auto geo : gmesh->ElementVec()){
+  //let us find the (xmin,xmax), (ymin,ymax), (zmin, zmax) of the PML region
+  REAL xMax = -1e20, xMin = 1e20,
+    yMax = -1e20, yMin = 1e20,
+    zMax = -1e20, zMin = 1e20;
+  std::set<int64_t> visited_nodes;
+
+  std::mutex pos_mut, visited_nodes_mut;
+  const auto nel = gmesh->NElements();
+  pzutils::ParallelFor(0, nel, [&](int iel){
+    auto geo = gmesh->Element(iel);
     if (geo && pmlId.count(geo->MaterialId()) != 0) {
+      const int ncornernodes = geo->NCornerNodes();
       for (int iNode = 0; iNode < geo->NCornerNodes(); ++iNode) {
         TPZManVector<REAL, 3> co(3);
-        geo->Node(iNode).GetCoordinates(co);
+        const auto node_idx = geo->NodeIndex(iNode);
+
+        {
+          std::lock_guard lock(visited_nodes_mut);
+          if(visited_nodes.count(node_idx)){continue;}
+          else {visited_nodes.insert(node_idx);}
+        }
+        
+        const auto& node = geo->Node(iNode);
+        node.GetCoordinates(co);
+        
         const REAL &xP = co[0];
         const REAL &yP = co[1];
+        const REAL &zP = co[2];
+        std::lock_guard lock(pos_mut);
         if (xP > xMax) {
           xMax = xP;
         }
@@ -684,35 +719,70 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
         if (yP < yMin) {
           yMin = yP;
         }
+        if (zP > zMax) {
+          zMax = zP;
+        }
+        if (zP < zMin) {
+          zMin = zP;
+        }
       }
     }
-  }
+  });
 
 
   //now we compute xBegin, yBegin, attx, atty and d for the material ctor
   const bool attx = wgma::pml::attx(type);
   const bool atty = wgma::pml::atty(type);
+  const bool attz = wgma::pml::attz(type);
   
-  REAL xBegin{-1}, yBegin{-1};
+  REAL xBegin{-1}, yBegin{-1}, zBegin{-1};
   if(attx){
     const int xdir = wgma::pml::xinfo(type);
     dX = xMax - xMin;
     xBegin = xdir > 0 ? xMin : xMax;
-    boundPosX = xBegin;
-    boundPosY = (yMax + yMin)/2;
   }
 
   if(atty){
     const int ydir = wgma::pml::yinfo(type);
     dY = yMax - yMin;
     yBegin = ydir > 0 ? yMin : yMax;
-    boundPosX = (xMax + xMin)/2;
-    boundPosY = yBegin;
   }
 
-  if(attx && atty){
+  if(attz){
+    const int zdir = wgma::pml::zinfo(type);
+    dZ = zMax - zMin;
+    zBegin = zdir > 0 ? zMin : zMax;
+  }
+  
+  if(attx && atty && attz){
     boundPosX = xBegin;
     boundPosY = yBegin;
+    boundPosZ = zBegin;
+  }
+  else if(attx && atty){
+    boundPosX = xBegin;
+    boundPosY = yBegin;
+    boundPosZ = (zMin + zMax)/2;
+  }else if(attx && attz){
+    boundPosX = xBegin;
+    boundPosY = (yMin + yMax)/2;
+    boundPosZ = zBegin;
+  }else if(atty && attz){
+    boundPosX = (xMin + xMax)/2;
+    boundPosY = yBegin;
+    boundPosZ = zBegin;
+  }else if(attx){
+    boundPosX = xBegin;
+    boundPosY = (yMax + yMin)/2;
+    boundPosZ = (zMax + zMin)/2;
+  }else if(atty){
+    boundPosX = (xMax + xMin)/2;
+    boundPosY = yBegin;
+    boundPosZ = (zMax + zMin)/2;
+  }else if(attz){
+    boundPosX = (xMax + xMin)/2;
+    boundPosY = (yMax + yMin)/2;
+    boundPosZ = zBegin;
   }
 }
 
@@ -740,24 +810,6 @@ wgma::gmeshtools::FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh> gmesh,
   }
   
   return std::nullopt;
-}
-
-void StoreNeighboursAndDeleteEl(TPZGeoEl *gel, TPZGeoMesh* gmesh, bool skip_last_side,
-                                TPZVec<TPZGeoElSide> &neighs){
-  //auxiliary function used in:
-  //SetExactArcRepresentation and SetExactCylinderRepresentation
-  //skip last side: for 1D elements in 2D meshes(or 2D elements in 3D meshes),
-  //we want ALL the neighbours
-  //for 2D elements in 2D meshes, we skip the last side
-  const int diff = skip_last_side ? 1 : 0;
-  auto nsides = gel->NSides() - diff;
-  neighs.Resize(nsides);
-  for(int i = 0; i < nsides; i++){
-    neighs[i] = gel->Neighbour(i);
-  }
-  //now we delete the element and its connectivities
-  gmesh->DeleteElement(gel);
-  gel = nullptr;//just to be on the safeside
 }
 
 void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
@@ -810,32 +862,10 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
       const REAL yc = circles[arc_pos].m_yc;
       const REAL zc = circles[arc_pos].m_zc;
       
-      
-      TPZManVector<REAL,3> x1(3,0), x2(3,0), x3(3,0);
-        
-      el->Node(0).GetCoordinates(x1);
-      el->Node(1).GetCoordinates(x2);
+      auto *arc =
+        TPZChangeEl::ChangeToArc3D(gmesh.operator->(), el->Index(), {xc,yc,zc}, r);
 
-      x3 = CreateMidNode(x1, x2, r, xc, yc, zc);
-        
-      const auto nodeid = gmesh->NodeVec().AllocateNewElement();
-      gmesh->NodeVec()[nodeid].Initialize(x3,*gmesh);
-      TPZManVector<int64_t,3> nodesIdVec{el->Node(0).Id(), el->Node(1).Id(), nodeid};
-
-      //we store the first neighbour of each side of the element to be deleted
-      constexpr bool skip_side_arc{false};
-      StoreNeighboursAndDeleteEl(el, gmesh.operator->(), skip_side_arc, neighs);
-        
-      //insert new element on the mesh
-      auto arc = new TPZGeoElRefPattern<pzgeom::TPZArc3D>(nodesIdVec, matid, *gmesh);
-      //insert connectivities
-      for(int i = 0; i< neighs.size();i++){
-        TPZGeoElSide gelside(arc,i);
-        neighs[i].SetConnectivity(gelside);
-      }
-        
-
-      /**now we need to replace each neighbour of a blend element,
+      /**now we need to replace each neighbour by a blend element,
          so it can be deformed accordingly*/
       TPZGeoElSide gelside(arc,arc->NSides()-1);
       //now we iterate through all the neighbours of the linear side
@@ -850,49 +880,13 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
       for(auto neighbour : all_neighs){ 
         const auto neigh_side = neighbour.Side();
         auto neigh_el = neighbour.Element();
-
         /*let us take into account the possibility that
-          one triangle might be neighbour of two arcs
-         */
-        TPZGeoEl *new_neigh{nullptr};
+          one triangle might be neighbour of two cylinders
+        */
         if(!neigh_el->IsGeoBlendEl()){
-          const auto neigh_matid = neigh_el->MaterialId();
-          const auto neigh_nnodes = neigh_el->NNodes();
-          TPZManVector<int64_t,4> neigh_nodes(neigh_nnodes,-1);
-          //lets copy all the nodes
-          for(int in = 0; in < neigh_nnodes; in++){
-            neigh_nodes[in] = neigh_el->Node(in).Id();
-          }
-          
-          const auto neigh_type = neigh_el->Type();
-
-          constexpr bool skip_side_neigh{true};
-          StoreNeighboursAndDeleteEl(neigh_el, gmesh.operator->(),
-                                     skip_side_neigh, neighs);
-          
-          //create new element
-          if(neigh_type == MElementType::ETriangle){
-            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
-              pzgeom::TPZGeoTriangle>>(neigh_nodes, neigh_matid,*gmesh);
-          }else if(neigh_type == MElementType::EQuadrilateral){
-            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
-              pzgeom::TPZGeoQuad>>(neigh_nodes, neigh_matid,*gmesh);
-          }
-          //insert connectivities
-          for(int i = 0; i<neighs.size();i++){
-            TPZGeoElSide mygelside(new_neigh,i);
-            neighs[i].SetConnectivity(mygelside);
-          }
-          //insert last remaining connectivity
-          {
-            TPZGeoElSide mygelside(new_neigh, new_neigh->NSides()-1);
-            mygelside.SetConnectivity(mygelside);
-          }
-        }else{
-          new_neigh = neigh_el;
+          const auto neigh_index = neigh_el->Index();
+          TPZChangeEl::ChangeToGeoBlend(gmesh.operator->(), neigh_index);
         }
-        new_neigh->SetNeighbourForBlending(neigh_side);
-        new_neigh->BuildBlendConnectivity();
       }
     }
   }
@@ -935,51 +929,8 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
       TPZManVector<REAL,3> xc = {cyldata.m_xc,cyldata.m_yc,cyldata.m_zc};
       TPZManVector<REAL,3> axis = {cyldata.m_xaxis, cyldata.m_yaxis,cyldata.m_zaxis};
 
-      const auto nnodes = el->NNodes();
-
-      auto SetCylData = [xc,r,axis,gmesh](auto &cyl){
-        cyl.SetOrigin(xc, r);
-        cyl.SetCylinderAxis(axis);
-        cyl.ComputeCornerCoordinates(*gmesh);
-      };
-
-      
-      TPZManVector<int64_t,4> nodesIdVec(nnodes, 0);
-      for(auto in = 0; in < nnodes; in ++){nodesIdVec[in] = el->Node(in).Id();}
-
-      //we store the first neighbour of each side of the element to be deleted
-      constexpr bool skip_side_cylinder{false};
-      const auto eltype = el->Type();
-      StoreNeighboursAndDeleteEl(el, gmesh.operator->(), skip_side_cylinder, neighs);
-        
-      //insert new element on the mesh
-      TPZGeoEl* cylinder = nullptr;
-      if(eltype == ETriangle){
-          auto refel =
-            new TPZGeoElRefPattern<pzgeom::TPZCylinderMap<pzgeom::TPZGeoTriangle>>(nodesIdVec, matid, *gmesh);
-          SetCylData(refel->Geom());
-          cylinder = refel;
-        }else if (eltype == EQuadrilateral){
-          auto refel =
-            new TPZGeoElRefPattern<pzgeom::TPZCylinderMap<pzgeom::TPZGeoQuad>>(nodesIdVec, matid, *gmesh);
-          SetCylData(refel->Geom());
-          cylinder = refel;
-        }else{
-          PZError<<__PRETTY_FUNCTION__
-                 <<"\nError: unexpected element type."
-                 <<"\n id: "<<el->Id()<<" type: "<<el->TypeName()
-                 <<"\nAborting..."<<std::endl;
-          DebugStop();
-        }
-      
-      
-      
-      //insert connectivities
-      for(int i = 0; i< neighs.size();i++){
-        TPZGeoElSide gelside(cylinder,i);
-        neighs[i].SetConnectivity(gelside);
-      }
-
+      auto cyl =
+        TPZChangeEl::ChangeToCylinder(gmesh.operator->(), el->Index(), xc, axis, r);
 
       //let us store all the neighbours
       std::set<TPZGeoElSide> all_neighs;
@@ -987,16 +938,20 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
       std::set<TPZGeoEl*> neigh_els;
 
 
-      for(auto is = cylinder->NNodes(); is < cylinder->NSides(); is++){
+      for(auto is = cyl->NNodes(); is < cyl->NSides(); is++){
         /**now we need to replace each neighbour with a blend element,
            so it can be deformed accordingly*/
-        TPZGeoElSide gelside(cylinder,is);
+        TPZGeoElSide gelside(cyl,is);
         //now we iterate through all the neighbours of the given side
         TPZGeoElSide neighbour = gelside.Neighbour();
       
         while(neighbour.Exists() && neighbour != gelside){
           auto neigh_el = neighbour.Element();
-          //let us skip neighbours that are in the cylinder wall as well
+          /*
+            let us skip:
+             1. neighbours that have been already identified (will be in  neigh_els)
+             2. neighbours that are in the cylinder wall as well
+          */
           auto check_el = neigh_els.find(neigh_el) == neigh_els.end();
           if(check_el && neigh_el->MaterialId() != matid){
             all_neighs.insert(neighbour);
@@ -1007,83 +962,20 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
       }
 
       
-      //let us replace all the neighbours
+      //let us replace all the matching neighbours
       for(auto neighbour : all_neighs){ 
         const auto neigh_side = neighbour.Side();
         auto neigh_el = neighbour.Element();
-        
-        const auto neigh_matid = neigh_el->MaterialId();
-        const auto neigh_id = neigh_el->Id();
         /*let us take into account the possibility that
           one triangle might be neighbour of two cylinders
          */
-        TPZGeoEl *new_neigh{nullptr};
         if(!neigh_el->IsGeoBlendEl()){
-          const auto neigh_matid = neigh_el->MaterialId();
-          const auto neigh_nnodes = neigh_el->NNodes();
-          TPZManVector<int64_t,4> neigh_nodes(neigh_nnodes,-1);
-          //lets copy all the nodes
-          for(int in = 0; in < neigh_nnodes; in++){
-            neigh_nodes[in] = neigh_el->Node(in).Id();
-          }
-          
-          const auto neigh_type = neigh_el->Type();
-
-          //if the element is 2D, then we need to check neighbours
-          //even on its highest dimensional side
-          //for 3D els, we check up to faces
-          const bool skip_side_neigh = neigh_el->Dimension() == 3 ? true : false;
-          StoreNeighboursAndDeleteEl(neigh_el, gmesh.operator->(),
-                                     skip_side_neigh, neighs);
-          
-          //create new element
-          switch(neigh_type){
-          case MElementType::ETriangle:
-            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
-              pzgeom::TPZGeoTriangle>>(neigh_nodes, neigh_matid,*gmesh);
-            break;
-          case MElementType::EQuadrilateral:
-            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
-              pzgeom::TPZGeoQuad>>(neigh_nodes, neigh_matid,*gmesh);
-            break;
-          case MElementType::ETetraedro:
-            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
-              pzgeom::TPZGeoTetrahedra>>(neigh_nodes, neigh_matid,*gmesh);
-            break;
-          case MElementType::ECube:
-            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
-              pzgeom::TPZGeoCube>>(neigh_nodes, neigh_matid,*gmesh);
-            break;
-          case MElementType::EPrisma:
-            new_neigh = new TPZGeoElRefPattern<pzgeom::TPZGeoBlend<
-              pzgeom::TPZGeoPrism>>(neigh_nodes, neigh_matid,*gmesh);
-            break;
-          default:
-            PZError<<__PRETTY_FUNCTION__
-                   <<"\nError: unexpected element type."
-                   <<"\n id: "<<neigh_el->Id()<<" type: "<<neigh_el->TypeName()
-                   <<"\nAborting..."<<std::endl;
-          }
-          
-          //insert connectivities
-          for(int i = 0; i<neighs.size();i++){
-            TPZGeoElSide mygelside(new_neigh,i);
-            neighs[i].SetConnectivity(mygelside);
-          }
-          //insert last remaining connectivity
-          if(skip_side_neigh){
-            TPZGeoElSide mygelside(new_neigh, new_neigh->NSides()-1);
-            mygelside.SetConnectivity(mygelside);
-          }
-          blend_neighs.insert(new_neigh);
+          const auto neigh_index = neigh_el->Index();
+          TPZChangeEl::ChangeToGeoBlend(gmesh.operator->(), neigh_index);
         }
-      }
-    }
-  }
-
-  for(auto *el : blend_neighs){
-    el->BuildBlendConnectivity();
-  }
+      }//for(auto neighbour : all_neighs)
+    }//if(is_cylinder)
+  }//for(auto el : gmesh->ElementVec())
   
   for(auto cylinder : found_cylinders){
     if(!cylinder.second){

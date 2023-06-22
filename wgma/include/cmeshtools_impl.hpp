@@ -9,6 +9,7 @@
 #include <Electromagnetics/TPZMatPML.h>
 #include <TPZMatSingleSpace.h>
 #include <TPZMatCombinedSpaces.h>
+#include <TPZSimpleTimer.h>
 template<class MATVOL>
 std::map<int,int>
 wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::data data,
@@ -17,11 +18,15 @@ wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::data data,
                                           TPZAutoPointer<TPZCompMesh> cmesh)
 {
 
-  REAL boundPosX{0}, boundPosY{0}, dX{0}, dY{0};
+  REAL boundPosX{0}, boundPosY{0}, boundPosZ{0}, dX{0}, dY{0}, dZ{0};
+
+
 
 
   wgma::gmeshtools::FindPMLWidth(gmesh, data.ids, data.t,
-                                 boundPosX, dX, boundPosY, dY);
+                                 boundPosX, dX,
+                                 boundPosY, dY,
+                                 boundPosZ, dZ);
   
   
 
@@ -30,9 +35,10 @@ wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::data data,
     //check if neighbour has been set already, otherwise find it
     const int neigh_mat_id  = [&]{
       if(data.neigh.count(id) == 0){
-        const auto pmldim = cmesh->Dimension();
+        const auto pmldim = data.dim;
         const auto neigh_mat_res =
-          gmeshtools::FindPMLNeighbourMaterial(gmesh, pmldim, id, volmats, boundPosX, boundPosY);
+          gmeshtools::FindPMLNeighbourMaterial(gmesh, pmldim, id, volmats,
+                                               boundPosX, boundPosY, boundPosZ);
         if(neigh_mat_res.has_value() == false){
           PZError<<__PRETTY_FUNCTION__
                  <<"Could not find neighbouring material. Aborting...\n";
@@ -63,9 +69,20 @@ wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::data data,
 
     const bool attx = wgma::pml::attx(data.t);
     const bool atty = wgma::pml::atty(data.t);
+    const bool attz = wgma::pml::attz(data.t);
   
     if(attx) pmlMat->SetAttX(boundPosX, data.alphax, dX);
     if(atty) pmlMat->SetAttY(boundPosY, data.alphay, dY);
+    if(attz) pmlMat->SetAttZ(boundPosZ, data.alphaz, dZ);
+
+    // std::cout<<"pml";
+    // for(auto i: data.ids){std::cout<<'\t'<<i;}
+    // std::cout<<"\ntype "<<wgma::pml::to_string(data.t)
+    //          <<"\nattx "<<attx<<" dx "<<dX<<" bx "<<boundPosX<<" ax "<<data.alphax
+    //          <<"\natty "<<atty<<" dy "<<dY<<" by "<<boundPosY<<" ay "<<data.alphay
+    //          <<"\nattz "<<attz<<" dz "<<dZ<<" bz "<<boundPosZ<<" az "<<data.alphaz
+    //          <<std::endl;
+      
     cmesh->InsertMaterialObject(pmlMat);
   }
   
