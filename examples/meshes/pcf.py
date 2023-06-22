@@ -1,9 +1,9 @@
-from math import ceil, sqrt, pi,cos,sin
+from math import ceil, sqrt, pi, cos, sin
 import os
 import sys
 import csv
 import gmsh
-from utils.gmsh import(
+from utils.gmsh import (
     CircleData,
     create_circle,
     apply_boolean_operation,
@@ -17,11 +17,11 @@ nclad = 1.444024
 nair = 1
 
 
-d_center = 6.75 #distance from each hole to center
+d_center = 6.75  # distance from each hole to center
 r_hole = 2.5  # air radius
 # distance from center to end of cladding region(inner circle)
-r_clad = 2*d_center + 3.5 * wl/nclad
-d_pml = 1.75*wl/nclad  # holeindrical pml width
+r_clad = 3*d_center + 3.5 * wl/nclad
+d_pml = 4*wl/nclad  # holeindrical pml width
 nel_l = 2  # number of elements / wavelength
 # element sizes are different in cladding or air
 el_clad = (wl/nclad)/nel_l  # el size in cladding
@@ -64,15 +64,15 @@ pml.yc = 0
 pml.zc = 0
 pml.radius = r_clad + d_pml
 create_circle(pml, el_clad)
-#first we cut the pml from the cladding
-tools = [(2,t) for t in clad.tag]
-objs = [(2,t) for t in pml.tag]
+# first we cut the pml from the cladding
+tools = [(2, t) for t in clad.tag]
+objs = [(2, t) for t in pml.tag]
 pml_map = apply_boolean_operation(objs, tools, "cut", False, el_clad)
 remap_tags([pml], pml_map)
 
-#now we cut the air holes from the cladding
-tools = [(2,t) for a in airvec for t in a.tag]
-objs = [(2,t) for t in clad.tag]
+# now we cut the air holes from the cladding
+tools = [(2, t) for a in airvec for t in a.tag]
+objs = [(2, t) for t in clad.tag]
 clad_map = apply_boolean_operation(objs, tools, "cut", False, el_clad)
 remap_tags([clad], clad_map)
 
@@ -80,8 +80,7 @@ gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
 
-
-small_domains = sum([air.tag for air in airvec],[])
+small_domains = sum([air.tag for air in airvec], [])
 dim = 2
 field_ct = 1
 gmsh.model.mesh.field.add("Constant", field_ct)
@@ -99,12 +98,13 @@ gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
 domain_physical_ids_2d = {
     "air": 1,
     "cladding": 2,
-    "pml_rp":3
+    "pml_rp": 3
 }
 domain_physical_ids_1d = {"modal_bnd": 11}
 domain_physical_ids_0d = {}
 
-domain_physical_ids = [domain_physical_ids_0d, domain_physical_ids_1d, domain_physical_ids_2d]
+domain_physical_ids = [domain_physical_ids_0d,
+                       domain_physical_ids_1d, domain_physical_ids_2d]
 
 dim = 2
 all_domains = gmsh.model.get_entities(dim)
@@ -117,7 +117,9 @@ domain_regions = {"air": small_domains,
                   "modal_bnd": all_bnds
                   }
 
-#now we ensure that we have data of all circle lines so we can use non linear mapping on these els
+# now we ensure that we have data of all circle lines so we can use non linear mapping on these els
+
+
 def GetCircLine(domain_1, domain_2):
     domain_1_bnd = [t for _, t in gmsh.model.get_boundary(
         [(2, tag) for tag in domain_1],
@@ -128,9 +130,10 @@ def GetCircLine(domain_1, domain_2):
     circ_bnd = [t for t in domain_1_bnd if t in domain_2_bnd]
     return circ_bnd
 
+
 for air in airvec:
-    air.lineid = GetCircLine(air.tag,clad.tag)
-clad.lineid = GetCircLine(clad.tag,pml.tag)
+    air.lineid = GetCircLine(air.tag, clad.tag)
+clad.lineid = GetCircLine(clad.tag, pml.tag)
 all_circles_data = airvec+[clad]
 
 pml.lineid = all_bnds
@@ -148,15 +151,16 @@ def add_circ_regions(circdata, physical_ids, regions):
     physical_ids1d = physical_ids[1]
     for circ in circdata:
         name = "circ"+str(new_physical_id)
-        assert(name not in regions)
+        assert (name not in regions)
         physical_ids1d[name] = new_physical_id
         regions[name] = circ.lineid
         circ.matid = new_physical_id
         new_physical_id += 1
-        
+
+
 add_circ_regions(all_circles_data, domain_physical_ids, domain_regions)
 
-#now we add pml to all_circles_data
+# now we add pml to all_circles_data
 all_circles_data.append(pml)
 generate_physical_ids(domain_physical_ids, domain_regions)
 
