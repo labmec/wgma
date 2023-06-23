@@ -51,6 +51,14 @@ add_pz_target(
 target_link_libraries(sf3d PUBLIC wgma)  
 
 add_pz_target(
+  NAME pcf
+  SOURCES pcf.cpp
+  FILES meshes/pcf.msh meshes/pcf_circdata.csv
+  )
+target_link_libraries(pcf PUBLIC wgma)  
+
+
+add_pz_target(
   NAME aniso_pcf
   SOURCES aniso_pcf.cpp
   FILES meshes/pcf.msh meshes/pcf_circdata.csv
