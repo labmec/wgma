@@ -62,8 +62,8 @@ int main(int argc, char *argv[]) {
   // polynomial order to be used in the modal analysis
   constexpr int pOrder2D{2};
   
-  constexpr STATE modal_alphaPMLx{0.024};
-  constexpr STATE modal_alphaPMLy{0.024};
+  constexpr STATE modal_alphaPMLx{0.006};
+  constexpr STATE modal_alphaPMLy{0.006};
   /******************
    * solver options *
    ******************/
@@ -73,9 +73,9 @@ int main(int argc, char *argv[]) {
   const int nThreadsDebug = std::thread::hardware_concurrency();
   // how to sort eigenvaluesn
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetMagnitude};
-  constexpr int nEigenpairs{2};
-  constexpr int krylovDim{20};
-  constexpr CSTATE target = n_clad*1i;
+  constexpr int nEigenpairs{3};
+  constexpr int krylovDim{30};
+  constexpr CSTATE target = 1.43464883801848*1i;
 
   constexpr bool computeVectors{true};
   /*********************
@@ -113,9 +113,6 @@ int main(int argc, char *argv[]) {
     Whether to use a non-linear representation for cylinders
    */
   constexpr bool arc3D{true};
-
-  //! Whether to use a direct solver
-  constexpr bool direct{false};
 
   constexpr bool printGMesh{false};
 
@@ -309,7 +306,8 @@ int main(int argc, char *argv[]) {
       "Ez_real",
       "Ez_abs",
       "Et_real",
-      "Et_abs"};
+      "Et_abs",
+      "Material"};
     auto vtk = TPZVTKGenerator(modal_cmesh[0], fvars, plotfile, vtkRes);
     auto ev = analysis.GetEigenvalues();
     for (int isol = 0; isol < ev.size(); isol++) {
