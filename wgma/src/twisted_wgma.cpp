@@ -71,15 +71,14 @@ namespace wgma::materials{
     const auto &a = this->GetAlpha();
     mat.Redim(3,3);
     mat.Identity();
-    mat.Put(0,2, -a*v);
-    mat.Put(1,2,  a*u);
+    mat.Put(0,2,  a*v);
+    mat.Put(1,2, -a*u);
   }
 
   void TwistedWgma::Solution(
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec,
       int var,TPZVec<CSTATE> &solout)
   {
-    
     TPZFNMatrix<3,CSTATE> sol(3,1), tsol;
     sol.Put(0,0,datavec[fHCurlMeshIndex].sol[0][0]);
     sol.Put(1,0,datavec[fHCurlMeshIndex].sol[0][1]);
@@ -133,7 +132,7 @@ namespace wgma::materials{
     }
   }
 
-
+#ifdef CUSTOMPML
   void TwistedWgmaPML::GetPermeability([[maybe_unused]] const TPZVec<REAL> &x,
                                        TPZFMatrix<CSTATE> &ur) const
   {
@@ -190,5 +189,6 @@ namespace wgma::materials{
     t.Multiply(tmp,er);
     
   }
+#endif
   
 };

@@ -3,6 +3,9 @@
 
 #include <Electromagnetics/TPZAnisoWgma.h>
 #include <Electromagnetics/TPZCylindricalPML.h>
+
+// #define CUSTOMPML
+
 namespace wgma::materials{
     class TwistedWgma : public TPZAnisoWgma{
     public:
@@ -31,6 +34,7 @@ namespace wgma::materials{
         STATE m_alpha{1};
     };
 
+#ifdef CUSTOMPML
     class TwistedWgmaPML : public TPZCombinedSpacesCylindricalPML<TwistedWgma>{
     public:
         using TPZCombinedSpacesCylindricalPML<TwistedWgma>::TPZCombinedSpacesCylindricalPML;
@@ -39,5 +43,8 @@ namespace wgma::materials{
         //! Gets the permittivity of the material
         void GetPermittivity(const TPZVec<REAL> &x,TPZFMatrix<CSTATE> &er) const override;
     };
+#else
+    using TwistedWgmaPML=TPZCombinedSpacesCylindricalPML<TwistedWgma>;
+#endif
 };
 #endif /* _TWISTED_WGMA_H_ */
