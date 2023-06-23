@@ -10,18 +10,19 @@ from utils.gmsh import (
     remap_tags,
     generate_physical_ids)
 
-wl = 1.55  # wavelength (in microns)
+wl = 1.45  # wavelength (in microns)
 
 # refractive indices
-nclad = 1.444024
+nclad = 1.45#44024
 nair = 1
 
 
 d_center = 6.75  # distance from each hole to center
 r_hole = 2.5  # air radius
 # distance from center to end of cladding region(inner circle)
-r_clad = 3*d_center + 3.5 * wl/nclad
-d_pml = 4*wl/nclad  # holeindrical pml width
+r_clad = 3*d_center + 3 * wl/nclad
+d_pml = 6*wl/nclad  # holeindrical pml width
+print("rclad {} rtrunc {}".format(r_clad,r_clad+d_pml))
 nel_l = 2  # number of elements / wavelength
 # element sizes are different in cladding or air
 el_clad = (wl/nclad)/nel_l  # el size in cladding
@@ -186,3 +187,4 @@ if __name__ == "__main__":
 
 gmsh.fltk.run()
 gmsh.finalize()
+
