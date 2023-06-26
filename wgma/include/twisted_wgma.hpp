@@ -4,7 +4,7 @@
 #include <Electromagnetics/TPZAnisoWgma.h>
 #include <Electromagnetics/TPZCylindricalPML.h>
 
-// #define CUSTOMPML
+#define CUSTOMPML
 
 namespace wgma::materials{
     class TwistedWgma : public TPZAnisoWgma{

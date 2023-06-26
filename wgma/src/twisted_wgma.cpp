@@ -71,8 +71,8 @@ namespace wgma::materials{
     const auto &a = this->GetAlpha();
     mat.Redim(3,3);
     mat.Identity();
-    mat.Put(0,2,  a*v);
-    mat.Put(1,2, -a*u);
+    mat.Put(0,2, -a*v);
+    mat.Put(1,2, a*u);
   }
 
   void TwistedWgma::Solution(
@@ -85,6 +85,10 @@ namespace wgma::materials{
     sol.Put(2,0,datavec[fH1MeshIndex].sol[0][0]);
     TPZFNMatrix<9,CSTATE> mat, tmat;
     TransformationMatrix(mat,datavec[0].x);
+    auto val = mat.Get(0,2);
+    mat.Put(0,2,-val);
+    mat.Get(0,1);
+    mat.Put(0,1,-val);
     mat.Transpose(&tmat);
     tmat.Multiply(sol, tsol);
 
