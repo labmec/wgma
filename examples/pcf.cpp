@@ -15,10 +15,8 @@ This target performs the modal analysis of a photonic crystal fiber
 #include <pzcmesh.h>                     //for TPZCompMesh
 #include <pzgmesh.h>                     //for TPZGeoMesh
 #include <pzlog.h>                       //for TPZLogger
-#include <TPZElectromagneticConstants.h> //for pzelectromag::cZero
-#include <TPZQuadEigenSolver.h>        //for TPZQuadEigenSolver
+#include <TPZKrylovEigenSolver.h>        //for TPZQuadEigenSolver
 #include <TPZVTKGenerator.h>
-#include <TPZPardisoSolver.h>
 #include <post/solutionnorm.hpp>
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
 
