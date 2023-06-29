@@ -1,5 +1,6 @@
 #include "twisted_wgma.hpp"
 #include <TPZMaterialDataT.h>
+#include <cmath>
 namespace wgma::materials{
   //! Gets the equivalent permeability of the material
   void TwistedWgma::GetPermeability([[maybe_unused]] const TPZVec<REAL> &x,
@@ -85,10 +86,6 @@ namespace wgma::materials{
     sol.Put(2,0,datavec[fH1MeshIndex].sol[0][0]);
     TPZFNMatrix<9,CSTATE> mat, tmat;
     TransformationMatrix(mat,datavec[0].x);
-    auto val = mat.Get(0,2);
-    mat.Put(0,2,-val);
-    mat.Get(0,1);
-    mat.Put(0,1,-val);
     mat.Transpose(&tmat);
     tmat.Multiply(sol, tsol);
 
@@ -137,60 +134,112 @@ namespace wgma::materials{
   }
 
 #ifdef CUSTOMPML
-  void TwistedWgmaPML::GetPermeability([[maybe_unused]] const TPZVec<REAL> &x,
-                                       TPZFMatrix<CSTATE> &ur) const
-  {
-    TPZAnisoWgma::GetPermeability(x,ur);
-    CSTATE sr{1}, sz{1};
-    const auto r = sqrt(x[0]*x[0]+x[1]*x[1]);
-    const auto z = x[2];
-    ComputeSParameters(r,z,sr,sz);
-    const auto imagsr = sr.imag();
-    const auto sx = CSTATE(1. + 1i*imagsr*x[0]/r);
-    const auto sy = CSTATE(1. + 1i*imagsr*x[1]/r);
-    const auto dets = sx*sy*sz;
-    TPZFNMatrix<9,CSTATE> smat(3,3,0.), tmp(3,3,0.);
-    smat.PutVal(0,0,sx);
-    smat.PutVal(1,1,sy);
-    smat.PutVal(2,2,sz);
-    smat.Multiply(ur,tmp);
-    tmp.Multiply(smat,ur);
-    ur *= dets;
 
-    TPZFNMatrix<9,CSTATE> t, tt;
-    TransformationMatrix(t,x);
-    t.Transpose(&tt);
-    ur.Multiply(tt,tmp);
-    t.Multiply(tmp,ur);
-  }
-  //! Gets the equivalent permittivity of the material
-  void TwistedWgmaPML::GetPermittivity([[maybe_unused]] const TPZVec<REAL> &x,
-                                       TPZFMatrix<CSTATE> &er) const
+// #define CUSTOMPML2  
+  void TwistedWgmaPML::GetPermeability([[maybe_unused]] const TPZVec<REAL> &x_hel,
+                                       TPZFMatrix<CSTATE> &urmat) const
   {
+    const auto &u=x_hel[0];
+    const auto &v=x_hel[1];
+    const auto r = sqrt(u*u+v*v);
+    const auto alpha_pml = this->fAlphaMaxR;
+    const auto alpha = this->GetAlpha();
+    const auto &rmin = this->fPmlBeginR;
+    const auto &dr = this->fDR;
+    const auto sr = 1.- 1.i*alpha_pml * (r-rmin)*(r-rmin)/(dr*dr);
+    //integral of sr(r') from rmin to r
+    const auto rt = (3.-1.i*alpha_pml)*dr/3;
+    const auto phi = 2*std::atan(v/(u+r));
+    TPZFNMatrix<9,CSTATE> t1, t2;
+
+    auto RotationMatrix = [](TPZFMatrix<CSTATE> &mat, STATE theta){
+      mat.Redim(3,3);
+      mat.Put(0,0, std::cos(theta));
+      mat.Put(0,1,-std::sin(theta));
+      mat.Put(1,0, std::sin(theta));
+      mat.Put(1,1, std::cos(theta));
+      mat.Put(2,2,1);
+    };
+
+    /*
+      first we compute
+
+                   ( r sr/rt    0                          0              )
+     Tpml = R(phi) ( 0        rt/(r sr)             -alpha rt/sr          ) R(-phi)
+                   ( 0      -alpha rt/sr  r*(1+alpha*alpha*rt*rt)/(rt*sr) )
+     */
+    t1.Redim(3,3);
+    t1.Put(0,0, r*sr/rt);
+    t1.Put(1,1, rt/(r*sr));
+    t1.Put(1,2,-alpha*r/sr);
+    t1.Put(2,1,-alpha*r/sr);
+    t1.Put(2,2,r*(1+alpha*alpha*r*r)/(rt*sr));
+    RotationMatrix(t2,phi);
+
+    TPZAnisoWgma::GetPermeability(x_hel, urmat);
+    const auto ur = urmat.Get(0,0);
 
     
-    TPZAnisoWgma::GetPermittivity(x,er);
-    CSTATE sr{1}, sz{1};
-    const auto r = sqrt(x[0]*x[0]+x[1]*x[1]);
-    const auto z = x[2];
-    ComputeSParameters(r,z,sr,sz);
-    const auto imagsr = sr.imag();
-    const auto sx = CSTATE(1. + 1i*imagsr*x[0]/r);
-    const auto sy = CSTATE(1. + 1i*imagsr*x[1]/r);
-    const auto dets = sx*sy*sz;
-    TPZFNMatrix<9,CSTATE> smat(3,3,0.), tmp(3,3,0.);
-    smat.PutVal(0,0,sx);
-    smat.PutVal(1,1,sy);
-    smat.PutVal(2,2,sz);
-    smat.Multiply(er,tmp);
-    tmp.Multiply(smat,er);
-    er *= dets;
+    t2.Multiply(t1,urmat);
+    RotationMatrix(t2,-phi);
+    urmat.Multiply(t2,t1);
+    //now t1 is Tpml
+    urmat.Identity();
+    t1.SolveDirect(urmat,ELU);
+    urmat *= ur;
+  }
+  //! Gets the equivalent permittivity of the material
+  void TwistedWgmaPML::GetPermittivity([[maybe_unused]] const TPZVec<REAL> &x_hel,
+                                       TPZFMatrix<CSTATE> &ermat) const
+  {
+    const auto &u=x_hel[0];
+    const auto &v=x_hel[1];
+    const auto r = sqrt(u*u+v*v);
+    const auto alpha_pml = this->fAlphaMaxR;
+    const auto alpha = this->GetAlpha();
+    const auto &rmin = this->fPmlBeginR;
+    const auto &dr = this->fDR;
+    const auto sr = 1.- 1.i*alpha_pml * (r-rmin)*(r-rmin)/(dr*dr);
+    //integral of sr(r') from rmin to r
+    const auto rt = (3.-1.i*alpha_pml)*dr/3;
+    const auto phi = 2*std::atan(v/(u+r));
+    TPZFNMatrix<9,CSTATE> t1, t2;
 
-    TPZFNMatrix<9,CSTATE> t, tt;
-    TransformationMatrix(t,x);
-    t.Transpose(&tt);
-    er.Multiply(tt,tmp);
-    t.Multiply(tmp,er);
+    auto RotationMatrix = [](TPZFMatrix<CSTATE> &mat, STATE theta){
+      mat.Redim(3,3);
+      mat.Put(0,0, std::cos(theta));
+      mat.Put(0,1,-std::sin(theta));
+      mat.Put(1,0, std::sin(theta));
+      mat.Put(1,1, std::cos(theta));
+      mat.Put(2,2,1);
+    };
+
+    /*
+      first we compute
+
+                   ( r sr/rt    0                          0              )
+     Tpml = R(phi) ( 0        rt/(r sr)             -alpha rt/sr          ) R(-phi)
+                   ( 0      -alpha rt/sr  r*(1+alpha*alpha*rt*rt)/(rt*sr) )
+     */
+    t1.Redim(3,3);
+    t1.Put(0,0, r*sr/rt);
+    t1.Put(1,1, rt/(r*sr));
+    t1.Put(1,2,-alpha*r/sr);
+    t1.Put(2,1,-alpha*r/sr);
+    t1.Put(2,2,r*(1+alpha*alpha*r*r)/(rt*sr));
+    RotationMatrix(t2,phi);
+
+    TPZAnisoWgma::GetPermittivity(x_hel, ermat);
+    const auto er = ermat.Get(0,0);
+
+    
+    t2.Multiply(t1,ermat);
+    RotationMatrix(t2,-phi);
+    ermat.Multiply(t2,t1);
+    //now t1 is Tpml
+    ermat.Identity();
+    t1.SolveDirect(ermat,ELU);
+    ermat *= er;
     
   }
 #endif
