@@ -13,7 +13,7 @@ from utils.gmsh import (
 wl = 1.55  # wavelength (in microns)
 
 # refractive indices
-nclad = 1.44024
+nclad = 1.444024
 nair = 1
 
 
@@ -23,7 +23,7 @@ r_hole = 2.5  # air radius
 r_clad = 20
 d_pml = 10  # holeindrical pml width
 print("rclad {} rtrunc {}".format(r_clad, r_clad+d_pml))
-nel_l = 4  # number of elements / wavelength
+nel_l = 2  # number of elements / wavelength
 # element sizes are different in cladding or air
 el_clad = (wl/nclad)/nel_l  # el size in cladding
 el_air = (wl/nair)/nel_l  # el size in air
@@ -185,5 +185,5 @@ if __name__ == "__main__":
 
     gmsh.write(filename+".msh")
 
-gmsh.fltk.run()
+#gmsh.fltk.run()
 gmsh.finalize()
