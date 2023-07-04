@@ -31,6 +31,7 @@ complex curved structured meshes in NeoPZ.
 TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(std::string_view filename,
                                                const REAL scale);
 
+using namespace std::complex_literals;
 int main(int argc, char *argv[]) {
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
@@ -60,10 +61,10 @@ int main(int argc, char *argv[]) {
    *  fem options   *
    ******************/
   // polynomial order to be used in the modal analysis
-  constexpr int pOrder2D{2};
+  constexpr int pOrder2D{3};
   
-  constexpr STATE modal_alphaPMLx{0.006};
-  constexpr STATE modal_alphaPMLy{0.006};
+  constexpr STATE modal_alphaPMLx{0.8};
+  constexpr STATE modal_alphaPMLy{0.8};
   /******************
    * solver options *
    ******************/
@@ -72,10 +73,10 @@ int main(int argc, char *argv[]) {
   const int nThreads = std::thread::hardware_concurrency();
   const int nThreadsDebug = std::thread::hardware_concurrency();
   // how to sort eigenvaluesn
-  constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetMagnitude};
-  constexpr int nEigenpairs{3};
-  constexpr int krylovDim{30};
-  constexpr CSTATE target = 1.43464883801848*1i;
+  constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetImagPart};
+  constexpr int nEigenpairs{5};
+  constexpr int krylovDim{50};
+  constexpr CSTATE target = 1.4346483801848i;
 
   constexpr bool computeVectors{true};
   /*********************
