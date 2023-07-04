@@ -3,6 +3,7 @@
 #include "gmeshtools.hpp"
 #include "cmeshtools_impl.hpp"
 
+#include <TPZCutHillMcKee.h>
 #include <TPZSpStructMatrix.h>
 #include <TPZKrylovEigenSolver.h>
 #include <TPZQuadEigenSolver.h>
@@ -119,6 +120,7 @@ namespace wgma::wganalysis{
     m_cmesh_h1 = meshvec[1 + TPZWgma::H1Index()];
     m_cmesh_hcurl = meshvec[1 + TPZWgma::HCurlIndex()];
 
+    this->SetRenumber(new TPZCutHillMcKee());
     this->SetCompMeshInit(m_cmesh_mf.operator->(), reorder_eqs);
 
     TPZAutoPointer<TPZStructMatrix> strmtrx =
@@ -290,6 +292,7 @@ namespace wgma::wganalysis{
     m_cmesh_h1 = meshvec[1 + TPZAnisoWgma::H1Index()];
     m_cmesh_hcurl = meshvec[1 + TPZAnisoWgma::HCurlIndex()];
 
+    this->SetRenumber(new TPZCutHillMcKee());
     this->SetCompMeshInit(m_cmesh_mf.operator->(), reorder_eqs);
 
     TPZAutoPointer<TPZStructMatrix> strmtrx =
@@ -453,7 +456,8 @@ namespace wgma::wganalysis{
                                  const bool filter_bound) : m_cmesh(cmesh)
   {
     m_filter_bound = filter_bound;
-    
+
+    this->SetRenumber(new TPZCutHillMcKee());
     this->SetCompMeshInit(m_cmesh.operator->(),reorder_eqs);
 
     TPZAutoPointer<TPZStructMatrix> strmtrx =
