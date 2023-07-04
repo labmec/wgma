@@ -42,6 +42,7 @@ namespace wgma::materials{
         void GetPermeability(const TPZVec<REAL> &x,TPZFMatrix<CSTATE> &ur) const override;
         //! Gets the permittivity of the material
         void GetPermittivity(const TPZVec<REAL> &x,TPZFMatrix<CSTATE> &er) const override;
+        void ComputeCylindricalPMLMat(TPZFMatrix<CSTATE> &mat,const TPZVec<REAL> &x_hel) const;
     };
 #else
     using TwistedWgmaPML=TPZCombinedSpacesCylindricalPML<TwistedWgma>;

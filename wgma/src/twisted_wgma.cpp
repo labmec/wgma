@@ -1,6 +1,8 @@
 #include "twisted_wgma.hpp"
 #include <TPZMaterialDataT.h>
 #include <cmath>
+using namespace std::complex_literals;
+
 namespace wgma::materials{
   //! Gets the equivalent permeability of the material
   void TwistedWgma::GetPermeability([[maybe_unused]] const TPZVec<REAL> &x,
@@ -135,21 +137,45 @@ namespace wgma::materials{
 
 #ifdef CUSTOMPML
 
+
+  void TwistedWgmaPML::ComputeCylindricalPMLMat(TPZFMatrix<CSTATE> &mat,
+                                                const TPZVec<REAL> &x_hel) const
+  {
+    const auto &u=x_hel[0];
+    const auto &v=x_hel[1];
+    const STATE r = sqrt(u*u+v*v);
+    const CSTATE imag = 1i;
+    const CSTATE alpha_pml = this->fAlphaMaxR;
+    const CSTATE alpha = this->GetAlpha();
+    const auto &rmin = this->fPmlBeginR;
+    const auto &dr = this->fDR;
+    const CSTATE diffr = r-rmin;
+    const CSTATE sr = 1.- imag*alpha_pml * diffr*diffr/(dr*dr);
+    //integral of sr(r') frodm rmin to r
+    const CSTATE rt = r - imag*alpha_pml*diffr*diffr*diffr/(3*dr*dr);
+    const CSTATE art = alpha*rt;
+    const STATE phi = std::atan2(v,u);
+
+    /*
+      first we compute
+                                           T1
+                   ( r sr/rt    0                          0              )
+     Tpml = R(phi) ( 0        rt/(r sr)             -alpha rt/sr          ) R(-phi)
+                   ( 0      -alpha rt/sr  r*(1+alpha*alpha*rt*rt)/(rt*sr) )
+     */
+    mat.Redim(3,3);
+    mat.Put(0,0, sr*r/rt);
+    mat.Put(1,1, rt/(sr*r));
+    mat.Put(1,2,-alpha* rt/ sr);
+    mat.Put(2,1,-alpha* rt/ sr);
+    mat.Put(2,2,r*(1.+alpha*alpha*rt*rt)/(rt*sr));
+  }
+  
 // #define CUSTOMPML2  
   void TwistedWgmaPML::GetPermeability([[maybe_unused]] const TPZVec<REAL> &x_hel,
                                        TPZFMatrix<CSTATE> &urmat) const
   {
-    const auto &u=x_hel[0];
-    const auto &v=x_hel[1];
-    const auto r = sqrt(u*u+v*v);
-    const auto alpha_pml = this->fAlphaMaxR;
-    const auto alpha = this->GetAlpha();
-    const auto &rmin = this->fPmlBeginR;
-    const auto &dr = this->fDR;
-    const auto sr = 1.- 1.i*alpha_pml * (r-rmin)*(r-rmin)/(dr*dr);
-    //integral of sr(r') from rmin to r
-    const auto rt = (3.-1.i*alpha_pml)*dr/3;
-    const auto phi = 2*std::atan(v/(u+r));
+    
     TPZFNMatrix<9,CSTATE> t1, t2;
 
     auto RotationMatrix = [](TPZFMatrix<CSTATE> &mat, STATE theta){
@@ -161,24 +187,16 @@ namespace wgma::materials{
       mat.Put(2,2,1);
     };
 
-    /*
-      first we compute
+    this->ComputeCylindricalPMLMat(t1,x_hel);
 
-                   ( r sr/rt    0                          0              )
-     Tpml = R(phi) ( 0        rt/(r sr)             -alpha rt/sr          ) R(-phi)
-                   ( 0      -alpha rt/sr  r*(1+alpha*alpha*rt*rt)/(rt*sr) )
-     */
-    t1.Redim(3,3);
-    t1.Put(0,0, r*sr/rt);
-    t1.Put(1,1, rt/(r*sr));
-    t1.Put(1,2,-alpha*r/sr);
-    t1.Put(2,1,-alpha*r/sr);
-    t1.Put(2,2,r*(1+alpha*alpha*r*r)/(rt*sr));
+    const auto &u = x_hel[0];
+    const auto &v = x_hel[1];
+    const STATE phi = std::atan2(v,u);
     RotationMatrix(t2,phi);
 
     TPZAnisoWgma::GetPermeability(x_hel, urmat);
-    const auto ur = urmat.Get(0,0);
-
+    const CSTATE ur = urmat.Get(0,0);
+    urmat.Zero();
     
     t2.Multiply(t1,urmat);
     RotationMatrix(t2,-phi);
@@ -192,17 +210,7 @@ namespace wgma::materials{
   void TwistedWgmaPML::GetPermittivity([[maybe_unused]] const TPZVec<REAL> &x_hel,
                                        TPZFMatrix<CSTATE> &ermat) const
   {
-    const auto &u=x_hel[0];
-    const auto &v=x_hel[1];
-    const auto r = sqrt(u*u+v*v);
-    const auto alpha_pml = this->fAlphaMaxR;
-    const auto alpha = this->GetAlpha();
-    const auto &rmin = this->fPmlBeginR;
-    const auto &dr = this->fDR;
-    const auto sr = 1.- 1.i*alpha_pml * (r-rmin)*(r-rmin)/(dr*dr);
-    //integral of sr(r') from rmin to r
-    const auto rt = (3.-1.i*alpha_pml)*dr/3;
-    const auto phi = 2*std::atan(v/(u+r));
+
     TPZFNMatrix<9,CSTATE> t1, t2;
 
     auto RotationMatrix = [](TPZFMatrix<CSTATE> &mat, STATE theta){
@@ -214,25 +222,16 @@ namespace wgma::materials{
       mat.Put(2,2,1);
     };
 
-    /*
-      first we compute
+    this->ComputeCylindricalPMLMat(t1,x_hel);
 
-                   ( r sr/rt    0                          0              )
-     Tpml = R(phi) ( 0        rt/(r sr)             -alpha rt/sr          ) R(-phi)
-                   ( 0      -alpha rt/sr  r*(1+alpha*alpha*rt*rt)/(rt*sr) )
-     */
-    t1.Redim(3,3);
-    t1.Put(0,0, r*sr/rt);
-    t1.Put(1,1, rt/(r*sr));
-    t1.Put(1,2,-alpha*r/sr);
-    t1.Put(2,1,-alpha*r/sr);
-    t1.Put(2,2,r*(1+alpha*alpha*r*r)/(rt*sr));
+    const auto &u = x_hel[0];
+    const auto &v = x_hel[1];
+    const STATE phi = std::atan2(v,u);
     RotationMatrix(t2,phi);
 
     TPZAnisoWgma::GetPermittivity(x_hel, ermat);
-    const auto er = ermat.Get(0,0);
-
-    
+    const CSTATE er = ermat.Get(0,0);
+    ermat.Zero();    
     t2.Multiply(t1,ermat);
     RotationMatrix(t2,-phi);
     ermat.Multiply(t2,t1);
@@ -242,6 +241,12 @@ namespace wgma::materials{
     ermat *= er;
     
   }
+
 #endif
   
 };
+
+
+#ifndef CUSTOMPML
+template class TPZCombinedSpacesCylindricalPML<wgma::materials::TwistedWgma>;
+#endif
