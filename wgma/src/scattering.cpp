@@ -586,10 +586,10 @@ namespace wgma::scattering{
       auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
       if(cart_pml){
         cart_pml->neigh =
-          cmeshtools::AddRectangularPMLRegion<TPZWgma>(*cart_pml, realvolmats, gmesh, scatt_cmesh);
+          cmeshtools::AddRectangularPMLRegion<TPZPlanarWgScatt>(*cart_pml, realvolmats, gmesh, scatt_cmesh);
       }else if (cyl_pml){
         cyl_pml->neigh =
-          cmeshtools::AddCylindricalPMLRegion<TPZWgma>(*cyl_pml, realvolmats, gmesh, scatt_cmesh);
+          cmeshtools::AddCylindricalPMLRegion<TPZPlanarWgScatt>(*cyl_pml, realvolmats, gmesh, scatt_cmesh);
       }else{
         DebugStop();
       }
@@ -720,10 +720,10 @@ namespace wgma::scattering{
         auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
         if(cart_pml){
           cart_pml->neigh =
-            cmeshtools::AddRectangularPMLRegion<TPZWgma>(*cart_pml, realvolmats, gmesh, scatt_cmesh);
+            cmeshtools::AddRectangularPMLRegion<TPZScattering>(*cart_pml, realvolmats, gmesh, scatt_cmesh);
         }else if (cyl_pml){
           cyl_pml->neigh =
-            cmeshtools::AddCylindricalPMLRegion<TPZWgma>(*cyl_pml, realvolmats, gmesh, scatt_cmesh);
+            cmeshtools::AddCylindricalPMLRegion<TPZScattering>(*cyl_pml, realvolmats, gmesh, scatt_cmesh);
         }else{
           DebugStop();
         }
@@ -817,7 +817,7 @@ namespace wgma::scattering{
                 pml->neigh =
                   wgma::cmeshtools::AddRectangularPMLRegion<TPZScatteringSrc>
                   (*cart_pml, src_mats, gmesh, scatt_cmesh);
-              }if(cyl_pml){
+              }else if(cyl_pml){
                 pml->neigh =
                   wgma::cmeshtools::AddCylindricalPMLRegion<TPZScatteringSrc>
                   (*cyl_pml, src_mats, gmesh, scatt_cmesh);
