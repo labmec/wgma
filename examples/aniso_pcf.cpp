@@ -181,7 +181,7 @@ int main(int argc, char *argv[]) {
   //now we replace all the materials by their torsioned version
 
   {
-    const STATE alpha{0.05};
+    const STATE alpha{0.05*scale};
     auto mfmesh = modal_cmesh[0];
     auto &matvec = mfmesh->MaterialVec();
     TPZVec<TPZBndCond*> bndmats;
