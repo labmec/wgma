@@ -623,11 +623,14 @@ wgma::gmeshtools::ReadPeriodicGmshMesh(const std::string filename,
 }
 
 std::optional<int>
-wgma::gmeshtools::FindPMLNeighbourMaterial(
+wgma::gmeshtools::FindCartPMLNeighbourMaterial(
   TPZAutoPointer<TPZGeoMesh> gmesh,
   const int pmlDim,
   const int pmlId,
-  const std::set<int> &volmats)
+  const std::set<int> &volmats,
+  const REAL boundPosX,
+  const REAL boundPosY,
+  const REAL boundPosZ)
 {
   TPZGeoEl * closestEl = nullptr;
   REAL dist = 1e16;
@@ -637,7 +640,6 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
   bool found=false;
   pzutils::ParallelFor(0, nel, [&](int iel){
     //return from lambda, not from function
-    if(closestEl){return;}
     auto currentEl = gmesh->Element(iel);
     if ( !currentEl ||
          currentEl->NSubElements() > 0  ||
@@ -653,8 +655,85 @@ wgma::gmeshtools::FindPMLNeighbourMaterial(
     for(int side = fside; side < lside; side++){
       TPZGeoElSide gside(currentEl, side);
       if(gside.HasNeighbour(pmlId)){
-        closestEl = currentEl;
-        return;
+        TPZManVector<REAL,3> qsi(pmlDim,-1);
+        const int largerSize = currentEl->NSides() - 1;
+        currentEl->CenterPoint(largerSize, qsi);
+        TPZVec<REAL> xCenter(3,-1);
+        currentEl->X(qsi, xCenter);
+        const REAL currentDist =
+          (xCenter[0]-boundPosX)*(xCenter[0]-boundPosX) +
+          (xCenter[1]-boundPosY)*(xCenter[1]-boundPosY) +
+          (xCenter[2]-boundPosZ)*(xCenter[2]-boundPosZ);
+        if(currentDist < dist){
+          std::lock_guard lock(mymut);
+          //just to avoid race conditions, let us check again
+          if(currentDist < dist){
+            dist = currentDist;
+            closestEl=currentEl;
+          }
+        }
+        break;
+      }
+    }
+  });
+
+  if(!closestEl){
+    return std::nullopt;
+  }
+  return closestEl->MaterialId();
+}
+
+std::optional<int>
+wgma::gmeshtools::FindCylPMLNeighbourMaterial(
+  TPZAutoPointer<TPZGeoMesh> gmesh,
+  const int pmlDim,
+  const int pmlId,
+  const std::set<int> &volmats,
+  const REAL boundPosR,
+  const REAL boundPosZ)
+{
+  TPZGeoEl * closestEl = nullptr;
+  REAL dist = 1e16;
+
+  const int nel = gmesh->NElements();
+  std::mutex mymut;
+  bool found=false;
+  pzutils::ParallelFor(0, nel, [&](int iel){
+    //return from lambda, not from function
+    auto currentEl = gmesh->Element(iel);
+    if ( !currentEl ||
+         currentEl->NSubElements() > 0  ||
+         currentEl->Dimension() != pmlDim ||
+         volmats.count(currentEl->MaterialId()) == 0) {
+      //return from lambda, not from function
+      return;
+    }
+
+    const int fside = 0;
+    const int lside = currentEl->FirstSide(pmlDim);
+
+    for(int side = fside; side < lside; side++){
+      TPZGeoElSide gside(currentEl, side);
+      if(gside.HasNeighbour(pmlId)){
+        TPZManVector<REAL,3> qsi(pmlDim,-1);
+        const int largerSize = currentEl->NSides() - 1;
+        currentEl->CenterPoint(largerSize, qsi);
+        TPZVec<REAL> xCenter(3,-1);
+        currentEl->X(qsi, xCenter);
+        const REAL radius = sqrt(xCenter[0]*xCenter[0]+
+                                 xCenter[1]*xCenter[1]);
+        const REAL currentDist =
+          (radius-boundPosR)*(radius-boundPosR) +
+          (xCenter[2]-boundPosZ)*(xCenter[2]-boundPosZ);
+        if(currentDist < dist){
+          std::lock_guard lock(mymut);
+          //just to avoid race conditions, let us check again
+          if(currentDist < dist){
+            dist = currentDist;
+            closestEl=currentEl;
+          }
+        }
+        break;
       }
     }
   });
@@ -841,6 +920,8 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
     const int zdir = wgma::pml::cyl::zinfo(type);
     dZ = zMax - zMin;
     zBegin = zdir > 0 ? zMin : zMax;
+  }else{
+    zBegin = (zMax+zMin)/2;
   }
 }
 

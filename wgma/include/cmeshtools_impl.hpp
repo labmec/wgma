@@ -39,7 +39,8 @@ wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::cart::data data,
       if(data.neigh.count(id) == 0){
         const auto pmldim = data.dim;
         const auto neigh_mat_res =
-          gmeshtools::FindPMLNeighbourMaterial(gmesh, pmldim, id, volmats);
+          gmeshtools::FindCartPMLNeighbourMaterial(gmesh, pmldim, id, volmats,
+                                                   boundPosX,boundPosY,boundPosZ);
         if(neigh_mat_res.has_value() == false){
           PZError<<__PRETTY_FUNCTION__
                  <<"Could not find neighbouring material. Aborting...\n";
@@ -76,9 +77,12 @@ wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::cart::data data,
     if(atty) pmlMat->SetAttY(boundPosY, data.alphay, dY);
     if(attz) pmlMat->SetAttZ(boundPosZ, data.alphaz, dZ);
 
-    // std::cout<<"pml";
-    // for(auto i: data.ids){std::cout<<'\t'<<i;}
-    // std::cout<<"\ntype "<<wgma::pml::to_string(data.t)
+    // std::cout<<"pml(neigh)";
+    // for(auto i: data.ids){std::cout<<'\t'<<i<<"\t("<<all_neighs[i]<<")";}
+    // std::cout<<"\nname: ";
+    // for(auto i: data.names){std::cout<<'\t'<<i;}
+    
+    // std::cout<<"\ntype "<<wgma::pml::cart::to_string(data.t)
     //          <<"\nattx "<<attx<<" dx "<<dX<<" bx "<<boundPosX<<" ax "<<data.alphax
     //          <<"\natty "<<atty<<" dy "<<dY<<" by "<<boundPosY<<" ay "<<data.alphay
     //          <<"\nattz "<<attz<<" dz "<<dZ<<" bz "<<boundPosZ<<" az "<<data.alphaz
@@ -119,7 +123,8 @@ wgma::cmeshtools::AddCylindricalPMLRegion(const wgma::pml::cyl::data data,
       if(data.neigh.count(id) == 0){
         const auto pmldim = data.dim;
         const auto neigh_mat_res =
-          gmeshtools::FindPMLNeighbourMaterial(gmesh, pmldim, id, volmats);
+          gmeshtools::FindCylPMLNeighbourMaterial(gmesh, pmldim, id, volmats,
+                                                  rMin, boundPosZ);
         if(neigh_mat_res.has_value() == false){
           PZError<<__PRETTY_FUNCTION__
                  <<"Could not find neighbouring material. Aborting...\n";

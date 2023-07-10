@@ -113,7 +113,7 @@ namespace wgma::gmeshtools{
                        bool verbose = true);
 
   /**
-     @brief Finds the neighbouring material of a given pml region.
+     @brief Finds the neighbouring material of a given cartesian pml region.
      @param[in] gmesh geometrical mesh.
      @param[in] pmlDim dimension of pml region
      @param[in] pmlId pml material identifier.
@@ -122,11 +122,29 @@ namespace wgma::gmeshtools{
      @param[in] boundPosZ z-coordinate of the pml with the inner domain
   */
   [[nodiscard]] std::optional<int>
-  FindPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,
-                           const int pmlDim,
-                           const int pmlId,
-                           const std::set<int> &volmats);
-
+  FindCartPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,
+                               const int pmlDim,
+                               const int pmlId,
+                               const std::set<int> &volmats,
+                               const REAL boundPosX,
+                               const REAL boundPosY,
+                               const REAL boundPosZ);
+  /**
+     @brief Finds the neighbouring material of a given cylindrical pml region.
+     @param[in] gmesh geometrical mesh.
+     @param[in] pmlDim dimension of pml region
+     @param[in] pmlId pml material identifier.
+     @param[in] boundPosR radial coordinate of the pml with the inner domain
+     @param[in] boundPosZ z-coordinate of the pml with the inner domain
+  */
+  [[nodiscard]] std::optional<int>
+  FindCylPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,
+                              const int pmlDim,
+                              const int pmlId,
+                              const std::set<int> &volmats,
+                              const REAL boundPosR,
+                              const REAL boundPosZ);
+  
   /**
      @brief Finds the width of a given pml region
      @param[in] gmesh geometrical mesh
