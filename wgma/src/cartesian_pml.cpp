@@ -13,7 +13,8 @@ namespace wgma::pml::cart{
                       const STATE alphaZ)
   {
     TPZVec<std::string> pmlnames;
-    for (auto t : wgma::pml::cart::typeIterator() ) { //notice the parentheses!
+    //we need to go backwards! otherwise we wont match the exact name
+    for (auto t : wgma::pml::cart::typeReverseIterator() ) { //notice the parentheses!
       pmlnames.push_back(wgma::pml::cart::to_string(t));
     }
                 

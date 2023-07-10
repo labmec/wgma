@@ -12,7 +12,8 @@ namespace wgma::pml::cyl{
   {
 
     TPZVec<std::string> pmlnames;
-    for (auto t : wgma::pml::cyl::typeIterator() ) { //notice the parentheses!
+    //we need to iterate backwards!
+    for (auto t : wgma::pml::cyl::typeReverseIterator() ) { //notice the parentheses!
       pmlnames.push_back(wgma::pml::cyl::to_string(t));
     }
                 

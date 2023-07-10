@@ -26,6 +26,7 @@ namespace wgma::pml::cyl{
     };
 
     typedef wgma::util::Iterator<type, type::rp, type::rpzm> typeIterator;
+    typedef wgma::util::ReverseIterator<type, type::rp, type::rpzm> typeReverseIterator;
     
     inline std::string to_string(type t){
         switch(t){

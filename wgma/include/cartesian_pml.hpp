@@ -46,6 +46,7 @@ namespace wgma::pml::cart{
     };
 
     typedef wgma::util::Iterator<type, type::xp, type::xpymzp> typeIterator;
+    typedef wgma::util::ReverseIterator<type, type::xp, type::xpymzp> typeReverseIterator;
     
     inline std::string to_string(type t){
         switch(t){
