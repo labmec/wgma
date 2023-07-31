@@ -26,7 +26,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 
 constexpr bool optimizeBandwidth{false};
 constexpr bool filterBoundaryEqs{true};
-constexpr int nThreads{8};
+constexpr int nThreads{0};
 constexpr int nThreadsDebug{0};
 constexpr int vtkRes{2};
 
@@ -55,6 +55,8 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           const std::string &prefix);
 
 int main(int argc, char *argv[]) {
+
+  constexpr bool extendDomain{false};
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
    * the log should be initialised as:*/
@@ -118,7 +120,7 @@ int main(int argc, char *argv[]) {
 
 
   constexpr int nEigenpairs_left{1};
-  constexpr int nEigenpairs_right{50};
+  constexpr int nEigenpairs_right{30};
 
   constexpr CSTATE target{ncore*ncore};
 
@@ -277,7 +279,10 @@ int main(int argc, char *argv[]) {
     scatt_mats["cladding_left"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad,1.);
     scatt_mats["cladding_right"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad,1.);
     std::map<std::string, wgma::bc::type> scatt_bcs;
-    scatt_bcs["scatt_bnd"] = wgma::bc::type::PEC;
+    scatt_bcs["scatt_bnd_1"] = wgma::bc::type::PEC;
+    if constexpr(extendDomain){
+      scatt_bcs["scatt_bnd_2"] = wgma::bc::type::PEC;
+    }
 
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
                                             {alphaPMLx,alphaPMLy}, scatt_data);
@@ -290,6 +295,20 @@ int main(int argc, char *argv[]) {
       const auto id = gmshmats[matdim].at(mat);
       scatt_data.probevec.push_back({id,matdim});
     }
+
+    if constexpr(!extendDomain){
+      std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
+      for(const auto &pml : scatt_data.pmlvec){
+        const std::string pattern{"xp"};
+        const auto rx = std::regex{pattern, std::regex_constants::icase };
+    
+        const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
+        if(!found_pattern){pmlvec.push_back(pml);}
+      }
+
+      scatt_data.pmlvec = pmlvec;
+    }
+    
     
     return wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder, scatt_data,src_ids,
                                                lambda,scale);
@@ -327,7 +346,7 @@ SetupSolver(const CSTATE target,const int neigenpairs,
 #endif
 
   TPZAutoPointer<TPZEigenSolver<CSTATE>> solver{nullptr};
-  const int krylovDim = std::max(5,2*neigenpairs);
+  const int krylovDim = std::max(5,3*neigenpairs);
   if (usingSLEPC){
     using namespace wgma::slepc;
     /*
