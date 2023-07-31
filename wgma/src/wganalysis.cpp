@@ -1173,10 +1173,10 @@ namespace wgma::wganalysis{
       auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
       if(cart_pml){
         cart_pml->neigh =
-          cmeshtools::AddRectangularPMLRegion<TPZWgma>(*cart_pml, volmats, gmesh, cmeshH1);
+          cmeshtools::AddRectangularPMLRegion<TPZPlanarWgma>(*cart_pml, volmats, gmesh, cmeshH1);
       }else if (cyl_pml){
         cyl_pml->neigh =
-          cmeshtools::AddCylindricalPMLRegion<TPZWgma>(*cyl_pml, volmats, gmesh, cmeshH1);
+          cmeshtools::AddCylindricalPMLRegion<TPZPlanarWgma>(*cyl_pml, volmats, gmesh, cmeshH1);
       }else{
         DebugStop();
       }
