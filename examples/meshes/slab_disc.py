@@ -24,7 +24,7 @@ from utils.gmsh import (
 # h1 = 0.4
 # h2 = 1.5
 h1 = 1.5
-h2 = 0.4
+h2 = 1.5
 
 
 h_domain = 10
