@@ -56,7 +56,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
 int main(int argc, char *argv[]) {
 
-  constexpr bool extendDomain{false};
+  constexpr bool extendDomain{true};
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
    * the log should be initialised as:*/
@@ -119,8 +119,8 @@ int main(int argc, char *argv[]) {
   wgma::util::CreatePath(wgma::util::ExtractPath(prefix));
 
 
-  constexpr int nEigenpairs_left{1};
-  constexpr int nEigenpairs_right{30};
+  constexpr int nEigenpairs_left{10};
+  constexpr int nEigenpairs_right{10};
 
   constexpr CSTATE target{ncore*ncore};
 
@@ -269,7 +269,7 @@ int main(int argc, char *argv[]) {
     src_ids.insert(gmshmats[1].at(mat));
   }
   
-  auto scatt_cmesh = [gmesh,&gmshmats, src_ids](){
+  auto scatt_cmesh = [gmesh,&gmshmats, &src_ids](){
     
     // setting up cmesh data
     wgma::cmeshtools::PhysicalData scatt_data;
@@ -286,14 +286,43 @@ int main(int argc, char *argv[]) {
 
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
                                             {alphaPMLx,alphaPMLy}, scatt_data);
+
+    //now we add the pml mats to source mats
+
+    for(const auto &pml : scatt_data.pmlvec){
+      const std::string pattern{"source_clad_left"};
+      const auto rx = std::regex{pattern, std::regex_constants::icase };
+    
+      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
+      if(found_pattern){
+        const auto matdim = 1;
+        const auto id = gmshmats[matdim].at(*pml->names.begin());
+        src_ids.insert(id);
+      }
+    }
+
     
     //materials in which we would like to evaluate the solution
     const std::string probeMats[] = {"source_clad_right", "source_core_right"};
 
+    
     for(auto &mat : probeMats){
       const auto matdim = 1;
       const auto id = gmshmats[matdim].at(mat);
       scatt_data.probevec.push_back({id,matdim});
+    }
+
+    for(const auto &pml : scatt_data.pmlvec){
+      const std::string pattern{"source_clad_right"};
+      const auto rx = std::regex{pattern, std::regex_constants::icase };
+    
+      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
+      if(found_pattern){
+        const auto matdim = 1;
+        const auto id = gmshmats[matdim].at(*pml->names.begin());
+        std::cout<<"id "<<id<<" name "<<*pml->names.begin()<<std::endl;
+        scatt_data.probevec.push_back({id,matdim});
+      }
     }
 
     if constexpr(!extendDomain){
@@ -320,9 +349,9 @@ int main(int argc, char *argv[]) {
 
 
   //index of the mode to be used as a source (left wg)
-  std::vector<int> src_index = {0};
+  std::vector<int> src_index = {3};
   //index of the number of modes to be used to restrict the dofs of the scatt mesh(right wg)
-  std::vector<int> nmodes = {0,1,2,5,10,15,20,30};
+  std::vector<int> nmodes = {0,4,5,6};
   
   RestrictDofsAndSolve(scatt_cmesh, modal_l_an, modal_r_an,
                        src_index, src_ids, nmodes,gmshmats, prefix);
@@ -417,30 +446,18 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   an.Assemble();
   static constexpr bool computeVectors{true};
   an.Solve(computeVectors);
-  //let us discard all solutions with negative real part of beta
 
-  auto &ev = an.GetEigenvalues();
-  auto &evec = an.GetEigenvectors();
-
-  int count = 0;
-  for(auto w : ev){
-    if(std::real(w) <= 0){break;}
-    count++;
-  }
-
-  ev.Resize(count);
-  const int neq = evec.Rows();
-  evec.Resize(neq, count);
   //load all obtained modes into the mesh
   an.LoadAllSolutions();
-  //leave empty for all valid matids
-  std::set<int> matids {};
-  auto ortho = wgma::post::OrthoSol<wgma::post::SingleSpaceIntegrator>(cmesh, matids, nThreads);
-  //orthogonalise the modes
-  auto normsol = ortho.Orthogonalise();
-  //let us set the orthogonalised modes
-  an.SetEigenvectors(normsol);
-
+  if(orthogonalise){
+    //leave empty for all valid matids
+    std::set<int> matids {};
+    auto ortho = wgma::post::OrthoSol<wgma::post::SingleSpaceIntegrator>(cmesh, matids, nThreads);
+    //orthogonalise the modes
+    auto normsol = ortho.Orthogonalise();
+    //let us set the orthogonalised modes
+    an.SetEigenvectors(normsol);
+  }
 }
 
 void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
@@ -478,7 +495,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           const TPZVec<std::map<std::string, int>> &gmshmats,
                           const std::string &prefix)
 {
-  auto ev = match_an.GetEigenvectors();
+  TPZFMatrix<CSTATE> ev = match_an.GetEigenvectors();
   const auto evr = ev.Rows();
   const auto evc = ev.Cols();
 
@@ -495,24 +512,21 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   auto vtk = TPZVTKGenerator(scatt_mesh, fvars, scatt_file, vtkRes);
   
   for(auto nm : nmodes){
-
+    std::set<int64_t> dependent_connects;
+    int64_t indep_con_id{-1};
     if(nm){
       if(nm>evc){
         std::cout<<"nm "<<nm<<" bigger than n of computed modes "
                  <<evc<<" skipping.."<<std::endl;
         continue;
       }
-      const TPZFMatrix<CSTATE> new_ev(evr,nm,ev.Elem(),evr*evc);
+      const TPZFMatrix<CSTATE> new_ev(evr,nm,ev.Elem(),evr*nm);
       match_an.SetEigenvectors(new_ev);
       //this "dummy" connect will impose the restriction over the 1D line
-      auto indep_con_id = scatt_mesh->AllocateNewConnect(nm,1,1);
+      indep_con_id = scatt_mesh->AllocateNewConnect(nm,1,1);
       auto &indep_con = scatt_mesh->ConnectVec()[indep_con_id];
-      indep_con.IncrementElConnected();
       
-      /*we will iterate over the elements of the modal analysis mesh
-        and find their counterpart on the scattering mesh*/
-      const auto nshape = indep_con.NShape();
-      //we load all the modes in the comp mesh
+      /*we now load the desired solutions in the modal mesh*/
       match_an.LoadAllSolutions();
       //the geometric mesh will point to the scattering mesh
       gmesh->ResetReference();
@@ -524,7 +538,8 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
       for(auto modal_el : match_mesh->ElementVec()){
         if(modal_el->Dimension()< match_mesh->Dimension()){continue;}
         auto scatt_el = modal_el->Reference()->Reference();
-        if(!scatt_el){continue;}
+        if(!scatt_el){DebugStop();}
+        // if(!scatt_el){continue;}
         const auto ncon = scatt_el->NConnects();
         if(ncon != modal_el->NConnects()){
           DebugStop();
@@ -535,12 +550,17 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
         
           const int64_t modal_dfseq = modal_con.SequenceNumber();
           const int64_t modal_pos = modal_block.Position(modal_dfseq);
-          const int modal_dfvar = modal_block.Size(modal_dfseq);
-          scatt_con.AddDependency(scatt_el->ConnectIndex(icon), indep_con_id, modal_sol, modal_pos, 0, modal_dfvar, nshape);
+          const int nshape = modal_block.Size(modal_dfseq);
+          const auto dep_con_id = scatt_el->ConnectIndex(icon);
+          if(dependent_connects.count(dep_con_id)==0){
+            dependent_connects.insert(dep_con_id);
+            scatt_con.AddDependency(dep_con_id, indep_con_id, modal_sol, modal_pos, 0, nshape, nm);
+          }
         }
       }
       scatt_mesh->ComputeNodElCon();
       scatt_mesh->CleanUpUnconnectedNodes();
+      match_an.SetEigenvectors(ev);
     }
 
     auto scatt_an = wgma::scattering::Analysis(scatt_mesh, nThreads,
@@ -578,10 +598,15 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
       vtk.Do();
     }
 
-    wgma::cmeshtools::RemovePeriodicity(scatt_mesh);
+    if(nm){
+      for(auto index : dependent_connects){
+        auto &con = scatt_mesh->ConnectVec()[index];
+        con.RemoveDepend();
+      }
+      auto &indep_con = scatt_mesh->ConnectVec()[indep_con_id];
+      indep_con.DecrementElConnected();
+    }    
     scatt_mesh->ComputeNodElCon();
     scatt_mesh->CleanUpUnconnectedNodes();
   }
-
-  match_an.SetEigenvectors(ev);
 }
