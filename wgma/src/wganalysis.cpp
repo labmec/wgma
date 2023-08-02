@@ -203,13 +203,13 @@ namespace wgma::wganalysis{
     const auto &ev = this->GetEigenvalues();
     const auto &eigenvectors = this->GetEigenvectors();
 
-    const auto neqOriginal = eigenvectors.Rows();
-    TPZFMatrix<CSTATE> evector(neqOriginal, ncols, 0.);
+    
     
     TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshVecPost(2);
     meshVecPost[0] = m_cmesh_h1;
     meshVecPost[1] = m_cmesh_hcurl;
-  
+
+    //we dont have a proper way of setting multiple kz yet
     const CSTATE currentKz = [&ev,isol](){
       auto tmp = std::sqrt(-1.0*ev[isol]);
       constexpr auto epsilon = std::numeric_limits<STATE>::epsilon()/
@@ -222,7 +222,6 @@ namespace wgma::wganalysis{
 
     
 
-    eigenvectors.GetSub(0, isol, neqOriginal, ncols, evector);
     for(auto mat : m_cmesh_mf->MaterialVec()){
       auto id = mat.first;
       auto matPtr =
@@ -230,7 +229,16 @@ namespace wgma::wganalysis{
       if(!matPtr) continue;
       matPtr->SetKz(currentKz);
     }
-    this->LoadSolution(evector);
+    
+    if(isol == 0 && ncols == eigenvectors.Cols()){
+      this->LoadSolution(GetEigenvectors());
+    }else{
+      const auto neqOriginal = eigenvectors.Rows();
+      TPZFMatrix<CSTATE> evector(neqOriginal, ncols, 0.);
+      eigenvectors.GetSub(0, isol, neqOriginal, ncols, evector);
+      this->LoadSolution(evector);
+    }
+    
     TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshVecPost, m_cmesh_mf);
   }
   
@@ -379,14 +387,12 @@ namespace wgma::wganalysis{
   { 
     const auto &ev = this->GetEigenvalues();
     const auto &eigenvectors = this->GetEigenvectors();
-
-    const auto neqOriginal = eigenvectors.Rows();
-    TPZFMatrix<CSTATE> evector(neqOriginal, ncols, 0.);
     
     TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshVecPost(2);
     meshVecPost[0] = m_cmesh_h1;
     meshVecPost[1] = m_cmesh_hcurl;
-  
+
+    //we dont have a proper way of setting multiple kz yet
     const CSTATE currentKz = [&ev,isol](){
       auto tmp = CSTATE(-1.0*1i)*ev[isol];
       constexpr auto epsilon = std::numeric_limits<STATE>::epsilon()/
@@ -399,7 +405,7 @@ namespace wgma::wganalysis{
 
     
 
-    eigenvectors.GetSub(0, isol, neqOriginal, ncols, evector);
+    
     for(auto mat : m_cmesh_mf->MaterialVec()){
       auto id = mat.first;
       auto matPtr =
@@ -407,7 +413,16 @@ namespace wgma::wganalysis{
       if(!matPtr) continue;
       matPtr->SetKz(currentKz);
     }
-    this->LoadSolution(evector);
+    
+    if(isol == 0 && ncols == eigenvectors.Cols()){
+      this->LoadSolution(GetEigenvectors());
+    }else{
+      const auto neqOriginal = eigenvectors.Rows();
+      TPZFMatrix<CSTATE> evector(neqOriginal, ncols, 0.);
+      eigenvectors.GetSub(0, isol, neqOriginal, ncols, evector);
+      this->LoadSolution(evector);
+    }
+    
     TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(meshVecPost, m_cmesh_mf);
   }
   
@@ -504,12 +519,17 @@ namespace wgma::wganalysis{
 
     const auto &ev = this->GetEigenvalues();
     const auto &eigenvectors = this->GetEigenvectors();
-    
-    const auto neqOriginal = eigenvectors.Rows();
-    TPZFMatrix<CSTATE> evector(neqOriginal, nsol, 0.);
 
-    eigenvectors.GetSub(0, isol, neqOriginal, nsol, evector);
-    this->LoadSolution(evector);
+    if(isol == 0 && nsol == eigenvectors.Cols()){
+      this->LoadSolution(eigenvectors);
+    }
+    else{
+      const auto neqOriginal = eigenvectors.Rows();
+      TPZFMatrix<CSTATE> evector(neqOriginal, nsol, 0.);
+
+      eigenvectors.GetSub(0, isol, neqOriginal, nsol, evector);
+      this->LoadSolution(evector);
+    }
   }
 
 
