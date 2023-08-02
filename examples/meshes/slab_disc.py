@@ -23,17 +23,17 @@ from utils.gmsh import (
 #############################################
 # h1 = 0.4
 # h2 = 1.5
-h1 = 1.5
-h2 = 1.5
+h1 = 1.0
+h2 = 1.0
 
 
-h_domain = 10
-w_domain = 10
+h_domain = 5
+w_domain = 5
 d_src = 1
 d_far = 6*d_src
-el_core = 0.15
+el_core = 0.1/1.55
 thickness = 2*max(h1, h2)
-el_clad = 0.75
+el_clad = 0.1
 d_pmlx = 3
 d_pmly = 1
 nlayerspml = 5
