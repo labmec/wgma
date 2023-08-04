@@ -2,7 +2,7 @@
 #define _ELDATA_HPP_
 
 #include <TPZMaterialDataT.h>
-
+#include <TPZMaterial.h>
 namespace wgma::post{
 
   //!Contains data for computing the solution of a given element
@@ -15,9 +15,12 @@ namespace wgma::post{
     operator TPZVec<TPZMaterialDataT<CSTATE>>&() {return m_datavec;}
     operator const TPZMaterialDataT<CSTATE>&() const{return m_data;}
     operator const TPZVec<TPZMaterialDataT<CSTATE>>&() const {return m_datavec;}
+    const TPZMaterial *GetMaterial() const {return m_mat;}
+    void SetMaterial(TPZMaterial *mat){m_mat = mat;}
   protected: 
     TPZMaterialDataT<CSTATE> m_data;
     TPZManVector<TPZMaterialDataT<CSTATE>,10> m_datavec;
+    TPZMaterial * m_mat{nullptr};
   };
 };
 
