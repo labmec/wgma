@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
   // operational frequency
   constexpr STATE freq = 25e9;
   // wavelength
-  constexpr STATE lambda{pzeletromag::cZero/freq};
+  constexpr STATE lambda{pzelectromag::cZero/freq};
   /*
     Given the small dimensions of the domain, scaling it can help in 
     achieving good precision. Using 1./k0 as a scale factor results in 
