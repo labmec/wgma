@@ -25,6 +25,7 @@ set(headers
   include/post/integrator.hpp
   include/post/solutionnorm.hpp
   include/post/orthosol.hpp
+  include/post/waveguideportbc.hpp
   )
 
 set(sources
@@ -41,6 +42,7 @@ set(sources
   src/post/integrator.cpp
   src/post/solutionnorm.cpp
   src/post/orthosol.cpp
+  src/post/waveguideportbc.cpp
   )
 
 target_sources(wgma PUBLIC ${headers})
