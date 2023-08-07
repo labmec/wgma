@@ -117,6 +117,15 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
                           const std::set<int> &volmats,
                           TPZAutoPointer<TPZGeoMesh> gmesh,
                           TPZAutoPointer<TPZCompMesh> cmesh);
+
+  /** @brief Finds all connects associated with a dirichlet boundary condition
+      @param [in] cmesh Computational mesh
+      @param [out] boundConnects boundary connects
+      @praam [in] matIds if non-null, only gets connects matching these material identifiers
+   */
+  void FindDirichletConnects(TPZAutoPointer<TPZCompMesh> cmesh,
+                             std::set<int64_t> &boundConnects,
+                             const std::set<int> & matIds = {});
   
   /** @brief Gets the indices of the equations associated with dirichlet homogeneous BCs
       so they can be filtered out of the global system*/

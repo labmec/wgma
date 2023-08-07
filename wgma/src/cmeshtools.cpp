@@ -133,13 +133,18 @@ cmeshtools::SetupGmshMaterialData(
 }
 
 void
-cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
-                                    TPZVec<int64_t> &activeEquations,
-                                    std::set<int64_t> &boundConnects)
+cmeshtools::FindDirichletConnects(TPZAutoPointer<TPZCompMesh> cmesh,
+                                  std::set<int64_t> &boundConnects,
+                                  const std::set<int> & matIds)
 {
-  TPZSimpleTimer timer ("Filter dirichlet eqs");
-  TPZManVector<int64_t, 1000> allConnects;
   boundConnects.clear();
+  std::set<int> all_mats = matIds;
+  //if set is empty, we insert all materials in it
+  if(all_mats.size() == 0){
+    for(auto [id,ptr] : cmesh->MaterialVec()){
+      all_mats.insert(id);
+    }
+  }
 
   for (int iel = 0; iel < cmesh->NElements(); iel++) {
     TPZCompEl *cel = cmesh->ElementVec()[iel];
@@ -151,7 +156,7 @@ cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
     }
     TPZBndCond *mat = dynamic_cast<TPZBndCond *>(
         cmesh->MaterialVec()[cel->Reference()->MaterialId()]);
-    if (mat && mat->Type() == 0) {//check for dirichlet bcs
+    if (mat && mat->Type() == 0 && all_mats.count(mat->Id())) {//check for dirichlet bcs
       std::set<int64_t> boundConnectsEl;
       cel->BuildConnectList(boundConnectsEl);
       for(auto val : boundConnectsEl){
@@ -161,6 +166,16 @@ cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
       }
     }
   }
+}
+
+void
+cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
+                                    TPZVec<int64_t> &activeEquations,
+                                    std::set<int64_t> &boundConnects)
+{
+  TPZSimpleTimer timer ("Filter dirichlet eqs");  
+
+  FindDirichletConnects(cmesh, boundConnects);
 
   //certainly we have less equations than this, but we will avoid repeated resizes
   activeEquations.Resize(cmesh->NEquations());
