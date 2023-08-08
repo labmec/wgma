@@ -47,7 +47,8 @@ namespace wgma::post{
   
   template<class TSPACE>
   void WaveguidePortBC<TSPACE>::Compute(const ElData &eldata, REAL weight, int index)
-  {   
+  {
+    const STATE sign = m_pos_z ? 1 : -1;
     if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
       const TPZMaterialDataT<CSTATE> &data = eldata;
       const auto &sol =  data.sol;
@@ -58,7 +59,7 @@ namespace wgma::post{
       STATE val = 0;
       for(auto isol = 0; isol < solsize; isol++){
         const auto beta = m_beta[isol];
-        const CSTATE val =  1i*beta* sol[isol][0] * sol[isol][0];
+        const CSTATE val =  sign*1i*beta* sol[isol][0] * sol[isol][0];
         this->m_scratch[index][isol] += weight * fabs(data.detjac) * val;
       }
     }else{
@@ -81,7 +82,7 @@ namespace wgma::post{
         for(int ix = 0; ix < 3; ix++) {
           grad_ez(ix,0) *= 1i;
           et[ix] /= beta;
-          val += (1i*beta*et[ix]+grad_ez.Get(ix,0))*et[ix];
+          val += (sign*1i*beta*et[ix]+grad_ez.Get(ix,0))*et[ix];
         }
         this->m_scratch[index][isol] += weight * fabs(detjac) * val;
       }

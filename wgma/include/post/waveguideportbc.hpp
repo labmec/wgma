@@ -38,6 +38,10 @@ namespace wgma::post{
     void SetBeta(const TPZVec<CSTATE> &beta){m_beta = beta;}
     //! Gets beta values
     void GetBeta(TPZVec<CSTATE> &beta) const {beta = m_beta;}
+    //! Sets direction
+    void SetPositiveZ(const bool b){m_pos_z = b;}
+    //! Sets direction
+    [[nodiscard]] bool GetPositiveZ() const{return m_pos_z;}
   protected:
     //! Computes contribution at an integration point
     void Compute(const ElData &data, REAL weight, int thread) override;
@@ -47,6 +51,8 @@ namespace wgma::post{
     TPZVec<CSTATE> m_res;
     //! Propagation constant beta (needed for 2D modal analysis)
     TPZVec<CSTATE> m_beta;
+    //! Whether boundary is +z or -z
+    bool m_pos_z{true};
   };
 };
 
