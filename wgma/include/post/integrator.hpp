@@ -22,6 +22,10 @@ namespace wgma::post{
     Integrator(Integrator &&) = default;
     Integrator& operator=(const Integrator &) = default;
     Integrator& operator=(Integrator &&) = default;
+    //! Set number of threads to be used in the computations
+    void SetNThreads(int nt){m_nthreads = nt;}
+    //! Get number of threads
+    int NThreads() const {return m_nthreads;}
   protected:
     Integrator(TPZAutoPointer<TPZCompMesh> mesh,
                std::set<int> matids,
@@ -48,11 +52,6 @@ namespace wgma::post{
     virtual void IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &x) = 0;
     //! Override this method with the desired calculation
     virtual void Compute(const ElData &data, REAL weight, int thread) = 0;
-
-    //! Set number of threads to be used in the computations
-    void SetNThreads(int nt){m_nthreads = nt;}
-    //! Get number of threads
-    int NThreads() const {return m_nthreads;}
     //! Computational mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};
     //! List of elements for which the solution will be computed
