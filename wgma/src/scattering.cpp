@@ -655,12 +655,37 @@ namespace wgma::scattering{
           return res.value();
         }
       }();
-      
+
+      bool found{false};
+      //search in volumetric materials
       for(auto [id,er,ur] : data.matinfovec){
         if(id == src_volid){
           auto srcMat = new TPZPlanarWgScattSrc(src_id,er,ur,lambda,matmode,scale);
           scatt_cmesh->InsertMaterialObject(srcMat);
+          found = true;
+          break;
         }
+      }
+
+      //search in pml
+      for(auto pml : data.pmlvec){
+        if(pml->ids.count(src_volid)){
+          //found pml region
+          const int volid = pml->neigh[src_volid];
+          for(auto [id,er,ur] : data.matinfovec){
+            if(id == volid){
+              auto srcMat = new TPZPlanarWgScattSrc(src_id,er,ur,lambda,matmode,scale);
+              scatt_cmesh->InsertMaterialObject(srcMat);
+              found = true;
+              break;
+            }
+          }
+          if(found){break;}
+        }
+      }
+      //what happened?
+      if(!found){
+        DebugStop();
       }
     }
     //now we insert the proper material
