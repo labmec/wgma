@@ -56,7 +56,8 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
 int main(int argc, char *argv[]) {
 
-  constexpr bool extendDomain{false};
+  constexpr bool extendRightDomain{false};
+  constexpr bool extendLeftDomain{true};
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
    * the log should be initialised as:*/
@@ -272,9 +273,12 @@ int main(int argc, char *argv[]) {
     scatt_mats["cladding_left"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad,1.);
     scatt_mats["cladding_right"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad,1.);
     std::map<std::string, wgma::bc::type> scatt_bcs;
-    scatt_bcs["scatt_bnd_1"] = wgma::bc::type::PEC;
-    if constexpr(extendDomain){
-      scatt_bcs["scatt_bnd_2"] = wgma::bc::type::PEC;
+    scatt_bcs["scatt_bnd_mid"] = wgma::bc::type::PEC;
+    if constexpr(extendRightDomain){
+      scatt_bcs["scatt_bnd_right"] = wgma::bc::type::PEC;
+    }
+    if constexpr(extendLeftDomain){
+      scatt_bcs["scatt_bnd_left"] = wgma::bc::type::PEC;
     }
 
     
@@ -325,66 +329,27 @@ int main(int argc, char *argv[]) {
       }
     }
     
-    // if constexpr(extendDomain){
-    //   //materials in which we would like to evaluate the solution
-    //   const std::string probeMats[] = {"source_clad_right", "source_core_right"};
-
     
-    //   for(auto &mat : probeMats){
-    //     const auto matdim = 1;
-    //     const auto id = gmshmats[matdim].at(mat);
-    //     scatt_data.probevec.push_back({id,matdim});
-    //   }
-
-    //   for(const auto &pml : scatt_data.pmlvec){
-    //     const std::string pattern{"source_clad_right"};
-    //     const auto rx = std::regex{pattern, std::regex_constants::icase };
-    
-    //     const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
-    //     if(found_pattern){
-    //       const auto matdim = 1;
-    //       const auto id = gmshmats[matdim].at(*pml->names.begin());
-    //       std::cout<<"id "<<id<<" name "<<*pml->names.begin()<<std::endl;
-    //       scatt_data.probevec.push_back({id,matdim});
-    //     }
-    //   }
-    // }else{
-    //   //materials in which we would like to evaluate the solution
-    //   const std::string probeMats[] = {"source_clad_right", "source_core_right"};
-
-    //   constexpr int matdim = 1;
-    //   for(auto &mat : probeMats){
-    //     wgma::bc::data bc;
-    //     bc.name = mat;
-    //     bc.id = gmshmats[matdim].at(mat);
-    //     bc.t = wgma::bc::type::PERIODIC;
-    //     scatt_data.bcvec.push_back(bc);
-    //   }
-
-    //   for(const auto &pml : scatt_data.pmlvec){
-    //     const std::string pattern{"source_clad_right"};
-    //     const auto rx = std::regex{pattern, std::regex_constants::icase };
-    
-    //     const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
-    //     if(found_pattern){
-    //       wgma::bc::data bc;
-    //       bc.name = *pml->names.begin();
-    //       bc.id = gmshmats[matdim].at(bc.name);
-    //       bc.t = wgma::bc::type::PERIODIC;
-    //       scatt_data.bcvec.push_back(bc);
-    //     }
-    //   }
-    // }
-    if constexpr(!extendDomain){
+    if constexpr(!extendRightDomain || !extendLeftDomain){
       std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
       for(const auto &pml : scatt_data.pmlvec){
-        const std::string pattern{"xp"};
-        const auto rx = std::regex{pattern, std::regex_constants::icase };
+        const std::string pattern_left{"xm"};
+        const auto rx_left = std::regex{pattern_left, std::regex_constants::icase };
     
-        const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
-        if(!found_pattern){pmlvec.push_back(pml);}
+        const bool found_left = std::regex_search(*(pml->names.begin()), rx_left);
+
+        const std::string pattern_right{"xp"};
+        const auto rx_right = std::regex{pattern_right, std::regex_constants::icase };
+    
+        const bool found_right = std::regex_search(*(pml->names.begin()), rx_right);
+        
+        if((found_right && !extendRightDomain) ||(found_left && !extendLeftDomain)){
+          continue;
+        }
+        pmlvec.push_back(pml);
       }
 
+      
       scatt_data.pmlvec = pmlvec;
     }
     

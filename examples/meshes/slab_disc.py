@@ -52,16 +52,16 @@ gmsh.logger.start()
 
 # left domain (cladding+core)
 rec_left = RectData()
-rec_left.xc = -w_domain
+rec_left.xc = -d_src
 rec_left.yc = -h_domain
-rec_left.w = w_domain
+rec_left.w = d_src
 rec_left.h = 2*h_domain
 create_rect(rec_left, el_clad)
 # left domain (core)
 rec_lcore = RectData()
-rec_lcore.xc = -w_domain
+rec_lcore.xc = -d_src
 rec_lcore.yc = -h1
-rec_lcore.w = w_domain
+rec_lcore.w = d_src
 rec_lcore.h = 2*h1
 create_rect(rec_lcore, el_clad)
 # left domain (cladding)
@@ -76,29 +76,30 @@ gmsh.model.occ.remove_all_duplicates()
 # create source line
 source_left = LineData()
 source_left.xb = -d_src
-source_left.yb = -rec_left.h/2
+source_left.yb =  rec_left.h/2
 source_left.xe = -d_src
-source_left.ye = rec_left.h/2
+source_left.ye = -rec_left.h/2
 create_line(source_left, el_clad)
 gmsh.model.occ.synchronize()  # for get_boundary
 source_left_pts = gmsh.model.get_boundary(
     [(1, tag) for tag in source_left.tag],
     combined=True, oriented=False, recursive=False)
 source_left_pts = [reg[1] for reg in source_left_pts]
+
 objs = []
 [objs.append((2, s)) for s in rec_left.tag]
 [objs.append((2, s)) for s in rec_lcore.tag]
-
-
 tools = []
 [tools.append((1, l)) for l in source_left.tag]
 [tools.append((0, p)) for p in source_left_pts]
 
-
-modal_map_left = apply_boolean_operation(objs, tools, "fragment", True, el_clad)
+modal_map_left = apply_boolean_operation(
+    objs, tools, "fragment", True, el_clad)
 remap_tags([rec_left, rec_lcore, source_left], modal_map_left)
 
-
+# update new numbering after deleting duplicates
+gmsh.model.occ.remove_all_duplicates()
+gmsh.model.occ.synchronize()
 # let us split the source domains
 src_left_clad_tags = []
 src_left_core_tags = []
@@ -108,7 +109,7 @@ for tag in source_left.tag:
     up = up[0]
     src_left_clad_tags.append(
         tag) if up in rec_left.tag else src_left_core_tags.append(tag)
-
+    
 # right domain (cladding+core)
 rec_right = RectData()
 rec_right.xc = 0
@@ -160,7 +161,6 @@ remap_tags([rec_right, rec_rcore, source_right], modal_map_right)
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
-
 # let us split the source domains
 src_right_clad_tags = []
 src_right_core_tags = []
@@ -171,6 +171,15 @@ for tag in source_right.tag:
     src_right_clad_tags.append(
         tag) if up in rec_right.tag else src_right_core_tags.append(tag)
 
+#just to make sure, let us update our 1D tags for the source regions
+src_left_core_tags, _ = split_region_dir(gmsh.model.get_boundary([(2,t) for t in rec_lcore.tag],oriented=False), 'x')
+src_left_clad_tags, _ = split_region_dir(gmsh.model.get_boundary([(2,t) for t in rec_left.tag],oriented=False), 'x')
+_, src_right_core_tags = split_region_dir(gmsh.model.get_boundary([(2,t) for t in rec_rcore.tag],oriented=False), 'x')
+_, src_right_clad_tags = split_region_dir(gmsh.model.get_boundary([(2,t) for t in rec_right.tag],oriented=False), 'x')
+src_left_core_tags = [t for _,t in src_left_core_tags]
+src_left_clad_tags = [t for _,t in src_left_clad_tags]
+src_right_core_tags = [t for _,t in src_right_core_tags]
+src_right_clad_tags = [t for _,t in src_right_clad_tags]
 
 # split the domains for setting up the PMLs
 dim = 2
@@ -200,21 +209,22 @@ pmlmap.update(create_pml_corner(ur, "xpyp", dpml, nlayerspml))
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
-
 # let us add 1d pml regions
 src_right_clad_dimtags = [(1, t) for t in src_right_clad_tags]
 src_left_clad_dimtags = [(1, t) for t in src_left_clad_tags]
 pmldim = 2
 pml1d_src_left = find_pml_region(src_left_clad_dimtags, pmlmap, pmldim)
 pml1d_src_right = find_pml_region(src_right_clad_dimtags, pmlmap, pmldim)
-#since right src domain is directly adjacent to the pml, we will have erroneous lines here
-#we know that these lines are immersed in the xp attenuating region, so it is easy to exclude them
+#since src domains are directly adjacent to the pml, we will have erroneous lines here
+#we know that these lines are immersed in the xm(xp, for right src) attenuating region, so it is easy to exclude them
+pml1d_src_left = {(direction,tag):neigh for (direction,tag),neigh in pml1d_src_left.items() if "xm" not in direction}
 pml1d_src_right = {(direction,tag):neigh for (direction,tag),neigh in pml1d_src_right.items() if "xp" not in direction}
 
 
 pmlmap1d = {}
 pmlmap1d.update(pml1d_src_left)
 pmlmap1d.update(pml1d_src_right)
+pml1d_src_left_tags = [tag for _,tag in pml1d_src_left.keys()]
 pml1d_src_right_tags = [tag for _,tag in pml1d_src_right.keys()]
 # get boundaries
 dim = 2
@@ -223,8 +233,16 @@ all_bounds = gmsh.model.get_boundary(
     all_domains, combined=True, oriented=False, recursive=False)
 all_bounds = [bnd[1] for bnd in all_bounds]
 
-#we must divide the boundaries in two since we want to check the truncation of the domain
-#this way we can ignore the rightmost domains
+#we must divide the boundaries in three since we want to check the truncation of the domain
+#this way we can ignore the leftmost/rightmost domains
+
+#now we get only boundaries from the left side
+left_pml_tags = [tag for direction, tag in pmlmap.keys() if "xm" in direction]
+left_domains = left_pml_tags
+
+left_bounds = [bnd[1] for bnd in gmsh.model.get_boundary(
+    [(2,d) for d in left_domains], combined=True, oriented=False, recursive=False)]
+left_bounds = [b for b in left_bounds if b in all_bounds]
 
 #now we get only boundaries from the right side
 right_pml_tags = [tag for direction, tag in pmlmap.keys() if "xp" in direction]
@@ -234,18 +252,22 @@ right_bounds = [bnd[1] for bnd in gmsh.model.get_boundary(
     [(2,d) for d in right_domains], combined=True, oriented=False, recursive=False)]
 right_bounds = [b for b in right_bounds if b in all_bounds]
 
-left_bounds = [b for b in all_bounds if b not in right_bounds]
+middle_bounds = [b for b in all_bounds if b not in right_bounds and b not in left_bounds]
 
 # 1D bounds have changed due to PML
 source_left_pts = gmsh.model.get_boundary(
-    [(1, tag) for tag in source_left.tag]
+    [(1, tag) for tag in src_left_clad_tags]
+    +
+    [(1, tag) for tag in src_left_core_tags]
     +
     [(1, tag) for _, tag in pml1d_src_left.keys()],
     combined=True, oriented=False, recursive=False)
 source_left_pts = [reg[1] for reg in source_left_pts]
 
 source_right_pts = gmsh.model.get_boundary(
-    [(1, tag) for tag in source_right.tag]
+    [(1, tag) for tag in src_right_clad_tags]
+    +
+    [(1, tag) for tag in src_right_core_tags]
     +
     [(1, tag) for _, tag in pml1d_src_right.keys()],
     combined=True, oriented=False, recursive=False)
@@ -276,8 +298,6 @@ domain_physical_ids_2d = {
     "cladding_left": 2,
     "core_right": 3,
     "cladding_right": 4
-
-
 }
 
 domain_physical_ids_1d = {
@@ -285,13 +305,14 @@ domain_physical_ids_1d = {
     "source_core_left": 6,
     "source_clad_right": 7,
     "source_core_right": 8,
-    "scatt_bnd_1": 10,
-    "scatt_bnd_2": 11
+    "scatt_bnd_left": 10,
+    "scatt_bnd_right": 11,
+    "scatt_bnd_mid": 12,
 }
 
 domain_physical_ids_0d = {
-    "source_left_bnd": 12,
-    "source_right_bnd": 13,
+    "source_left_bnd": 20,
+    "source_right_bnd": 21,
 }
 
 domain_physical_ids = [domain_physical_ids_0d,
@@ -307,8 +328,9 @@ domain_regions = {"core_left": rec_lcore.tag,
                   "source_core_right": src_right_core_tags,
                   "source_left_bnd": source_left_pts,
                   "source_right_bnd": source_right_pts,
-                  "scatt_bnd_1": left_bounds,
-                  "scatt_bnd_2": right_bounds
+                  "scatt_bnd_left": left_bounds,
+                  "scatt_bnd_right": right_bounds,
+                  "scatt_bnd_mid": middle_bounds,
                   }
 
 
