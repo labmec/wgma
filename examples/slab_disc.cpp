@@ -31,7 +31,8 @@ constexpr bool filterBoundaryEqs{true};
 constexpr int nThreads{0};
 constexpr int nThreadsDebug{0};
 constexpr int vtkRes{0};
-
+constexpr bool extendRightDomain{false};
+constexpr bool extendLeftDomain{false};
 
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const CSTATE target, const int neigenpairs,
@@ -56,8 +57,6 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
 int main(int argc, char *argv[]) {
 
-  constexpr bool extendRightDomain{false};
-  constexpr bool extendLeftDomain{true};
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
    * the log should be initialised as:*/
@@ -285,30 +284,37 @@ int main(int argc, char *argv[]) {
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
                                             {alphaPMLx,alphaPMLy}, scatt_data);
 
+
     //materials that will represent our source
     std::set<int> src_ids;
-    const std::string srcMat[] = {"source_core_left", "source_clad_left"};
-    for(const auto &mat : srcMat){
-      src_ids.insert(gmshmats[1].at(mat));
-    }
-    //now we add the pml mats to source mats
+    if constexpr(extendLeftDomain){
+      const std::string srcMat[] = {"source_core_left", "source_clad_left"};
+      for(const auto &mat : srcMat){
+        src_ids.insert(gmshmats[1].at(mat));
+      }
+      //now we add the pml mats to source mats
 
-    for(const auto &pml : scatt_data.pmlvec){
-      const std::string pattern{"source_clad_left"};
-      const auto rx = std::regex{pattern, std::regex_constants::icase };
+      for(const auto &pml : scatt_data.pmlvec){
+        const std::string pattern{"source_clad_left"};
+        const auto rx = std::regex{pattern, std::regex_constants::icase };
     
-      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
-      if(found_pattern){
-        const auto matdim = 1;
-        const auto id = gmshmats[matdim].at(*pml->names.begin());
-        src_ids.insert(id);
+        const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
+        if(found_pattern){
+          const auto matdim = 1;
+          const auto id = gmshmats[matdim].at(*pml->names.begin());
+          src_ids.insert(id);
+        }
       }
     }
+    
 
 
     //materials in which we would like to evaluate the solution
-    const std::string probeMats[] = {"source_clad_right", "source_core_right"};
-
+    std::vector<std::string> probeMats = {"source_clad_right", "source_core_right"};
+    if(!extendLeftDomain){
+      probeMats.push_back("source_clad_left");
+      probeMats.push_back("source_core_left");
+    }
     
     for(auto &mat : probeMats){
       const auto matdim = 1;
@@ -320,7 +326,13 @@ int main(int argc, char *argv[]) {
       const std::string pattern{"source_clad_right"};
       const auto rx = std::regex{pattern, std::regex_constants::icase };
     
-      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
+      bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
+      if constexpr(!extendLeftDomain){
+        const std::string pattern{"source_clad_left"};
+        const auto rx = std::regex{pattern, std::regex_constants::icase };
+    
+        found_pattern = found_pattern || std::regex_search(*(pml->names.begin()), rx);
+      }
       if(found_pattern){
         const auto matdim = 1;
         const auto id = gmshmats[matdim].at(*pml->names.begin());
@@ -559,6 +571,29 @@ int64_t RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 }
 
 
+void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an, 
+                                  const int64_t indep_con_id,
+                                  const int nm,
+                                  const TPZVec<CSTATE> &wgbcvec)
+{
+  auto mat = scatt_an.GetSolver().Matrix();
+  auto scatt_mesh = scatt_an.GetMesh();
+  const auto &indep_con = scatt_mesh->ConnectVec()[indep_con_id];
+  const auto &block = scatt_mesh->Block();
+  const auto seqnum = indep_con.SequenceNumber();
+  const auto pos = block.Position(seqnum);
+  const auto sz = block.Size(seqnum);
+  if(sz!=nm){DebugStop();}
+  TPZManVector<int64_t,300> posvec(sz,-1);
+  for(int i = 0; i < sz; i++){posvec[i] = pos+i;};
+  scatt_an.StructMatrix()->EquationFilter().Filter(posvec);
+  for(auto imode = 0; imode < nm; imode++){
+    const auto modepos = posvec[imode];
+    const auto val = mat->Get(modepos,modepos);
+    mat->Put(modepos,modepos, val+wgbcvec[imode]);
+  }
+}
+
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           wgma::wganalysis::WgmaPlanar& src_an,
                           wgma::wganalysis::WgmaPlanar& match_an,
@@ -576,16 +611,29 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   match_an.LoadAllSolutions();
 
   auto match_mesh = match_an.GetMesh();
+  auto src_mesh = src_an.GetMesh();
   //first we compute the waveguide port bc values for the match mesh
-  TPZVec<CSTATE> wgbcvec;
+  TPZVec<CSTATE> wgbcvec_right;
   {
     wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(match_mesh);
     TPZVec<CSTATE> betavec = match_an.GetEigenvalues();
     for(auto &b : betavec){b = std::sqrt(b);}
-    wgbc.SetNThreads(0);
+    wgbc.SetPositiveZ(true);
     wgbc.SetBeta(betavec);
     wgbc.ComputeContribution();
-    wgbc.GetContribution(wgbcvec);
+    wgbc.GetContribution(wgbcvec_right);
+  }
+
+  TPZVec<CSTATE> wgbcvec_left;
+  //now we compute the waveguide port bc values for the source mesh
+  if(!extendLeftDomain){
+    wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(src_mesh);
+    TPZVec<CSTATE> betavec = src_an.GetEigenvalues();
+    for(auto &b : betavec){b = std::sqrt(b);}
+    wgbc.SetPositiveZ(false);
+    wgbc.SetBeta(betavec);
+    wgbc.ComputeContribution();
+    wgbc.GetContribution(wgbcvec_left);
   }
   
 
@@ -602,10 +650,13 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   std::set<int64_t> boundConnects;
   wgma::cmeshtools::FindDirichletConnects(scatt_mesh, boundConnects);
 
-  int64_t indep_con_id{-1};
+  int64_t indep_con_id_right{-1}, indep_con_id_left{-1};
   for(auto nm : nmodes){
     if(nm){
-      indep_con_id = RestrictDofs(scatt_mesh, match_mesh, nm, boundConnects);
+      indep_con_id_right = RestrictDofs(scatt_mesh, match_mesh, nm, boundConnects);
+      if constexpr (!extendLeftDomain){
+        indep_con_id_left = RestrictDofs(scatt_mesh, src_mesh, nm, boundConnects);
+      }
     }
 
     auto scatt_an = wgma::scattering::Analysis(scatt_mesh, nThreads,
@@ -630,20 +681,9 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     
     //now we must add the waveguide port terms
     if(nm){
-      auto mat = scatt_an.GetSolver().Matrix();
-      const auto &indep_con = scatt_mesh->ConnectVec()[indep_con_id];
-      const auto &block = scatt_mesh->Block();
-      const auto seqnum = indep_con.SequenceNumber();
-      const auto pos = block.Position(seqnum);
-      const auto sz = block.Size(seqnum);
-      if(sz!=nm){DebugStop();}
-      TPZManVector<int64_t,300> posvec(sz,-1);
-      for(int i = 0; i < sz; i++){posvec[i] = pos+i;};
-      scatt_an.StructMatrix()->EquationFilter().Filter(posvec);
-      for(auto imode = 0; imode < nm; imode++){
-        const auto modepos = posvec[imode];
-        const auto val = mat->Get(modepos,modepos);
-        mat->Put(modepos,modepos, val+wgbcvec[imode]);
+      AddWaveguidePortContribution(scatt_an, indep_con_id_right, nm, wgbcvec_right);
+      if(!extendLeftDomain){
+        AddWaveguidePortContribution(scatt_an, indep_con_id_left, nm, wgbcvec_left);
       }
     }
     
