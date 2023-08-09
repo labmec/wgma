@@ -28,7 +28,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 
 constexpr bool optimizeBandwidth{true};
 constexpr bool filterBoundaryEqs{true};
-constexpr int nThreads{0};
+constexpr int nThreads{2};
 constexpr int nThreadsDebug{0};
 constexpr int vtkRes{0};
 constexpr bool extendRightDomain{false};
@@ -51,8 +51,8 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           wgma::wganalysis::WgmaPlanar& src_an,
                           wgma::wganalysis::WgmaPlanar& match_an,
-                          const int source_index,
-                          const std::vector<int> &nmodes,
+                          const TPZVec<CSTATE> &source_coeffs,
+                          const TPZVec<int> &nmodes,
                           const std::string &prefix);
 
 int main(int argc, char *argv[]) {
@@ -376,9 +376,10 @@ int main(int argc, char *argv[]) {
 
 
   //index of the mode to be used as a source (left wg)
-  constexpr int src_index = {2};
+  TPZVec<CSTATE> src_index = {0.,0.,1.,0.,0.};
   //index of the number of modes to be used to restrict the dofs of the scatt mesh(right wg)
-  std::vector<int> nmodes = {5};
+  TPZVec<int> nmodes = {5};
+
   
   RestrictDofsAndSolve(scatt_cmesh, modal_l_an, modal_r_an,
                        src_index, nmodes, prefix);
@@ -574,9 +575,11 @@ int64_t RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an, 
                                   const int64_t indep_con_id,
                                   const int nm,
-                                  const TPZVec<CSTATE> &wgbcvec)
+                                  const TPZVec<CSTATE> &wgbc_k,
+                                  const TPZVec<CSTATE> &wgbc_f)
 {
   auto mat = scatt_an.GetSolver().Matrix();
+  TPZFMatrix<CSTATE>& fvec = scatt_an.Rhs();
   auto scatt_mesh = scatt_an.GetMesh();
   const auto &indep_con = scatt_mesh->ConnectVec()[indep_con_id];
   const auto &block = scatt_mesh->Block();
@@ -584,21 +587,25 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
   const auto pos = block.Position(seqnum);
   const auto sz = block.Size(seqnum);
   if(sz!=nm){DebugStop();}
-  TPZManVector<int64_t,300> posvec(sz,-1);
-  for(int i = 0; i < sz; i++){posvec[i] = pos+i;};
-  scatt_an.StructMatrix()->EquationFilter().Filter(posvec);
+  TPZManVector<int64_t,300> posvec_orig(sz,-1), posvec_filt(sz,-1);
+  for(int i = 0; i < sz; i++){posvec_orig[i] = pos+i;};
+  posvec_filt = posvec_orig;
+  scatt_an.StructMatrix()->EquationFilter().Filter(posvec_orig, posvec_filt);
   for(auto imode = 0; imode < nm; imode++){
-    const auto modepos = posvec[imode];
-    const auto val = mat->Get(modepos,modepos);
-    mat->Put(modepos,modepos, val+wgbcvec[imode]);
+    const auto pos_k = posvec_filt[imode];
+    const auto kval = mat->Get(pos_k,pos_k);
+    mat->Put(pos_k,pos_k, kval+wgbc_k[imode]);
+    const auto pos_f = posvec_orig[imode];
+    const auto fval = fvec.Get(pos_f,0);
+    fvec.Put(pos_f,0, fval+wgbc_f[imode]);
   }
 }
 
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           wgma::wganalysis::WgmaPlanar& src_an,
                           wgma::wganalysis::WgmaPlanar& match_an,
-                          const int source_index,
-                          const std::vector<int> &nmodes,
+                          const TPZVec<CSTATE> &source_coeffs,
+                          const TPZVec<int> &nmodes,
                           const std::string &prefix)
 {
   TPZFMatrix<CSTATE> ev = match_an.GetEigenvectors();
@@ -609,11 +616,12 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   
   //let us load all the modes into the comp mesh
   match_an.LoadAllSolutions();
+  src_an.LoadAllSolutions();
 
   auto match_mesh = match_an.GetMesh();
   auto src_mesh = src_an.GetMesh();
   //first we compute the waveguide port bc values for the match mesh
-  TPZVec<CSTATE> wgbcvec_right;
+  TPZVec<CSTATE> wgbc_k_right, wgbc_f_right;
   {
     wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(match_mesh);
     TPZVec<CSTATE> betavec = match_an.GetEigenvalues();
@@ -621,19 +629,20 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     wgbc.SetPositiveZ(true);
     wgbc.SetBeta(betavec);
     wgbc.ComputeContribution();
-    wgbc.GetContribution(wgbcvec_right);
+    wgbc.GetContribution(wgbc_k_right,wgbc_f_right);
   }
 
-  TPZVec<CSTATE> wgbcvec_left;
+  TPZVec<CSTATE> wgbc_k_left,wgbc_f_left;
   //now we compute the waveguide port bc values for the source mesh
   if(!extendLeftDomain){
     wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(src_mesh);
     TPZVec<CSTATE> betavec = src_an.GetEigenvalues();
     for(auto &b : betavec){b = std::sqrt(b);}
+    wgbc.SetSrcCoeff(source_coeffs);
     wgbc.SetPositiveZ(false);
     wgbc.SetBeta(betavec);
     wgbc.ComputeContribution();
-    wgbc.GetContribution(wgbcvec_left);
+    wgbc.GetContribution(wgbc_k_left,wgbc_f_left);
   }
   
 
@@ -662,32 +671,50 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     auto scatt_an = wgma::scattering::Analysis(scatt_mesh, nThreads,
                                                optimizeBandwidth, filterBoundaryEqs);
 
-    auto src_mesh = src_an.GetMesh();
-    //get id of source materials
-    wgma::scattering::SourceWgma src;
-    for(auto [id,mat] : src_mesh->MaterialVec()){
-      src.id.insert(id);
-    }
-    src.modal_cmesh = src_mesh;
   
     std::cout<<"nmodes on outgoing boundary: "<<nm<<std::endl;
-    
-    src_an.LoadSolution(source_index);
-    auto beta = std::sqrt(src_an.GetEigenvalues()[source_index]);
-    wgma::scattering::LoadSource1D(scatt_mesh, src);
-    wgma::scattering::SetPropagationConstant(scatt_mesh, beta);
-      
-    scatt_an.Assemble();
-    
-    //now we must add the waveguide port terms
-    if(nm){
-      AddWaveguidePortContribution(scatt_an, indep_con_id_right, nm, wgbcvec_right);
-      if(!extendLeftDomain){
-        AddWaveguidePortContribution(scatt_an, indep_con_id_left, nm, wgbcvec_left);
+    if(extendLeftDomain){
+      auto src_mesh = src_an.GetMesh();
+      //get id of source materials
+      wgma::scattering::SourceWgma src;
+      for(auto [id,mat] : src_mesh->MaterialVec()){
+        src.id.insert(id);
       }
+      src.modal_cmesh = src_mesh;
+
+      TPZFMatrix<CSTATE> sol(scatt_mesh->NEquations(),1);
+      const int nsol = source_coeffs.size();
+      for(int isol = 0; isol < nsol; isol++){
+        src_an.LoadSolution(isol);
+        auto beta = std::sqrt(src_an.GetEigenvalues()[isol]);
+        wgma::scattering::LoadSource1D(scatt_mesh, src);
+        wgma::scattering::SetPropagationConstant(scatt_mesh, beta*source_coeffs[isol]);
+        if(isol == 0){
+          scatt_an.Assemble();
+          if(nm){
+            AddWaveguidePortContribution(scatt_an, indep_con_id_right, nm, wgbc_k_right, wgbc_f_right);
+          }
+        }else{
+          scatt_an.AssembleRhs(src.id);
+          TPZFMatrix<CSTATE> &rhs = scatt_an.Rhs();
+          std::cout<<"rhs norm "<<Norm(rhs)<<std::endl;
+        }
+        scatt_an.Solve();
+        scatt_an.LoadSolution();
+        TPZFMatrix<CSTATE> &curr_sol = scatt_an.Solution();
+        sol+=curr_sol;
+      }
+      scatt_an.LoadSolution(sol);
+    }else{
+      scatt_an.Assemble();
+      //now we must add the waveguide port terms
+      if(nm){
+        AddWaveguidePortContribution(scatt_an, indep_con_id_right, nm, wgbc_k_right, wgbc_f_right);
+      }
+      AddWaveguidePortContribution(scatt_an, indep_con_id_left, nm, wgbc_k_left, wgbc_f_left);
+      scatt_an.Solve();
     }
-    
-    scatt_an.Solve();
+
     vtk.Do();
 
     if(nm){
