@@ -13,20 +13,30 @@ namespace wgma::post{
   template<class TSPACE>
   void WaveguidePortBC<TSPACE>::ComputeContribution(){
     const int size_res = std::max(this->NThreads(),1);
-    m_k_scratch.Resize(size_res);
     
     const int nsol = this->Mesh()->Solution().Cols();
+    if(m_coeff.size() != 0 && m_coeff.size() != nsol){
+      DebugStop();
+    }
     m_kii.Resize(nsol);
     m_kii.Fill(0);
-    for(auto &res : m_k_scratch) {res.Resize(nsol);}
+
+    m_k_scratch.Resize(size_res);
+    for(auto &res : m_k_scratch) {res.Resize(nsol,0.);}
+
+    m_f_scratch = m_k_scratch;
+    m_fi = m_kii;
     this->Integrate(this->m_elvec);
     
-    for (const auto &res : m_k_scratch){
+    for (int ires = 0; ires< size_res; ires++){
       for(auto isol = 0; isol < nsol; isol++){
-        m_kii[isol] += res[isol];
+        m_kii[isol] += m_k_scratch[ires][isol];
+        m_fi[isol] += m_f_scratch[ires][isol];
       }
     }
+    
     m_k_scratch.Resize(0);
+    m_f_scratch.Resize(0);
   }
 
   template<class TSPACE>
@@ -40,6 +50,7 @@ namespace wgma::post{
   void WaveguidePortBC<TSPACE>::Compute(const ElData &eldata, REAL weight, int index)
   {
     const STATE sign = m_pos_z ? 1 : -1;
+    const bool is_src = m_coeff.size() != 0;
     if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
       const TPZMaterialDataT<CSTATE> &data = eldata;
       const auto &sol =  data.sol;
@@ -49,9 +60,15 @@ namespace wgma::post{
       }
       STATE val = 0;
       for(auto isol = 0; isol < solsize; isol++){
+        //matrix term
         const auto beta = m_beta[isol];
-        const CSTATE val =  1i*beta* sol[isol][0] * sol[isol][0];
-        this->m_k_scratch[index][isol] += weight * fabs(data.detjac) * val;
+        const CSTATE kval =  1i*beta* sol[isol][0] * sol[isol][0];
+        this->m_k_scratch[index][isol] += weight * fabs(data.detjac) * kval;
+        //load vector term
+        if(is_src){
+          const CSTATE fval = 2.*m_coeff[isol]*kval;
+          this->m_f_scratch[index][isol] += weight * fabs(data.detjac) * fval;
+        }
       }
     }else{
       //we expect a TPZWgma material

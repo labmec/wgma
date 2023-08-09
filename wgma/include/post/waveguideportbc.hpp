@@ -31,9 +31,13 @@ namespace wgma::post{
     //! Computes contribution of all modes in mesh
     void ComputeContribution();
     //! Gets contributions associated with each mode of the waveguide
-    void GetContribution(TPZVec<CSTATE> &kii, TPZVec<CSTATE> &fi) {
+    void GetContribution(TPZVec<CSTATE> &kii, TPZVec<CSTATE> &fi) const{
       kii = m_kii;
       fi = m_fi;
+    }
+    //! Gets contributions associated with each mode of the waveguide
+    void GetContribution(TPZVec<CSTATE> &kii) const{
+      kii = m_kii;
     }
     //! Initialises element data and sets material
     void InitData(TPZCompEl *el, ElData &data) override;
@@ -41,6 +45,10 @@ namespace wgma::post{
     void SetBeta(const TPZVec<CSTATE> &beta){m_beta = beta;}
     //! Gets beta values
     void GetBeta(TPZVec<CSTATE> &beta) const {beta = m_beta;}
+    //! Sets source coeff
+    void SetSrcCoeff(const TPZVec<CSTATE> &coeff) {m_coeff = coeff;}
+    //! Gets source coeff
+    void GetSrcCoeff(TPZVec<CSTATE> &coeff) const {coeff = m_coeff;}
     //! Sets direction
     void SetPositiveZ(const bool b){m_pos_z = b;}
     //! Sets direction
