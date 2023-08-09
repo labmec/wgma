@@ -31,7 +31,10 @@ namespace wgma::post{
     //! Computes contribution of all modes in mesh
     void ComputeContribution();
     //! Gets contributions associated with each mode of the waveguide
-    void GetContribution(TPZVec<CSTATE> &km_vec) {km_vec = m_res;}
+    void GetContribution(TPZVec<CSTATE> &kii, TPZVec<CSTATE> &fi) {
+      kii = m_kii;
+      fi = m_fi;
+    }
     //! Initialises element data and sets material
     void InitData(TPZCompEl *el, ElData &data) override;
     //! Sets beta values
@@ -45,12 +48,18 @@ namespace wgma::post{
   protected:
     //! Computes contribution at an integration point
     void Compute(const ElData &data, REAL weight, int thread) override;
-    //! Temp results (one position for thread)
-    TPZVec<TPZVec<CSTATE>> m_scratch;
-    //! Results (one position for solution)
-    TPZVec<CSTATE> m_res;
+    //! Temp mat results (one position for thread)
+    TPZVec<TPZVec<CSTATE>> m_k_scratch;
+    //! Temp vec results (one position for thread)
+    TPZVec<TPZVec<CSTATE>> m_f_scratch;
+    //! Matrix contribution results (one position for solution)
+    TPZVec<CSTATE> m_kii;
+    //! Load vector results (one position for solution)
+    TPZVec<CSTATE> m_fi;
     //! Propagation constant beta (needed for 2D modal analysis)
     TPZVec<CSTATE> m_beta;
+    //! Coefficients of source term as combination of modes
+    TPZVec<CSTATE> m_coeff;
     //! Whether boundary is +z or -z
     bool m_pos_z{true};
   };

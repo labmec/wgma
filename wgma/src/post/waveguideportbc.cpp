@@ -13,20 +13,20 @@ namespace wgma::post{
   template<class TSPACE>
   void WaveguidePortBC<TSPACE>::ComputeContribution(){
     const int size_res = std::max(this->NThreads(),1);
-    m_scratch.Resize(size_res);
+    m_k_scratch.Resize(size_res);
     
     const int nsol = this->Mesh()->Solution().Cols();
-    m_res.Resize(nsol);
-    m_res.Fill(0);
-    for(auto &res : m_scratch) {res.Resize(nsol);}
+    m_kii.Resize(nsol);
+    m_kii.Fill(0);
+    for(auto &res : m_k_scratch) {res.Resize(nsol);}
     this->Integrate(this->m_elvec);
     
-    for (const auto &res : m_scratch){
+    for (const auto &res : m_k_scratch){
       for(auto isol = 0; isol < nsol; isol++){
-        m_res[isol] += res[isol];
+        m_kii[isol] += res[isol];
       }
     }
-    m_scratch.Resize(0);
+    m_k_scratch.Resize(0);
   }
 
   template<class TSPACE>
@@ -34,15 +34,6 @@ namespace wgma::post{
   {
     TSPACE::InitData(el,data);
     data.SetMaterial(el->Material());
-    if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
-      TPZMaterialDataT<CSTATE> &eldata = data;
-      eldata.fNeedsNormal = true;
-    }else{
-      TPZVec<TPZMaterialDataT<CSTATE>>& datavec = data;
-      for (auto &d : datavec){
-        d.fNeedsNormal= true;
-      }
-    }
   }
   
   template<class TSPACE>
@@ -60,7 +51,7 @@ namespace wgma::post{
       for(auto isol = 0; isol < solsize; isol++){
         const auto beta = m_beta[isol];
         const CSTATE val =  sign*1i*beta* sol[isol][0] * sol[isol][0];
-        this->m_scratch[index][isol] += weight * fabs(data.detjac) * val;
+        this->m_k_scratch[index][isol] += weight * fabs(data.detjac) * val;
       }
     }else{
       //we expect a TPZWgma material
@@ -84,7 +75,7 @@ namespace wgma::post{
           et[ix] /= beta;
           val += (sign*1i*beta*et[ix]+grad_ez.Get(ix,0))*et[ix];
         }
-        this->m_scratch[index][isol] += weight * fabs(detjac) * val;
+        this->m_k_scratch[index][isol] += weight * fabs(detjac) * val;
       }
     }
   }
