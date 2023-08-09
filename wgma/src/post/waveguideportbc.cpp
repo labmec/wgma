@@ -50,7 +50,7 @@ namespace wgma::post{
       STATE val = 0;
       for(auto isol = 0; isol < solsize; isol++){
         const auto beta = m_beta[isol];
-        const CSTATE val =  sign*1i*beta* sol[isol][0] * sol[isol][0];
+        const CSTATE val =  1i*beta* sol[isol][0] * sol[isol][0];
         this->m_k_scratch[index][isol] += weight * fabs(data.detjac) * val;
       }
     }else{
@@ -73,7 +73,7 @@ namespace wgma::post{
         for(int ix = 0; ix < 3; ix++) {
           grad_ez(ix,0) *= 1i;
           et[ix] /= beta;
-          val += (sign*1i*beta*et[ix]+grad_ez.Get(ix,0))*et[ix];
+          val += (1i*beta*et[ix]+sign*grad_ez.Get(ix,0))*et[ix];
         }
         this->m_k_scratch[index][isol] += weight * fabs(detjac) * val;
       }
