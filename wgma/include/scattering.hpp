@@ -64,6 +64,8 @@ namespace wgma::scattering{
 
     using TPZAnalysis::LoadSolution;
 
+    using TPZAnalysis::Solution;
+
     using TPZLinearAnalysis::Rhs;
 
     TPZAutoPointer<TPZMatrixSolver<CSTATE>> BuildBlockPrecond(const TPZVec<int64_t> &eqgraph,
