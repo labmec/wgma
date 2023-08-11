@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
         twisted_mat->SetAlpha(alpha);
         if(pml){
           REAL rMin{0},dR{0};
-          STATE alphapml{0};
+          CSTATE alphapml{0};
           auto twisted_pml = new wgma::materials::TwistedWgmaPML(id,*twisted_mat);
           pml->GetAttR(rMin,alphapml,dR);
           twisted_pml->SetAttR(rMin,alphapml,dR);
