@@ -8,9 +8,9 @@ namespace wgma::pml::cart{
   IdentifyAndSetupPML(const std::string &name,
                       const int id,
                       const int dim,
-                      const STATE alphaX,
-                      const STATE alphaY,
-                      const STATE alphaZ)
+                      const CSTATE alphaX,
+                      const CSTATE alphaY,
+                      const CSTATE alphaZ)
   {
     TPZVec<std::string> pmlnames;
     //we need to go backwards! otherwise we wont match the exact name

@@ -7,8 +7,8 @@ namespace wgma::pml::cyl{
   IdentifyAndSetupPML(const std::string &name,
                       const int id,
                       const int dim,
-                      const STATE alphaR,
-                      const STATE alphaZ)
+                      const CSTATE alphaR,
+                      const CSTATE alphaZ)
   {
 
     TPZVec<std::string> pmlnames;

@@ -18,12 +18,12 @@ namespace wgma::wganalysis{
     Wgma() = default;
     //! Copy destructor
     Wgma(const Wgma &) = default;
-    //! Move constructor
-    Wgma(Wgma &&) = default;
+    //! Move constructor (while TPZAnalysis does not have it, we delete it)
+    Wgma(Wgma &&) = delete;
     //! Copy assignment operator
     Wgma& operator=(const Wgma &) = default;
-    //! Move assignment operator
-    Wgma& operator=(Wgma &&) = default;
+    //! Move assignment operator (while TPZAnalysis does not have it, we delete it)
+    Wgma& operator=(Wgma &&) = delete;
     //! Default destructor
     virtual ~Wgma();
     //default dtor in the cpp file to ensure correct creation of vtable (https://stackoverflow.com/a/57504289/1870801)

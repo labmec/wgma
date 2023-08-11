@@ -20,6 +20,7 @@ namespace wgma{
       case type::PERIODIC:
         return 2;
       }
+      return -1;
     }
 
     inline std::string to_string(type t){
@@ -28,6 +29,7 @@ namespace wgma{
       case type::PMC: return "PMC";
       case type::PERIODIC: return "PERIODIC";
       }
+      return "error";
     }
 
     inline std::ostream& operator<<( std::ostream& out, const type& t ){

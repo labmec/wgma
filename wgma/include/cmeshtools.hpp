@@ -66,7 +66,7 @@ namespace wgma::cmeshtools{
 void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
                            const std::map<std::string,std::pair<CSTATE,CSTATE>> &matmap,
                            const std::map<std::string,wgma::bc::type> &bcmap,
-                           TPZVec<STATE> alphaPML,
+                           TPZVec<CSTATE> alphaPML,
                            PhysicalData &data,
                            int maxdim=-1);
 

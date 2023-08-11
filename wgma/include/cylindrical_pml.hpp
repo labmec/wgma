@@ -13,8 +13,8 @@ namespace wgma::pml::cyl{
     IdentifyAndSetupPML(const std::string &name,
                         const int id,
                         const int dim,
-                        const STATE alphaR,
-                        const STATE alphaZ);
+                        const CSTATE alphaR,
+                        const CSTATE alphaZ);
     
     //! Enum describing pml attenuation direction
     enum class type{
@@ -36,6 +36,7 @@ namespace wgma::pml::cyl{
         case type::rpzp: return "rpzp";
         case type::rpzm: return "rpzm";
         }
+        return "error";
     }
     
     inline std::ostream& operator<<( std::ostream& out, const type& t ){
@@ -77,9 +78,9 @@ namespace wgma::pml::cyl{
     */
     struct data :public wgma::pml::data{
         type t{type::rp};
-        STATE alphar{0};
-        STATE alphaz{0};
-        explicit data(std::set<int> i, type tp, STATE ar, STATE az,
+        CSTATE alphar{0};
+        CSTATE alphaz{0};
+        explicit data(std::set<int> i, type tp, CSTATE ar, CSTATE az,
                       std::map<int,int> n = {{}}) :
             wgma::pml::data(i,n),t(tp), alphar(ar), alphaz(az) {}
         data() = default;

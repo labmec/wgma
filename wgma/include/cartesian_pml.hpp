@@ -12,9 +12,9 @@ namespace wgma::pml::cart{
     TPZAutoPointer<wgma::pml::data> IdentifyAndSetupPML(const std::string &name,
                                                         const int id,
                                                         const int dim,
-                                                        const STATE alphaX,
-                                                        const STATE alphaY,
-                                                        const STATE alphaZ);
+                                                        const CSTATE alphaX,
+                                                        const CSTATE alphaY,
+                                                        const CSTATE alphaZ);
     //! Enum describing pml attenuation direction
     enum class type{
         xp=0,//!< attenuates with increasing x
@@ -77,6 +77,7 @@ namespace wgma::pml::cart{
         case type::xmymzp: return "xmymzp";
         case type::xpymzp: return "xpymzp";
         }
+        return "error";
     }
 
     inline std::ostream& operator<<( std::ostream& out, const type& t ){
@@ -153,10 +154,10 @@ namespace wgma::pml::cart{
     */
     struct data : public wgma::pml::data{
         type t{type::xm};
-        STATE alphax{0};
-        STATE alphay{0};
-        STATE alphaz{0};
-        explicit data(std::set<int> i, type tp, STATE ax, STATE ay, STATE az,
+        CSTATE alphax{0};
+        CSTATE alphay{0};
+        CSTATE alphaz{0};
+        explicit data(std::set<int> i, type tp, CSTATE ax, CSTATE ay, CSTATE az,
                       std::map<int,int> n = {{}}) :
             wgma::pml::data(i,n), t(tp), alphax(ax), alphay(ay), alphaz(az) {}
         data() = default;
