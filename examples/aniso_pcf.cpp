@@ -12,7 +12,7 @@ complex curved structured meshes in NeoPZ.
 #include "cmeshtools.hpp"
 #include "gmeshtools.hpp"
 #include "pmltypes.hpp"
-#include "twisted_wgma.hpp"
+#include "materials/twisted_wgma.hpp"
 #include <Electromagnetics/TPZCylindricalPML.h>
 #include <TPZYSMPPardiso.h>
 #include "util.hpp"

@@ -18,7 +18,6 @@ set(headers
   include/wganalysis.hpp
   include/scattering.hpp
   include/slepcepshandler.hpp
-  include/twisted_wgma.hpp
   include/precond.hpp
   include/util.hpp
   include/post/eldata.hpp
@@ -26,6 +25,7 @@ set(headers
   include/post/solutionnorm.hpp
   include/post/orthosol.hpp
   include/post/waveguideportbc.hpp
+  include/materials/twisted_wgma.hpp
   )
 
 set(sources
@@ -36,13 +36,13 @@ set(sources
   src/wganalysis.cpp
   src/scattering.cpp
   src/slepcepshandler.cpp
-  src/twisted_wgma.cpp
   src/precond.cpp
   src/util.cpp
   src/post/integrator.cpp
   src/post/solutionnorm.cpp
   src/post/orthosol.cpp
   src/post/waveguideportbc.cpp
+  src/materials/twisted_wgma.cpp
   )
 
 target_sources(wgma PUBLIC ${headers})
