@@ -292,11 +292,15 @@ int main(int argc, char *argv[]) {
             "u_abs"};
         auto vtk = TPZVTKGenerator(modal_cmesh, fvars, plotfile, vtkRes);
         auto ev = analysis.GetEigenvalues();
+        const auto &eigenvectors = analysis.GetEigenvectors();
+        const auto neq = eigenvectors.Rows();
         for (int isol = 0; isol < ev.size(); isol++) {
             auto currentKz = CSTATE(-1i)*ev[isol];
             std::cout<<"\rPost processing step "<<isol+1<<" out of "<<ev.size()
                      <<"(kz = "<<currentKz<<")"<<std::endl;
-            analysis.LoadSolution(isol);
+            
+            const TPZFMatrix<CSTATE> sol(neq, 1, (CSTATE*)eigenvectors.Elem() + neq*isol, neq);
+            modal_cmesh->LoadSolution(sol);
             vtk.Do();
         }
     }
@@ -311,7 +315,8 @@ CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
             const std::map<int, wgma::bc::type> &modal_bcs)
 {
     ///Defines the computational mesh based on the geometric mesh
-    TPZAutoPointer<TPZCompMesh>  cmesh = new TPZCompMesh(gmesh);
+    constexpr bool is_complex{true};
+    TPZAutoPointer<TPZCompMesh>  cmesh = new TPZCompMesh(gmesh,is_complex);
     
     //polynomial order used in the approximatoin
     constexpr int pOrder{4};
@@ -341,6 +346,7 @@ CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
             std::cout<<__PRETTY_FUNCTION__
                      <<"\nwarning: could not find neighbour of bc "<<id<<std::endl;
         }
+        continue;
         bc_ids.insert(id);
         const int bctype = wgma::bc::to_int(type);
         const int volid = res.value();
@@ -360,6 +366,7 @@ CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     cmesh->SetDefaultOrder(pOrder);
     //actually creates the computational elements
     cmesh->AutoBuild(all_ids);
+    return cmesh;
 }
 
 
@@ -389,6 +396,7 @@ CreateAnalysis(TPZAutoPointer<TPZCompMesh> cmesh, const int nThreads,
         strmtrx->EquationFilter().SetActiveEquations(activeEquations);
     }
     analysis.SetStructuralMatrix(strmtrx);
+    return analysis;
 }
 
 // Sets geometric info regarding all the circles in the mesh
