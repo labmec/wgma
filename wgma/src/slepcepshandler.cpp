@@ -593,6 +593,8 @@ namespace wgma::slepc{
   ::EPSProblemType ConvertProblemType(EPSProblemType in)
   {
     switch(in){
+    case EPSProblemType::EPS_NOTSET:
+      DebugStop();
     case EPSProblemType::EPS_HEP: return EPS_HEP;
     case EPSProblemType::EPS_GHEP: return EPS_GHEP;
     case EPSProblemType::EPS_NHEP: return EPS_NHEP;
