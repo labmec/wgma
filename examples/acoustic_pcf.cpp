@@ -186,6 +186,12 @@ int main(int argc, char *argv[]) {
   
     std::map<int, wgma::bc::type> modal_bcs;
     {
+        //all air-si interfaces are modelled as free surfaces
+        for(auto &arc : arcdata){
+            modal_bcs[arc.m_matid] = wgma::bc::type::PMC;
+        }
+        
+        //now we overwrite the bc for the acoustic_bnd material
         constexpr int bcdim{1};
         bool found{false};
         for(auto [name,id] : gmshmats[bcdim]){
@@ -193,15 +199,12 @@ int main(int argc, char *argv[]) {
             if(name == "acoustic_bnd"){
                 found = true;
                 modal_bcs[id] = wgma::bc::type::PEC;
+                break;
             }
         }
         if(!found){
             DebugStop();
         }
-    }
-    
-    for(auto &arc : arcdata){
-        modal_bcs[arc.m_matid] = wgma::bc::type::PMC;
     }
 
     auto modal_cmesh = CreateCMesh(gmesh,freq,scale,gmshmats,modal_mats,modal_bcs);
@@ -299,7 +302,7 @@ int main(int argc, char *argv[]) {
             std::cout<<"\rPost processing step "<<isol+1<<" out of "<<ev.size()
                      <<"(kz = "<<currentKz<<")"<<std::endl;
             
-            const TPZFMatrix<CSTATE> sol(neq, 1, (CSTATE*)eigenvectors.Elem() + neq*isol, neq);
+            TPZFMatrix<CSTATE> sol(neq, 1, (CSTATE*)eigenvectors.Elem() + neq*isol, neq);
             modal_cmesh->LoadSolution(sol);
             vtk.Do();
         }
@@ -345,8 +348,8 @@ CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
         if(!res.has_value()){
             std::cout<<__PRETTY_FUNCTION__
                      <<"\nwarning: could not find neighbour of bc "<<id<<std::endl;
+            continue;
         }
-        continue;
         bc_ids.insert(id);
         const int bctype = wgma::bc::to_int(type);
         const int volid = res.value();
