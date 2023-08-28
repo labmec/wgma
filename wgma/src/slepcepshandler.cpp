@@ -13,6 +13,8 @@
 #endif
 
 
+using namespace std::complex_literals;
+
 /*******************
  *    GENERAL       *
  *******************/
@@ -584,6 +586,7 @@ namespace wgma::slepc{
     case EPSType::GD: return "GD";
     case EPSType::JD: return "JD";
     }
+    unreachable();
   };
   
 #ifdef WGMA_USING_SLEPC
@@ -596,9 +599,8 @@ namespace wgma::slepc{
     case EPSProblemType::EPS_GNHEP: return EPS_GNHEP;
     case EPSProblemType::EPS_PGNHEP: return EPS_PGNHEP;
     case EPSProblemType::EPS_GHIEP: return EPS_GHIEP;
-    default:
-      unreachable();
     }
+    unreachable();
     DebugStop();
   }
   
@@ -611,7 +613,10 @@ namespace wgma::slepc{
     case EPS_GNHEP: return EPSProblemType::EPS_GNHEP;
     case EPS_PGNHEP: return EPSProblemType::EPS_PGNHEP;
     case EPS_GHIEP: return EPSProblemType::EPS_GHIEP;
+    default:
+      DebugStop();
     }
+    unreachable();
   }
 
   ::EPSConv ConvertConv(EPSConv in)
@@ -621,6 +626,7 @@ namespace wgma::slepc{
     case EPSConv::EPS_CONV_REL: return EPS_CONV_REL;
     case EPSConv::EPS_CONV_NORM: return EPS_CONV_NORM;
     }
+    unreachable();
   }
   EPSConv ConvertConv(::EPSConv in)
   {
@@ -629,8 +635,9 @@ namespace wgma::slepc{
     case EPS_CONV_REL: return EPSConv::EPS_CONV_REL;
     case EPS_CONV_NORM: return EPSConv::EPS_CONV_NORM;
     default:
-      unreachable();
+      DebugStop();
     }
+    unreachable();
   }
 
   ::EPSType ConvertType(EPSType in)
@@ -643,9 +650,8 @@ namespace wgma::slepc{
     case EPSType::KRYLOVSCHUR: return EPSKRYLOVSCHUR;
     case EPSType::GD: return EPSGD;
     case EPSType::JD: return EPSJD;
-    default:
-      unreachable();
     }
+    unreachable();
   }
   
   EPSType ConvertType(::EPSType in)
@@ -678,9 +684,8 @@ namespace wgma::slepc{
     case EPSWhich::EPS_TARGET_MAGNITUDE: return EPS_TARGET_MAGNITUDE;
     case EPSWhich::EPS_TARGET_REAL: return EPS_TARGET_REAL;
     case EPSWhich::EPS_TARGET_IMAGINARY: return EPS_TARGET_IMAGINARY;
-    default:
-      unreachable();
     }
+    unreachable();
   }
   
   EPSWhich ConvertWhich(::EPSWhich in)
@@ -696,8 +701,9 @@ namespace wgma::slepc{
     case EPS_TARGET_REAL: return EPSWhich::EPS_TARGET_REAL;
     case EPS_TARGET_IMAGINARY: return EPSWhich::EPS_TARGET_IMAGINARY;
     default:
-      unreachable();
+      DebugStop();
     }
+    unreachable();
   }
 
   KSPSolver ConvertKSP(::KSPType in)
@@ -807,6 +813,7 @@ namespace wgma::slepc{
     case KSPSolver::FETIDP: return KSPFETIDP;
     case KSPSolver::HPDDM: return KSPHPDDM;
     }
+    unreachable();
   }
 
 
@@ -873,6 +880,7 @@ namespace wgma::slepc{
     case PC::HMG: return PCHMG;
     case PC::DEFLATION: return PCDEFLATION;
     }
+    unreachable();
   }
 
 #ifdef WGMA_PETSC_CPLX
