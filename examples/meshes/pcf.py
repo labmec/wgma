@@ -6,6 +6,7 @@ import gmsh
 from utils.gmsh import (
     CircleData,
     create_circle,
+    add_circ_regions,
     apply_boolean_operation,
     remap_tags,
     generate_physical_ids)
@@ -101,7 +102,7 @@ domain_physical_ids_2d = {
     "cladding": 2,
     "pml_rp": 3
 }
-domain_physical_ids_1d = {"modal_bnd": 11}
+domain_physical_ids_1d = {"modal_bnd": 11, "acoustic_bnd": 12}
 domain_physical_ids_0d = {}
 
 domain_physical_ids = [domain_physical_ids_0d,
@@ -112,10 +113,15 @@ all_domains = gmsh.model.get_entities(dim)
 all_bnds = [t for _, t in gmsh.model.get_boundary(
     all_domains, combined=True, oriented=False, recursive=False)]
 
+acoustic_bnd = [t for _, t in gmsh.model.get_boundary(
+    [(2, tag) for tag in clad.tag + small_domains],
+    combined=True, oriented=False, recursive=False)]
+
 domain_regions = {"air": small_domains,
                   "cladding": clad.tag,
                   "pml_rp": pml.tag,
-                  "modal_bnd": all_bnds
+                  "modal_bnd": all_bnds,
+                  "acoustic_bnd": acoustic_bnd
                   }
 
 # now we ensure that we have data of all circle lines so we can use non linear mapping on these els
@@ -133,36 +139,21 @@ def GetCircLine(domain_1, domain_2):
 
 
 for air in airvec:
-    air.lineid = GetCircLine(air.tag, clad.tag)
-clad.lineid = GetCircLine(clad.tag, pml.tag)
-all_circles_data = airvec+[clad]
+    air.linetag = GetCircLine(air.tag, clad.tag)
+clad.linetag = GetCircLine(clad.tag, pml.tag)
+clad.matid = domain_physical_ids_1d["acoustic_bnd"]
 
-pml.lineid = all_bnds
+pml.linetag = all_bnds
 pml.matid = domain_physical_ids_1d["modal_bnd"]
 
 
-def add_circ_regions(circdata, physical_ids, regions):
-    new_physical_id = 0
-    for _, groups in enumerate(physical_ids):
-        if not groups:
-            continue
-        for _, id in groups.items():
-            new_physical_id += id
+add_circ_regions(airvec, domain_physical_ids, domain_regions)
 
-    physical_ids1d = physical_ids[1]
-    for circ in circdata:
-        name = "circ"+str(new_physical_id)
-        assert (name not in regions)
-        physical_ids1d[name] = new_physical_id
-        regions[name] = circ.lineid
-        circ.matid = new_physical_id
-        new_physical_id += 1
-
-
-add_circ_regions(all_circles_data, domain_physical_ids, domain_regions)
-
+all_circles_data = airvec
 # now we add pml to all_circles_data
 all_circles_data.append(pml)
+all_circles_data.append(clad)
+
 generate_physical_ids(domain_physical_ids, domain_regions)
 
 gmsh.model.mesh.generate(2)
@@ -185,5 +176,5 @@ if __name__ == "__main__":
 
     gmsh.write(filename+".msh")
 
-#gmsh.fltk.run()
+gmsh.fltk.run()
 gmsh.finalize()
