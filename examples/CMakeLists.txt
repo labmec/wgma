@@ -63,4 +63,11 @@ add_pz_target(
   SOURCES aniso_pcf.cpp
   FILES meshes/pcf.msh meshes/pcf_circdata.csv
   )
-target_link_libraries(aniso_pcf PUBLIC wgma)  
+target_link_libraries(aniso_pcf PUBLIC wgma)
+
+add_pz_target(
+  NAME acoustic_pcf
+  SOURCES acoustic_pcf.cpp
+  FILES meshes/pcf.msh meshes/pcf_circdata.csv
+  )
+target_link_libraries(acoustic_pcf PUBLIC wgma)  
