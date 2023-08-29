@@ -126,9 +126,10 @@ AcousticModes::ComputeLz(const TPZFMatrix<STATE> &phi,
     const int nphi = phi.Rows();
     lz.Resize(6,3*nphi);
     for(int i = 0; i < nphi; i++){
-        lz.Put(2,3*i+2,1);
-        lz.Put(4,3*i+0,1);
-        lz.Put(5,3*i+1,0);
+        const auto phival = phi.GetVal(i,0);
+        lz.Put(2,3*i+2,phival);
+        lz.Put(4,3*i+0,phival);
+        lz.Put(5,3*i+1,phival);
     }
 }
 
