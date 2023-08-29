@@ -59,14 +59,20 @@ int main(int argc, char *argv[]) {
      * setting the problem *
      ***********************/
 
+    //the mesh is described in micrometers
+    constexpr STATE char_length = {1/1e6};
+    
+    constexpr STATE char_time = {1/1e3};
+    
     //taken from https://pubs.aip.org/aip/app/article/4/7/071101/1024179/Brillouin-optomechanics-in-nanophotonic-structures
-    constexpr STATE rho_clad{2203/1e6};
-    constexpr STATE young_clad{73.1/1000};
+    constexpr STATE rho_clad{2203*(char_length)};
+    //this value is in GPa
+    constexpr STATE young_clad{73.1* ((1e9*char_length*char_length)*char_time*char_time)};
     constexpr STATE poisson_clad{0.17};
     constexpr STATE lambda_clad = ComputeLambda(young_clad, poisson_clad);
     constexpr STATE mu_clad = ComputeMu(young_clad, poisson_clad);
-    // operational frequency divided by 10^6 (taken from wiederhecker08 fig 6.7)
-    constexpr STATE freq{117};
+    // operational frequency in Mhz divided by time scale
+    constexpr STATE freq{117*(1e6*char_time*char_length)};
 
     constexpr REAL scale{1};
 
@@ -84,10 +90,10 @@ int main(int argc, char *argv[]) {
     const int nThreads = std::thread::hardware_concurrency();
     const int nThreadsDebug = std::thread::hardware_concurrency();
     // how to sort eigenvaluesn
-    constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
+    constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetImagPart};
     constexpr int nEigenpairs{5};
     constexpr int krylovDim{100};
-    constexpr CSTATE target = 500i;
+    constexpr CSTATE target = 10i;
 
     constexpr bool computeVectors{true};
     /*********************
