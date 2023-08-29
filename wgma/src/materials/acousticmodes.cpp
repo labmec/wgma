@@ -170,7 +170,7 @@ AcousticModes::ContributeK(
                                      data.axes);
     }
 
-    TPZFNMatrix<3*nphimax,CSTATE> phivec(3*nphi,1,0);
+    TPZFNMatrix<3*nphimax,CSTATE> phivec(3*nphi,3,0);
 
     //L matrix
     TPZFNMatrix<6*3*nphimax,CSTATE> lxy(6,3*nphi,0);
@@ -178,8 +178,8 @@ AcousticModes::ContributeK(
 
     for(int i = 0; i < nphi; i++){
         phivec.Put(3*i+0,0,phi.Get(i,0));
-        phivec.Put(3*i+1,0,phi.Get(i,0));
-        phivec.Put(3*i+2,0,phi.Get(i,0));
+        phivec.Put(3*i+1,1,phi.Get(i,0));
+        phivec.Put(3*i+2,2,phi.Get(i,0));
     }
 
     //C matrix in voigt notation
