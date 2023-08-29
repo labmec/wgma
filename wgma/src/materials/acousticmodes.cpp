@@ -238,7 +238,7 @@ AcousticModes::ContributeL(
 
     //lxy^T C lz
     lxy.Multiply(Cmat,tmp,1);
-    ek.AddContribution(0,0,tmp,false,lz,false,-weight);
+    ek.AddContribution(0,0,tmp,false,lz,false, -weight);
     //lz^T C lxy
     lz.Multiply(Cmat,tmp,1);
     ek.AddContribution(0,0,tmp,false,lxy,false,weight);
@@ -279,7 +279,7 @@ AcousticModes::ContributeM(
 
     //lz^T C lz
     lz.Multiply(Cmat,tmp,1);
-    ek.AddContribution(0,0,tmp,false,lz,false,weight);
+    ek.AddContribution(0,0,tmp,false,lz,false,-weight);
 }
 
 
