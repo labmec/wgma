@@ -104,18 +104,20 @@ AcousticModes::ComputeLxy(const TPZFMatrix<STATE> &dphi,
     const int nphi = dphi.Cols();
     lxy.Resize(6,3*nphi);
     for(int i = 0; i < nphi; i++){
+        const auto dphix = dphi.Get(0,i);
+        const auto dphiy = dphi.Get(1,i);
         //dudx
-        lxy.Put(0,3*i+0, dphi.Get(0,i));
+        lxy.Put(0,3*i+0, dphix);
         //dvdy
-        lxy.Put(1,3*i+1, dphi.Get(1,i));
+        lxy.Put(1,3*i+1, dphiy);
         //dudy
-        lxy.Put(3,3*i+0, dphi.Get(1,i));
+        lxy.Put(3,3*i+0, dphiy);
         //dvdx
-        lxy.Put(3,3*i+1, dphi.Get(0,i));
+        lxy.Put(3,3*i+1, dphix);
         //dwdx
-        lxy.Put(4,3*i+2, dphi.Get(0,i));
+        lxy.Put(4,3*i+2, dphix);
         //dwdy
-        lxy.Put(5,3*i+2, dphi.Get(1,i));
+        lxy.Put(5,3*i+2, dphiy);
     }
     
 }
@@ -238,10 +240,10 @@ AcousticModes::ContributeL(
 
     //lxy^T C lz
     lxy.Multiply(Cmat,tmp,1);
-    ek.AddContribution(0,0,tmp,false,lz,false, -weight);
+    ek.AddContribution(0,0,tmp,false,lz,false,  weight);
     //lz^T C lxy
     lz.Multiply(Cmat,tmp,1);
-    ek.AddContribution(0,0,tmp,false,lxy,false,weight);
+    ek.AddContribution(0,0,tmp,false,lxy,false, -weight);
 }
 
 void
@@ -253,13 +255,6 @@ AcousticModes::ContributeM(
     
     const auto &phi = data.phi;
     const int nphi = phi.Rows();
-    TPZFNMatrix<3*nphimax,REAL> grad_phi(3, nphi, 0.);
-    {
-        const TPZFMatrix<REAL> &dphidaxes = data.dphix;
-        TPZAxesTools<REAL>::Axes2XYZ(dphidaxes, grad_phi,
-                                     data.axes);
-    }
-
 
     //L matrix
     TPZFNMatrix<6*3*nphimax,CSTATE> lz(6,3*nphi,0);
