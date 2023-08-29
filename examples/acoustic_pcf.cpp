@@ -32,7 +32,7 @@ TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(std::string_view filename,
 
 TPZAutoPointer<TPZCompMesh>
 CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
-            const STATE freq, const STATE scale,
+            const int pOrder, const STATE freq, const STATE scale,
             const TPZVec<std::map<std::string, int>> &gmshmats,
             const std::map<std::string, std::tuple<STATE, STATE, STATE>> &modal_mats,
             const std::map<int, wgma::bc::type> &modal_bcs);
@@ -60,31 +60,21 @@ int main(int argc, char *argv[]) {
      ***********************/
 
     //taken from https://pubs.aip.org/aip/app/article/4/7/071101/1024179/Brillouin-optomechanics-in-nanophotonic-structures
-    constexpr STATE rho_clad{2203};
-    constexpr STATE young_clad{73.1};
+    constexpr STATE rho_clad{2203/1e6};
+    constexpr STATE young_clad{73.1/1000};
     constexpr STATE poisson_clad{0.17};
     constexpr STATE lambda_clad = ComputeLambda(young_clad, poisson_clad);
     constexpr STATE mu_clad = ComputeMu(young_clad, poisson_clad);
-    // operational frequency
-    constexpr STATE freq{1415};
+    // operational frequency divided by 10^6 (taken from wiederhecker08 fig 6.7)
+    constexpr STATE freq{117};
 
-    constexpr STATE speed_of_sound = 343;
-
-  
-    /*
-      Given the small dimensions of the domain, scaling it can help in
-      achieving good precision. Using 1./k0 as a scale factor results pin
-      the eigenvalues -(propagationConstant/k0)^2 = -effectiveIndex^2.
-      This scale factor is often referred to as characteristic length
-      of the domain.
-    */
-    constexpr REAL scale{speed_of_sound / (freq * 2 * M_PI)};
+    constexpr REAL scale{1};
 
     /******************
      *  fem options   *
      ******************/
     // polynomial order to be used in the modal analysis
-    constexpr int pOrder2D{3};
+    constexpr int pOrder{1};
   
     /******************
      * solver options *
@@ -94,10 +84,10 @@ int main(int argc, char *argv[]) {
     const int nThreads = std::thread::hardware_concurrency();
     const int nThreadsDebug = std::thread::hardware_concurrency();
     // how to sort eigenvaluesn
-    constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetImagPart};
+    constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
     constexpr int nEigenpairs{5};
-    constexpr int krylovDim{50};
-    constexpr CSTATE target = 1.0i;
+    constexpr int krylovDim{100};
+    constexpr CSTATE target = 500i;
 
     constexpr bool computeVectors{true};
     /*********************
@@ -207,7 +197,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    auto modal_cmesh = CreateCMesh(gmesh,freq,scale,gmshmats,modal_mats,modal_bcs);
+    auto modal_cmesh = CreateCMesh(gmesh,pOrder,freq,scale,gmshmats,modal_mats,modal_bcs);
 
   
     //WGAnalysis class is responsible for managing the modal analysis
@@ -312,6 +302,7 @@ int main(int argc, char *argv[]) {
 
 TPZAutoPointer<TPZCompMesh>
 CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
+            const int pOrder, 
             const STATE freq, const STATE scale,
             const TPZVec<std::map<std::string, int>> &gmshmats,
             const std::map<std::string, std::tuple<STATE, STATE, STATE>> &modal_mats,
@@ -320,9 +311,6 @@ CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     ///Defines the computational mesh based on the geometric mesh
     constexpr bool is_complex{true};
     TPZAutoPointer<TPZCompMesh>  cmesh = new TPZCompMesh(gmesh,is_complex);
-    
-    //polynomial order used in the approximatoin
-    constexpr int pOrder{4};
     //using traditional H1 elements
     cmesh->SetAllCreateFunctionsContinuous();
 
