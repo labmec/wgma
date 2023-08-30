@@ -102,7 +102,7 @@ AcousticModes::ComputeLxy(const TPZFMatrix<STATE> &dphi,
                           TPZFMatrix<CSTATE> &lxy)
 {
     const int nphi = dphi.Cols();
-    lxy.Resize(6,3*nphi);
+    lxy.Redim(6,3*nphi);
     for(int i = 0; i < nphi; i++){
         const auto dphix = dphi.Get(0,i);
         const auto dphiy = dphi.Get(1,i);
@@ -126,7 +126,7 @@ AcousticModes::ComputeLz(const TPZFMatrix<STATE> &phi,
                          TPZFMatrix<CSTATE> &lz)
 {
     const int nphi = phi.Rows();
-    lz.Resize(6,3*nphi);
+    lz.Redim(6,3*nphi);
     for(int i = 0; i < nphi; i++){
         const auto phival = phi.GetVal(i,0);
         lz.Put(2,3*i+2,phival);
@@ -139,8 +139,9 @@ void
 AcousticModes::ComputeC(TPZFMatrix<CSTATE> &Cmat)
 {
     Cmat.Redim(6,6);
-    const REAL lambda = GetLambda();
-    const REAL mu = GetMu();
+    const REAL scale = this->fScaleFactor;
+    const REAL lambda = GetLambda()*scale*scale;
+    const REAL mu = GetMu()*scale*scale;
     
     for(int i = 0; i < 3; i++){
         Cmat.Put(i,i,2*mu);
@@ -149,12 +150,12 @@ AcousticModes::ComputeC(TPZFMatrix<CSTATE> &Cmat)
         }
     }
     for(int i = 3; i < 6; i++){
-        Cmat.Put(i,i,4*mu);
+        Cmat.Put(i,i,1*mu);
     }
 }
 
-//we will preallocate memory considering at most 100 shape functions
-constexpr int nphimax{100};
+//we will preallocate memory considering at most 30 shape functions
+constexpr int nphimax{30};
 
 void
 AcousticModes::ContributeK(
@@ -190,18 +191,21 @@ AcousticModes::ContributeK(
     ComputeC(Cmat);
     
 
-    
-    const REAL freq = GetFrequency()/fScaleFactor;
+    const REAL scale = this->fScaleFactor;
+    const REAL freq = GetFrequency();
     const REAL rho = GetRho();
     const REAL omega = 2*M_PI*freq;
+    const REAL omega2rho = omega*omega*rho*scale*scale*scale;
     /*****************ACTUAL COMPUTATION OF CONTRIBUTION****************/
-    TPZFNMatrix<3*nphimax*nphimax,CSTATE> tmp;
+    TPZFNMatrix<3*nphimax*3*nphimax,CSTATE> tmp;
 
     //lxy^T C lxy
-    lxy.Multiply(Cmat,tmp,1);
+    TPZFNMatrix<6*3*nphimax,CSTATE> lxyt(3*nphi,6,0);
+    lxy.Transpose(&lxyt);
+    lxyt.Multiply(Cmat,tmp,0);
     ek.AddContribution(0,0,tmp,false,lxy,false,weight);
     //-w^2 rho phi_i phi_j
-    ek.AddContribution(0,0,phivec,false,phivec,true,-omega*omega*rho*weight);
+    ek.AddContribution(0,0,phivec,false,phivec,true,-omega2rho*weight);
 }
 
 void
@@ -231,18 +235,18 @@ AcousticModes::ContributeL(
 
     ComputeC(Cmat);
 
-    
-    const REAL freq = GetFrequency()/fScaleFactor;
-    const REAL rho = GetRho();
-    const REAL omega = 2*M_PI/freq;
     /*****************ACTUAL COMPUTATION OF CONTRIBUTION****************/
-    TPZFNMatrix<3*nphimax*nphimax,CSTATE> tmp;
+    TPZFNMatrix<3*nphimax*3*nphimax,CSTATE> tmp;
 
     //lxy^T C lz
-    lxy.Multiply(Cmat,tmp,1);
+    TPZFNMatrix<6*3*nphimax,CSTATE> lxyt(3*nphi,6,0);
+    lxy.Transpose(&lxyt);
+    lxyt.Multiply(Cmat,tmp,0);
     ek.AddContribution(0,0,tmp,false,lz,false,  weight);
     //lz^T C lxy
-    lz.Multiply(Cmat,tmp,1);
+    TPZFNMatrix<6*3*nphimax,CSTATE> lzt(3*nphi,6,0);
+    lz.Transpose(&lzt);
+    lzt.Multiply(Cmat,tmp,0);
     ek.AddContribution(0,0,tmp,false,lxy,false, -weight);
 }
 
@@ -265,15 +269,13 @@ AcousticModes::ContributeM(
     TPZFNMatrix<6*6,CSTATE> Cmat(6,6,0);
     ComputeC(Cmat);
 
-    
-    const REAL freq = GetFrequency()/fScaleFactor;
-    const REAL rho = GetRho();
-    const REAL omega = 2*M_PI/freq;
     /*****************ACTUAL COMPUTATION OF CONTRIBUTION****************/
-    TPZFNMatrix<3*nphimax*nphimax,CSTATE> tmp;
+    TPZFNMatrix<3*nphimax*3*nphimax,CSTATE> tmp;
 
     //lz^T C lz
-    lz.Multiply(Cmat,tmp,1);
+    TPZFNMatrix<6*3*nphimax,CSTATE> lzt(3*nphi,6,0);
+    lz.Transpose(&lzt);
+    lzt.Multiply(Cmat,tmp,0);
     ek.AddContribution(0,0,tmp,false,lz,false,-weight);
 }
 
