@@ -62,19 +62,18 @@ int main(int argc, char *argv[]) {
     //the mesh is described in micrometers
     constexpr STATE char_length = {1/1e6};
     
-    constexpr STATE char_time = {1/1e3};
-    
     //taken from https://pubs.aip.org/aip/app/article/4/7/071101/1024179/Brillouin-optomechanics-in-nanophotonic-structures
-    constexpr STATE rho_clad{2203*(char_length)};
+    constexpr STATE rho_clad{2203};
     //this value is in GPa
-    constexpr STATE young_clad{73.1* ((1e9*char_length*char_length)*char_time*char_time)};
+    constexpr STATE young_clad{73.1*1e9};
     constexpr STATE poisson_clad{0.17};
     constexpr STATE lambda_clad = ComputeLambda(young_clad, poisson_clad);
     constexpr STATE mu_clad = ComputeMu(young_clad, poisson_clad);
-    // operational frequency in Mhz divided by time scale
-    constexpr STATE freq{117*(1e6*char_time*char_length)};
+    // operational frequency in Mhz
+    constexpr STATE freq{117*1e6};
 
-    constexpr REAL scale{1};
+    constexpr REAL scale_geom{1};
+    constexpr REAL scale_mat{char_length};
 
     /******************
      *  fem options   *
@@ -90,10 +89,10 @@ int main(int argc, char *argv[]) {
     const int nThreads = std::thread::hardware_concurrency();
     const int nThreadsDebug = std::thread::hardware_concurrency();
     // how to sort eigenvaluesn
-    constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetImagPart};
-    constexpr int nEigenpairs{5};
-    constexpr int krylovDim{100};
-    constexpr CSTATE target = 10i;
+    constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetMagnitude};
+    constexpr int nEigenpairs{10};
+    constexpr int krylovDim{150};
+    const CSTATE target = (2*M_PI*freq/5800)*scale_mat*1i;
 
     constexpr bool computeVectors{true};
     /*********************
@@ -154,11 +153,11 @@ int main(int argc, char *argv[]) {
   
     TPZVec<std::map<std::string, int>> gmshmats;
     constexpr bool verbosity_lvl{false};
-    auto gmesh = wgma::gmeshtools::ReadGmshMesh(meshfile, scale,
+    auto gmesh = wgma::gmeshtools::ReadGmshMesh(meshfile, scale_geom,
                                                 gmshmats,verbosity_lvl);
 
     const std::string arcfile{"meshes/"+basisName+"_circdata.csv"};
-    auto arcdata = SetUpArcData(arcfile, scale);
+    auto arcdata = SetUpArcData(arcfile, scale_geom);
     if(arc3D){
         /**
            in order to exactly represent all the circles in the mesh,
@@ -194,7 +193,7 @@ int main(int argc, char *argv[]) {
             //we need to create this
             if(name == "acoustic_bnd"){
                 found = true;
-                modal_bcs[id] = wgma::bc::type::PEC;
+                modal_bcs[id] = wgma::bc::type::PMC;
                 break;
             }
         }
@@ -203,7 +202,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    auto modal_cmesh = CreateCMesh(gmesh,pOrder,freq,scale,gmshmats,modal_mats,modal_bcs);
+    auto modal_cmesh = CreateCMesh(gmesh,pOrder,freq,scale_mat,gmshmats,modal_mats,modal_bcs);
 
   
     //WGAnalysis class is responsible for managing the modal analysis
