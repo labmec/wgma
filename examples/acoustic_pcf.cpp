@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
     constexpr STATE lambda_clad = ComputeLambda(young_clad, poisson_clad);
     constexpr STATE mu_clad = ComputeMu(young_clad, poisson_clad);
     // operational frequency in Mhz
-    constexpr STATE freq{117*1e6};
+    constexpr STATE freq{0};//117*1e6};
 
     constexpr REAL scale_geom{1};
     constexpr REAL scale_mat{char_length};
@@ -208,18 +208,82 @@ int main(int argc, char *argv[]) {
     //WGAnalysis class is responsible for managing the modal analysis
     auto analysis = CreateAnalysis(modal_cmesh,nThreads,optimizeBandwidth,filterBoundaryEqs);
 
-    TPZAutoPointer<TPZQuadEigenSolver<CSTATE>> krylov_solver =
-        new TPZQuadEigenSolver<CSTATE>();
-    krylov_solver->SetKrylovDim(krylovDim);
+    {
+        TPZAutoPointer<TPZQuadEigenSolver<CSTATE>> krylov_solver =
+            new TPZQuadEigenSolver<CSTATE>();
+        krylov_solver->SetKrylovDim(krylovDim);
 
-    krylov_solver->SetTarget(target);
-    krylov_solver->SetNEigenpairs(nEigenpairs);
-    krylov_solver->SetEigenSorting(sortingRule);
+        krylov_solver->SetTarget(target);
+        krylov_solver->SetNEigenpairs(nEigenpairs);
+        krylov_solver->SetEigenSorting(sortingRule);
 
-    analysis.SetSolver(*krylov_solver);
-
+        analysis.SetSolver(*krylov_solver);
+    }
     analysis.Assemble();
+    {
+        auto krylov_solver =
+            dynamic_cast<TPZQuadEigenSolver<CSTATE>*>(analysis.Solver());
+        if(!krylov_solver){
+            DebugStop();
+        }
+        auto kmat = krylov_solver->MatrixK();
+        if(!kmat){
+            DebugStop();
+        }
+        auto nrows = kmat->Rows();
+        TPZFMatrix<CSTATE> sol(nrows,1), res(nrows,1);
 
+        //now we compute sol as a simple pi/6 rotation
+        const auto cos = std::cos(M_PI/6);
+        const auto sin = std::sin(M_PI/6);
+
+        auto &block = modal_cmesh->Block();
+        TPZManVector<REAL,3> co(3,0.), transfco(3,0.), displ(3,0);
+        std::set<int64_t> visited_nodes;
+        for(auto cel : modal_cmesh->ElementVec()){
+            const auto gel = cel->Reference();
+            if(!gel){continue;}
+            const auto nnodes = gel->NCornerNodes();
+            TPZManVector<int64_t,3> nodeindices(nnodes,0);
+            gel->GetNodeIndices(nodeindices);
+            for(int inode = 0; inode < nnodes; inode++){
+                const auto nodeindex = nodeindices[inode];
+                if(visited_nodes.count(nodeindex)){continue;}
+                visited_nodes.insert(nodeindex);
+                TPZConnect &con = cel->Connect(inode);
+                const auto seqnum = con.SequenceNumber();
+                const auto pos = block.Position(seqnum);
+                const auto size = block.Size(seqnum);
+                if(size!=3){
+                    DebugStop();
+                }
+                const auto &node = gmesh->NodeVec()[nodeindex];
+                node.GetCoordinates(co);
+                transfco[0] = cos*co[0] - sin*co[1];
+                transfco[1] = sin*co[0] + cos*co[1];
+                for(auto ix = 0; ix < 3; ix++){
+                    const auto u = transfco[ix]-co[ix];
+                    sol.Put(pos+ix,0,u);
+                }
+            }
+            
+        }
+
+        const std::string plotfile = prefix+"_modal_test";
+
+    
+        TPZSimpleTimer tpostprocess("Post processing");
+        TPZVec<std::string> fvars = {
+            "u_real",
+            "u_abs"};
+        auto vtk = TPZVTKGenerator(modal_cmesh, fvars, plotfile, vtkRes);
+        modal_cmesh->LoadSolution(sol);
+        vtk.Do();
+
+        kmat->Multiply(sol, res);
+        std::cout<<"norm res "<<Norm(res)<<std::endl;
+    }
+    
     {
         auto &solv = analysis.EigenSolver<CSTATE>();
 
