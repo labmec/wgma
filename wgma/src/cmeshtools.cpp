@@ -15,6 +15,14 @@
 
 using namespace wgma;
 
+void wgma::cmeshtools::PrintCompMesh(TPZAutoPointer<TPZCompMesh> cmesh,
+                                     std::string filename)
+{
+  const std::string cmeshFileNameTxt{filename+".txt"};
+  std::ofstream cmeshFileTxt(cmeshFileNameTxt);
+  cmesh->Print(cmeshFileTxt);
+}
+
 
 void
 cmeshtools::SetupGmshMaterialData(

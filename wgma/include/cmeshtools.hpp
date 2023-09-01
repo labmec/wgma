@@ -40,6 +40,15 @@ namespace wgma::cmeshtools{
     //! each position contains ids and dimension of dummy materials (such as probes)
     std::vector<std::pair<int,int>> probevec;
   };
+
+  /**
+     @brief Prints the computational mesh in .txt format
+     @param [in] cmesh Computational mesh
+     @param [in] file name (no extension)
+   */
+  void PrintCompMesh(TPZAutoPointer<TPZCompMesh> cmesh,
+                     std::string filename);
+  
   /**
    @brief This function associates materials (regions) read from .msh file
    with the materials to be created in the computational mesh.
