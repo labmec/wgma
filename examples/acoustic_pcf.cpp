@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
     constexpr STATE lambda_clad = ComputeLambda(young_clad, poisson_clad);
     constexpr STATE mu_clad = ComputeMu(young_clad, poisson_clad);
     // operational frequency in Mhz
-    constexpr STATE freq{0};//117*1e6};
+    constexpr STATE freq{3*1e9};
 
     constexpr REAL scale_geom{1};
     constexpr REAL scale_mat{char_length};
@@ -89,10 +89,10 @@ int main(int argc, char *argv[]) {
     const int nThreads = std::thread::hardware_concurrency();
     const int nThreadsDebug = 0;
     // how to sort eigenvaluesn
-    constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetMagnitude};
+    constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
     constexpr int nEigenpairs{10};
     constexpr int krylovDim{150};
-    const CSTATE target = (2*M_PI*freq/5800)*scale_mat*1i;
+    const CSTATE target = 3156.28i;
 
     constexpr bool computeVectors{true};
     /*********************
@@ -219,75 +219,10 @@ int main(int argc, char *argv[]) {
 
         analysis.SetSolver(*krylov_solver);
     }
-    analysis.AssembleMat(TPZQuadEigenAnalysis::Mat::K);
+
     {
-
-        
-        auto krylov_solver =
-            dynamic_cast<TPZQuadEigenSolver<CSTATE>*>(analysis.Solver());
-        if(!krylov_solver){
-            DebugStop();
-        }
-        auto kmat = krylov_solver->MatrixK();
-        if(!kmat){
-            DebugStop();
-        }
-        auto nrows = kmat->Rows();
-        TPZFMatrix<CSTATE> sol(nrows,1), res(nrows,1);
-
-        auto &eqfilt = analysis.StructMatrix()->EquationFilter();
-        auto &block = modal_cmesh->Block();
-        TPZManVector<REAL,3> co(3,0.), transfco(3,0.), displ(3,0);
-        std::set<int64_t> visited_nodes;
-        for(auto cel : modal_cmesh->ElementVec()){
-            const auto gel = cel->Reference();
-            if(!gel){continue;}
-            const auto nnodes = gel->NCornerNodes();
-            TPZManVector<int64_t,3> nodeindices(nnodes,0);
-            gel->GetNodeIndices(nodeindices);
-            for(int inode = 0; inode < nnodes; inode++){
-                const auto nodeindex = nodeindices[inode];
-                if(visited_nodes.count(nodeindex)){continue;}
-                visited_nodes.insert(nodeindex);
-                TPZConnect &con = cel->Connect(inode);
-                const auto seqnum = con.SequenceNumber();
-                const auto pos = block.Position(seqnum);
-                const auto size = block.Size(seqnum);
-                if(size!=3){
-                    DebugStop();
-                }
-                const auto &node = gmesh->NodeVec()[nodeindex];
-                node.GetCoordinates(co);
-                TPZManVector<int64_t,3> original_pos = {pos,pos+1,pos+2};
-                TPZManVector<int64_t,3> filtered_pos = original_pos;
-                eqfilt.Filter(original_pos,filtered_pos);
-                sol.Put(filtered_pos[0],0, co[1]);
-                sol.Put(filtered_pos[1],0,-co[0]);
-                //sol.Put(filtered_pos[2],0, co[2]);//always zero
-            }
-            
-        }
-
-        const std::string plotfile = prefix+"_modal_test";
-
-    
-        TPZSimpleTimer tpostprocess("Post processing");
-        TPZVec<std::string> fvars = {
-            "u_real",
-            "u_abs"};
-        
-        modal_cmesh->LoadSolution(sol);
-
-        const std::string cmeshfilename{prefix+"cmesh.txt"};
-        std::ofstream cmeshfile(cmeshfilename);
-        modal_cmesh->Print(cmeshfile);
-
-        kmat->Multiply(sol, res);
-        std::cout<<"norm res "<<Norm(res)<<std::endl;
-
-        auto vtk = TPZVTKGenerator(modal_cmesh, fvars, plotfile, vtkRes);
-        vtk.Do();
-
+        TPZSimpleTimer timer("Assemble",true);
+        analysis.Assemble();
     }
     
     {
