@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
 
     // number of threads to use
     const int nThreads = std::thread::hardware_concurrency();
-    const int nThreadsDebug = std::thread::hardware_concurrency();
+    const int nThreadsDebug = 0;
     // how to sort eigenvaluesn
     constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetMagnitude};
     constexpr int nEigenpairs{10};
@@ -219,8 +219,10 @@ int main(int argc, char *argv[]) {
 
         analysis.SetSolver(*krylov_solver);
     }
-    analysis.Assemble();
+    analysis.AssembleMat(TPZQuadEigenAnalysis::Mat::K);
     {
+
+        
         auto krylov_solver =
             dynamic_cast<TPZQuadEigenSolver<CSTATE>*>(analysis.Solver());
         if(!krylov_solver){
@@ -233,10 +235,7 @@ int main(int argc, char *argv[]) {
         auto nrows = kmat->Rows();
         TPZFMatrix<CSTATE> sol(nrows,1), res(nrows,1);
 
-        //now we compute sol as a simple pi/6 rotation
-        const auto cos = std::cos(M_PI/6);
-        const auto sin = std::sin(M_PI/6);
-
+        auto &eqfilt = analysis.StructMatrix()->EquationFilter();
         auto &block = modal_cmesh->Block();
         TPZManVector<REAL,3> co(3,0.), transfco(3,0.), displ(3,0);
         std::set<int64_t> visited_nodes;
@@ -259,12 +258,12 @@ int main(int argc, char *argv[]) {
                 }
                 const auto &node = gmesh->NodeVec()[nodeindex];
                 node.GetCoordinates(co);
-                transfco[0] = cos*co[0] - sin*co[1];
-                transfco[1] = sin*co[0] + cos*co[1];
-                for(auto ix = 0; ix < 3; ix++){
-                    const auto u = transfco[ix]-co[ix];
-                    sol.Put(pos+ix,0,u);
-                }
+                TPZManVector<int64_t,3> original_pos = {pos,pos+1,pos+2};
+                TPZManVector<int64_t,3> filtered_pos = original_pos;
+                eqfilt.Filter(original_pos,filtered_pos);
+                sol.Put(filtered_pos[0],0, co[1]);
+                sol.Put(filtered_pos[1],0,-co[0]);
+                //sol.Put(filtered_pos[2],0, co[2]);//always zero
             }
             
         }
@@ -276,12 +275,19 @@ int main(int argc, char *argv[]) {
         TPZVec<std::string> fvars = {
             "u_real",
             "u_abs"};
-        auto vtk = TPZVTKGenerator(modal_cmesh, fvars, plotfile, vtkRes);
+        
         modal_cmesh->LoadSolution(sol);
-        vtk.Do();
+
+        const std::string cmeshfilename{prefix+"cmesh.txt"};
+        std::ofstream cmeshfile(cmeshfilename);
+        modal_cmesh->Print(cmeshfile);
 
         kmat->Multiply(sol, res);
         std::cout<<"norm res "<<Norm(res)<<std::endl;
+
+        auto vtk = TPZVTKGenerator(modal_cmesh, fvars, plotfile, vtkRes);
+        vtk.Do();
+
     }
     
     {
