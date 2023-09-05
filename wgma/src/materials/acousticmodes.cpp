@@ -195,15 +195,13 @@ AcousticModes::ContributeK(
     const REAL freq = GetFrequency();
     const REAL rho = GetRho();
     const REAL omega = 2*M_PI*freq;
-    const REAL omega2rho = omega*omega*rho*scale*scale*scale;
+    const REAL omega2rho = (omega*scale)*(omega*scale)*(rho*scale);
     /*****************ACTUAL COMPUTATION OF CONTRIBUTION****************/
     TPZFNMatrix<3*nphimax*3*nphimax,CSTATE> tmp;
 
     //lxy^T C lxy
-    TPZFNMatrix<6*3*nphimax,CSTATE> lxyt(3*nphi,6,0);
-    lxy.Transpose(&lxyt);
-    lxyt.Multiply(Cmat,tmp,0);
-    ek.AddContribution(0,0,tmp,false,lxy,false,weight);
+    Cmat.Multiply(lxy,tmp);
+    ek.AddContribution(0,0,lxy,true,tmp,false,weight);
     //-w^2 rho phi_i phi_j
     ek.AddContribution(0,0,phivec,false,phivec,true,-omega2rho*weight);
 }
@@ -239,15 +237,11 @@ AcousticModes::ContributeL(
     TPZFNMatrix<3*nphimax*3*nphimax,CSTATE> tmp;
 
     //lxy^T C lz
-    TPZFNMatrix<6*3*nphimax,CSTATE> lxyt(3*nphi,6,0);
-    lxy.Transpose(&lxyt);
-    lxyt.Multiply(Cmat,tmp,0);
-    ek.AddContribution(0,0,tmp,false,lz,false,  weight);
+    Cmat.Multiply(lz,tmp);
+    ek.AddContribution(0,0,lxy,true,tmp,false,-weight);
     //lz^T C lxy
-    TPZFNMatrix<6*3*nphimax,CSTATE> lzt(3*nphi,6,0);
-    lz.Transpose(&lzt);
-    lzt.Multiply(Cmat,tmp,0);
-    ek.AddContribution(0,0,tmp,false,lxy,false, -weight);
+    Cmat.Multiply(lxy,tmp);
+    ek.AddContribution(0,0,lz,true,tmp,false,  weight);
 }
 
 void
@@ -273,10 +267,8 @@ AcousticModes::ContributeM(
     TPZFNMatrix<3*nphimax*3*nphimax,CSTATE> tmp;
 
     //lz^T C lz
-    TPZFNMatrix<6*3*nphimax,CSTATE> lzt(3*nphi,6,0);
-    lz.Transpose(&lzt);
-    lzt.Multiply(Cmat,tmp,0);
-    ek.AddContribution(0,0,tmp,false,lz,false,-weight);
+    Cmat.Multiply(lz,tmp);
+    ek.AddContribution(0,0,lz,true,tmp,false,-weight);
 }
 
 
