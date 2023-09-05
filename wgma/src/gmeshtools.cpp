@@ -954,29 +954,6 @@ wgma::gmeshtools::FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh> gmesh,
 void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
                                                  const TPZVec<ArcData> &circles)
 {
-
-  //creates mid node for arc elements
-  auto CreateMidNode = [](const TPZVec<REAL> &x1, const TPZVec<REAL> &x2,
-                          const REAL r,
-                          const REAL xc, const REAL yc, const REAL zc){
-    TPZVec<REAL> x3(3,0);
-
-    //first we get its distance from xc
-    x3[0] = (x1[0] + x2[0])/2 - xc;
-    x3[1] = (x1[1] + x2[1])/2 - yc;
-    x3[2] = (x1[2] + x2[2])/2 - zc;
-
-    //norm of the vector
-    const auto vecnorm = sqrt(x3[0]*x3[0] + x3[1]*x3[1] + x3[2]*x3[2]);
-
-    //mid-arc coordinates
-    x3[0] = xc + r * x3[0]/vecnorm;
-    x3[1] = yc + r * x3[1]/vecnorm;
-    x3[2] = zc + r * x3[2]/vecnorm;
-    return x3;
-  };
-
-  
   std::map<int,int> arc_ids;
   std::map<int,bool> found_arcs;
   for(auto i = 0; i < circles.size(); i++){
@@ -1025,6 +1002,8 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
         if(!neigh_el->IsGeoBlendEl()){
           const auto neigh_index = neigh_el->Index();
           TPZChangeEl::ChangeToGeoBlend(gmesh.operator->(), neigh_index);
+        }else{
+          neigh_el->SetNeighbourForBlending(neigh_side);
         }
       }
     }
