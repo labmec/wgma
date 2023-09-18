@@ -26,7 +26,8 @@ set(headers
   include/post/orthosol.hpp
   include/post/waveguideportbc.hpp
   include/materials/twisted_wgma.hpp
-  include/materials/acousticmodes.hpp
+  include/materials/acousticmodesbase.hpp
+  include/materials/acousticmodesbeta.hpp
   )
 
 set(sources
@@ -44,7 +45,8 @@ set(sources
   src/post/orthosol.cpp
   src/post/waveguideportbc.cpp
   src/materials/twisted_wgma.cpp
-  src/materials/acousticmodes.cpp
+  src/materials/acousticmodesbase.cpp
+  src/materials/acousticmodesbeta.cpp
   )
 
 target_sources(wgma PUBLIC ${headers})

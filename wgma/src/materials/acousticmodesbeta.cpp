@@ -1,4 +1,4 @@
-#include "materials/acousticmodes.hpp"
+#include "materials/acousticmodesbeta.hpp"
 #include "TPZMaterialDataT.h"
 #include "TPZBndCondT.h"
 #include "pzaxestools.h"
@@ -6,23 +6,23 @@
 using namespace std::complex_literals;
 using namespace wgma::materials;
 
-AcousticModes::AcousticModes() : TBase()
+AcousticModesBeta::AcousticModesBeta() : TBase()
 {
     SetMatrixK();
 }
 
-AcousticModes::AcousticModes(int id) : TBase(id){
+AcousticModesBeta::AcousticModesBeta(int id) : TBase(id){
     SetMatrixK();
 }
 
-AcousticModes::AcousticModes(int id, 
+AcousticModesBeta::AcousticModesBeta(int id, 
                              const STATE mu,
                              const STATE lambda,
                              const STATE rho,
                              const STATE freq,
                              const REAL scale) :
-    TBase(id), fMu(mu), fRho(rho), fLambda(lambda),
-    fFreq(freq),fScaleFactor(scale)
+    TBase(id), AcousticModesBase(id,mu,lambda,rho,scale),
+    fFreq(freq)
 {
     SetMatrixK();
 
@@ -34,11 +34,11 @@ AcousticModes::AcousticModes(int id,
 }
 
 
-AcousticModes* AcousticModes::NewMaterial() const{
-    return new AcousticModes();
+AcousticModesBeta* AcousticModesBeta::NewMaterial() const{
+    return new AcousticModesBeta();
 }
 
-void AcousticModes::SetMatrixK()
+void AcousticModesBeta::SetMatrixK()
 {
     TPZMatQuadraticEigenVal::SetMatrixK();
     fCurrentContribute = [this](const auto &arg1, auto arg2, auto &arg3,
@@ -51,7 +51,7 @@ void AcousticModes::SetMatrixK()
     };
 }
 
-void AcousticModes::SetMatrixL()
+void AcousticModesBeta::SetMatrixL()
 {
     TPZMatQuadraticEigenVal::SetMatrixL();
     fCurrentContribute = [this](const auto &arg1, auto arg2, auto &arg3,
@@ -65,7 +65,7 @@ void AcousticModes::SetMatrixL()
 }
 
 
-void AcousticModes::SetMatrixM()
+void AcousticModesBeta::SetMatrixM()
 {
     TPZMatQuadraticEigenVal::SetMatrixM();
     fCurrentContribute = [this](const auto &arg1, auto arg2, auto &arg3,
@@ -79,7 +79,7 @@ void AcousticModes::SetMatrixM()
 }
 
 void
-AcousticModes::Contribute(
+AcousticModesBeta::Contribute(
     const TPZMaterialDataT<CSTATE> &data,
     REAL weight,
     TPZFMatrix<CSTATE> &ek, TPZFMatrix<CSTATE> &ef)
@@ -87,7 +87,7 @@ AcousticModes::Contribute(
     fCurrentContribute(data,weight,ek,ef);
 }
 
-void AcousticModes::ContributeBC(
+void AcousticModesBeta::ContributeBC(
     const TPZMaterialDataT<CSTATE> &data,
     REAL weight,
     TPZFMatrix<CSTATE> &ek, TPZFMatrix<CSTATE> &ef,
@@ -96,69 +96,13 @@ void AcousticModes::ContributeBC(
     fCurrentContributeBC(data,weight,ek,ef,bc);
 }
 
-void
-AcousticModes::ComputeLxy(const TPZFMatrix<STATE> &dphi,
-                          const TPZVec<REAL> &x,
-                          TPZFMatrix<CSTATE> &lxy)
-{
-    const int nphi = dphi.Cols();
-    lxy.Redim(6,3*nphi);
-    for(int i = 0; i < nphi; i++){
-        const auto dphix = dphi.Get(0,i);
-        const auto dphiy = dphi.Get(1,i);
-        //dudx
-        lxy.Put(0,3*i+0, dphix);
-        //dvdy
-        lxy.Put(1,3*i+1, dphiy);
-        //dudy
-        lxy.Put(3,3*i+0, dphiy);
-        //dvdx
-        lxy.Put(3,3*i+1, dphix);
-        //dwdx
-        lxy.Put(4,3*i+2, dphix);
-        //dwdy
-        lxy.Put(5,3*i+2, dphiy);
-    }
-    
-}
-void
-AcousticModes::ComputeLz(const TPZFMatrix<STATE> &phi,
-                         TPZFMatrix<CSTATE> &lz)
-{
-    const int nphi = phi.Rows();
-    lz.Redim(6,3*nphi);
-    for(int i = 0; i < nphi; i++){
-        const auto phival = phi.GetVal(i,0);
-        lz.Put(2,3*i+2,phival);
-        lz.Put(4,3*i+0,phival);
-        lz.Put(5,3*i+1,phival);
-    }
-}
 
-void
-AcousticModes::ComputeC(TPZFMatrix<CSTATE> &Cmat)
-{
-    Cmat.Redim(6,6);
-    const REAL scale = this->fScaleFactor;
-    const REAL lambda = GetLambda()*scale*scale;
-    const REAL mu = GetMu()*scale*scale;
-    
-    for(int i = 0; i < 3; i++){
-        Cmat.Put(i,i,2*mu);
-        for(int j = 0; j < 3; j++){
-            Cmat(i,j) += lambda;
-        }
-    }
-    for(int i = 3; i < 6; i++){
-        Cmat.Put(i,i,1*mu);
-    }
-}
 
 //we will preallocate memory considering at most 30 shape functions
 constexpr int nphimax{30};
 
 void
-AcousticModes::ContributeK(
+AcousticModesBeta::ContributeK(
     const TPZMaterialDataT<CSTATE> &data,
     REAL weight,
     TPZFMatrix<CSTATE> &ek, TPZFMatrix<CSTATE> &ef)
@@ -207,7 +151,7 @@ AcousticModes::ContributeK(
 }
 
 void
-AcousticModes::ContributeL(
+AcousticModesBeta::ContributeL(
     const TPZMaterialDataT<CSTATE> &data,
     REAL weight,
     TPZFMatrix<CSTATE> &ek, TPZFMatrix<CSTATE> &ef)
@@ -238,14 +182,14 @@ AcousticModes::ContributeL(
 
     //lxy^T C lz
     Cmat.Multiply(lz,tmp);
-    ek.AddContribution(0,0,lxy,true,tmp,false,-weight);
+    ek.AddContribution(0,0,lxy,true,tmp,false, weight);
     //lz^T C lxy
     Cmat.Multiply(lxy,tmp);
-    ek.AddContribution(0,0,lz,true,tmp,false,  weight);
+    ek.AddContribution(0,0,lz,true,tmp,false, -weight);
 }
 
 void
-AcousticModes::ContributeM(
+AcousticModesBeta::ContributeM(
     const TPZMaterialDataT<CSTATE> &data,
     REAL weight,
     TPZFMatrix<CSTATE> &ek, TPZFMatrix<CSTATE> &ef)
@@ -272,7 +216,7 @@ AcousticModes::ContributeM(
 }
 
 
-void AcousticModes::ContributeBCK(
+void AcousticModesBeta::ContributeBCK(
     const TPZMaterialDataT<CSTATE> &data,
     REAL weight,
     TPZFMatrix<CSTATE> &ek, TPZFMatrix<CSTATE> &ef,
@@ -317,55 +261,6 @@ void AcousticModes::ContributeBCK(
         PZError<<__PRETTY_FUNCTION__;
         PZError<<"\nThis module supports only dirichlet and neumann boundary conditions.\n";
         PZError<<"Stopping now..."<<std::endl;
-        DebugStop();
-        break;
-    }
-}
-
-int AcousticModes::VariableIndex(const std::string &name) const
-{
-    if( strcmp(name.c_str(), "u_real") == 0) return 0;
-    if( strcmp(name.c_str(), "u_abs") == 0) return 1;
-    DebugStop();
-    return 1;
-}
-
-int AcousticModes::NSolutionVariables(int var) const
-{
-    switch (var) {
-        case 0: //u_real
-            return 3;
-        case 1://u_abs
-            return 3;
-        default:
-            DebugStop();
-            break;
-    }
-    return 1;
-}
-
-/** @brief Returns the solution associated with the var index based on the finite element approximation */
-void AcousticModes::Solution(
-    const TPZMaterialDataT<CSTATE> &data,
-    int var,
-    TPZVec<CSTATE> &solout)
-{
-    const auto & uvec = data.sol[0];
-
-    switch (var) {
-    case 0:{//u_real
-        for (int i = 0; i < uvec.size(); ++i) {
-            solout[i] = std::real(uvec[i]);
-        }
-        break;
-    }
-    case 1:{//u_abs
-        for (int i = 0; i < uvec.size(); ++i) {
-            solout[i] = std::abs(uvec[i]);
-        }
-        break;
-    }
-    default:
         DebugStop();
         break;
     }

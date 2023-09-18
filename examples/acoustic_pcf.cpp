@@ -12,7 +12,7 @@
 #include "cmeshtools.hpp"
 #include "gmeshtools.hpp"
 #include "pmltypes.hpp"
-#include "materials/acousticmodes.hpp"
+#include "materials/acousticmodesbeta.hpp"
 #include <TPZYSMPPardiso.h>
 #include "util.hpp"
 //pz includes
@@ -330,7 +330,7 @@ CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
         if(modal_mats.count(name)){
             vol_ids.insert(id);
             auto [rho, lambda, mu] = modal_mats.at(name);
-            auto *mat = new wgma::materials::AcousticModes(id,mu,lambda,rho,freq,scale);
+            auto *mat = new wgma::materials::AcousticModesBeta(id,mu,lambda,rho,freq,scale);
             cmesh->InsertMaterialObject(mat);
         }
     }
