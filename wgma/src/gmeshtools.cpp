@@ -1048,7 +1048,7 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
       TPZManVector<REAL,3> axis = {cyldata.m_xaxis, cyldata.m_yaxis,cyldata.m_zaxis};
 
       auto cyl =
-        TPZChangeEl::ChangeToCylinder(gmesh.operator->(), el->Index(), xc, axis, r);
+        TPZChangeEl::ChangeToCylinder(gmesh.operator->(), el->Index(), xc, axis);
 
       //let us store all the neighbours
       std::set<TPZGeoElSide> all_neighs;
