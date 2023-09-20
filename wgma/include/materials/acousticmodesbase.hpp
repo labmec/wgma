@@ -61,6 +61,9 @@ namespace wgma::materials{
         [[nodiscard]] inline STATE GetMu() const{return fMu;}
         [[nodiscard]] inline STATE GetLambda() const{return fLambda;}
         [[nodiscard]] inline STATE GetRho() const{return fRho;}
+
+        inline void SetTorsion(STATE t){fTorsion = t;}
+        [[nodiscard]] inline STATE GetTorsion() const{return fTorsion;}
         /**@}*/
         /**
            @name SolutionMethods
@@ -92,6 +95,8 @@ namespace wgma::materials{
         STATE fMu{1};
         //! Density
         STATE fRho{1};
+        //! Torsion
+        STATE fTorsion{0};
         //! Scale factor for the domain (helps with floating point arithmetic on small domains)
         const REAL fScaleFactor{1.};
         AcousticModesBase() = default;//< Default constructor

@@ -23,29 +23,38 @@ AcousticModesBase::ComputeLxy(const TPZFMatrix<STATE> &dphi,
 {
     const int nphi = dphi.Cols();
     lxy.Redim(6,3*nphi);
+    const auto tau = this->GetTorsion();
     for(int i = 0; i < nphi; i++){
         const auto x = xvec[0];
         const auto y = xvec[1];
         const auto dphix = dphi.Get(0,i);
         const auto dphiy = dphi.Get(1,i);
-        //(-x dudy + y dudx) * tau
-        const auto lambda = (-x*dphiy + y*dphix)*0.5;
+        const auto lambda = (-x*dphiy + y*dphix)*tau;
         //dudx
         lxy.Put(0,3*i+0, dphix);
-        //dvdy
-        lxy.Put(1,3*i+1, dphiy);
         //dudy
         lxy.Put(3,3*i+0, dphiy);
+        //(-x dudy + y dudx) * tau
+        lxy.Put(4,3*i+0, lambda);
+        //tau
+        lxy.Put(5,3*i+0, tau);
+        
+        //dvdy
+        lxy.Put(1,3*i+1, dphiy);
         //dvdx
         lxy.Put(3,3*i+1, dphix);
+        //(-x dvdy + y dvdx) * tau
+        lxy.Put(5,3*i+1, lambda);
+        //tau
+        lxy.Put(4,3*i+1, tau);
         
-        lxy.Put(4,3*i+0, lambda);
+        //(-x dwdy + y dwdx) * tau
+        lxy.Put(2,3*i+2, lambda);
         //dwdx
         lxy.Put(4,3*i+2, dphix);
-
-        lxy.Put(5,3*i+1, lambda);
         //dwdy
         lxy.Put(5,3*i+2, dphiy);
+
     }
     
 }
