@@ -33,6 +33,7 @@ TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(std::string_view filename,
 TPZAutoPointer<TPZCompMesh>
 CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
             const int pOrder, const STATE freq, const STATE scale,
+            const STATE torsion,
             const TPZVec<std::map<std::string, int>> &gmshmats,
             const std::map<std::string, std::tuple<STATE, STATE, STATE>> &modal_mats,
             const std::map<int, wgma::bc::type> &modal_bcs);
@@ -72,6 +73,7 @@ int main(int argc, char *argv[]) {
     // operational frequency in Mhz
     constexpr STATE freq{3*1e9};
 
+    constexpr STATE torsion{0.00};
     constexpr REAL scale_geom{1};
     constexpr REAL scale_mat{char_length};
 
@@ -131,7 +133,7 @@ int main(int argc, char *argv[]) {
     */
     constexpr bool arc3D{true};
 
-    constexpr bool printGMesh{false};
+    constexpr bool printGMesh{true};
 
     /*********
      * begin *
@@ -165,7 +167,32 @@ int main(int argc, char *argv[]) {
         **/
         wgma::gmeshtools::SetExactArcRepresentation(gmesh, arcdata);
     }
-  
+
+    //stores the mat ids of all circles
+    std::set<int> circles_ids;
+    {
+        for(auto &arc : arcdata){
+            circles_ids.insert(arc.m_matid);
+        }
+        //now we find the boundary
+        constexpr int bcdim{1};
+        bool found{false};
+        for(auto [name,id] : gmshmats[bcdim]){
+            if(name == "acoustic_bnd"){
+                found = true;
+                circles_ids.insert(id);
+                break;
+            }
+        }
+        if(!found){
+            DebugStop();
+        }
+    }
+
+    //let us refine near the circles
+    constexpr int nrefdir{2};
+    wgma::gmeshtools::DirectionalRefinement(gmesh, circles_ids, nrefdir);
+    
     //print gmesh to .txt and .vtk format
     if(printGMesh)
     {
@@ -180,29 +207,12 @@ int main(int argc, char *argv[]) {
     modal_mats["cladding"] = std::make_tuple(rho_clad,lambda_clad,mu_clad);
   
     std::map<int, wgma::bc::type> modal_bcs;
-    {
-        //all air-si interfaces are modelled as free surfaces
-        for(auto &arc : arcdata){
-            modal_bcs[arc.m_matid] = wgma::bc::type::PMC;
-        }
-        
-        //now we overwrite the bc for the acoustic_bnd material
-        constexpr int bcdim{1};
-        bool found{false};
-        for(auto [name,id] : gmshmats[bcdim]){
-            //we need to create this
-            if(name == "acoustic_bnd"){
-                found = true;
-                modal_bcs[id] = wgma::bc::type::PMC;
-                break;
-            }
-        }
-        if(!found){
-            DebugStop();
-        }
+    //all air-si interfaces are modelled as free surfaces
+    for(auto id : circles_ids){
+        modal_bcs[id] = wgma::bc::type::PMC;
     }
 
-    auto modal_cmesh = CreateCMesh(gmesh,pOrder,freq,scale_mat,gmshmats,modal_mats,modal_bcs);
+    auto modal_cmesh = CreateCMesh(gmesh,pOrder,freq,scale_mat,torsion,gmshmats,modal_mats,modal_bcs);
 
   
     //WGAnalysis class is responsible for managing the modal analysis
@@ -313,7 +323,7 @@ int main(int argc, char *argv[]) {
 TPZAutoPointer<TPZCompMesh>
 CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
             const int pOrder, 
-            const STATE freq, const STATE scale,
+            const STATE freq, const STATE scale, const STATE torsion,
             const TPZVec<std::map<std::string, int>> &gmshmats,
             const std::map<std::string, std::tuple<STATE, STATE, STATE>> &modal_mats,
             const std::map<int, wgma::bc::type> &modal_bcs)
@@ -331,6 +341,7 @@ CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
             vol_ids.insert(id);
             auto [rho, lambda, mu] = modal_mats.at(name);
             auto *mat = new wgma::materials::AcousticModesBeta(id,mu,lambda,rho,freq,scale);
+            mat->SetTorsion(torsion);
             cmesh->InsertMaterialObject(mat);
         }
     }
