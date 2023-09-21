@@ -97,19 +97,11 @@ AcousticModesOmega::ContributeA(
                                      data.axes);
     }
 
-    TPZFNMatrix<3*nphimax,CSTATE> phivec(3*nphi,3,0);
-
     //L matrix
     TPZFNMatrix<6*3*nphimax,CSTATE> lxy(6,3*nphi,0), lz(6,3*nphi,0);
     
     ComputeLxy(grad_phi,data.x,lxy);
     ComputeLz(phi,lz);
-
-    for(int i = 0; i < nphi; i++){
-        phivec.Put(3*i+0,0,phi.Get(i,0));
-        phivec.Put(3*i+1,1,phi.Get(i,0));
-        phivec.Put(3*i+2,2,phi.Get(i,0));
-    }
 
     //C matrix in voigt notation
     TPZFNMatrix<6*6,CSTATE> Cmat(6,6,0);
@@ -118,20 +110,22 @@ AcousticModesOmega::ContributeA(
     
 
     const REAL scale = this->fScaleFactor;
-    const CSTATE beta = GetBeta();
+    const CSTATE beta = GetBeta() * scale;
 
     /*****************ACTUAL COMPUTATION OF CONTRIBUTION****************/
     TPZFNMatrix<3*nphimax*3*nphimax,CSTATE> tmp;
-    Cmat.Multiply(lz,tmp);
-    //lz^T C lz
-    ek.AddContribution(0,0,lz,true,tmp,false, -beta*beta*weight);
-    //lxy^T C lz
-    ek.AddContribution(0,0,lxy,true,tmp,false, -1i*beta*weight);
     Cmat.Multiply(lxy,tmp);
-    //lz^T C lxy
-    ek.AddContribution(0,0,lz,true,tmp,false,  1i*beta*weight);
     //lxy^T C lxy
     ek.AddContribution(0,0,lxy,true,tmp,false,weight);
+    //lz^T C lxy
+    ek.AddContribution(0,0,lz,true,tmp,false,  1i*beta*weight);
+    Cmat.Multiply(lz,tmp);
+    //lxy^T C lz
+    ek.AddContribution(0,0,lxy,true,tmp,false, -1i*beta*weight);
+    //lz^T C lz
+    ek.AddContribution(0,0,lz,true,tmp,false, beta*beta*weight);
+    
+    
 }
 
 void
@@ -145,16 +139,16 @@ AcousticModesOmega::ContributeB(
     const int nphi = phi.Rows();
 
 
-    TPZFNMatrix<3*nphimax,CSTATE> phivec(3*nphi,3,0);
+    TPZFNMatrix<3*nphimax,CSTATE> phivec(3,3*nphi,0);
     for(int i = 0; i < nphi; i++){
         const auto phival = phi.Get(i,0);
-        phivec.Put(3*i+0,0,phival);
-        phivec.Put(3*i+1,1,phival);
-        phivec.Put(3*i+2,2,phival);
+        phivec.Put(0,3*i+0,phival);
+        phivec.Put(1,3*i+1,phival);
+        phivec.Put(2,3*i+2,phival);
     }
     const REAL scale = this->fScaleFactor;
-    const REAL rho = GetRho();
-    ek.AddContribution(0,0,phivec,false,phivec,true,rho*weight);
+    const REAL rho = this->GetRho();
+    ek.AddContribution(0,0,phivec,true,phivec,false,rho*weight);
 }
 
 
