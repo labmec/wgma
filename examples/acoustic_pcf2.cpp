@@ -34,18 +34,20 @@ TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(std::string_view filename,
 
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const int neigenpairs, const CSTATE target,
+            const int krylovDim,
             TPZEigenSort sorting, bool usingSLEPC);
 
 TPZAutoPointer<TPZCompMesh>
 CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
             const int pOrder, const CSTATE beta, const STATE scale,
+            const STATE torsion,
             const TPZVec<std::map<std::string, int>> &gmshmats,
             const std::map<std::string, std::tuple<STATE, STATE, STATE>> &modal_mats,
             const std::map<int, wgma::bc::type> &modal_bcs);
 
 TPZEigenAnalysis
 CreateAnalysis(TPZAutoPointer<TPZCompMesh> modal_cmesh, const int nThreads,
-               const bool optimizeBandwidth,const bool filterBoundaryEqs);
+               const bool optimizeBandwidth);
 
 constexpr STATE ComputeMu(const STATE E, const STATE v){
     return E/(2*(1+v));
@@ -75,8 +77,18 @@ int main(int argc, char *argv[]) {
     constexpr STATE poisson_clad{0.17};
     constexpr STATE lambda_clad = ComputeLambda(young_clad, poisson_clad);
     constexpr STATE mu_clad = ComputeMu(young_clad, poisson_clad);
-    // beta
-    constexpr CSTATE beta{3156};
+    constexpr STATE torsion{0.0};
+    /*
+      we set \beta_{mech} = 2\beta_{electromagnetic}
+      using the value from
+      Leaky Modes In Twisted Microstructured Optical Fibers
+      A. Nicolet, F. Zolla, Y. O. Agha & S. Guenneau,
+      2007,
+      neff = 1.43877448428430
+      thus
+      beta = 5832141.9901666185
+     */
+    constexpr CSTATE beta{2*5.8321419901666185};
 
     constexpr REAL scale_geom{1};
     constexpr REAL scale_mat{char_length};
@@ -99,7 +111,7 @@ int main(int argc, char *argv[]) {
     constexpr int nEigenvalues{10};
     constexpr bool usingSLEPC{true};
     constexpr int krylovDim{150};
-    const CSTATE target = 140;
+    const CSTATE target = 0;
 
     constexpr bool computeVectors{true};
     /*********************
@@ -127,12 +139,6 @@ int main(int argc, char *argv[]) {
 
     // reorder the equations in order to optimize bandwidth
     constexpr bool optimizeBandwidth{true};
-    /*
-      The equations corresponding to homogeneous dirichlet boundary condition(PEC)
-      can be filtered out of the global system in order to achieve better
-      conditioning.
-    */
-    constexpr bool filterBoundaryEqs{true};
     /*
       Whether to use a non-linear representation for cylinders
     */
@@ -173,6 +179,31 @@ int main(int argc, char *argv[]) {
         wgma::gmeshtools::SetExactArcRepresentation(gmesh, arcdata);
     }
   
+    //stores the mat ids of all circles
+    std::set<int> circles_ids;
+    {
+        for(auto &arc : arcdata){
+            circles_ids.insert(arc.m_matid);
+        }
+        //now we find the outer boundary (outside PML) and remove it
+        constexpr int bcdim{1};
+        bool found{false};
+        for(auto [name,id] : gmshmats[bcdim]){
+            if(name == "modal_bnd"){
+              circles_ids.erase(id);
+              found = true;
+              break;
+            }
+        }
+        if(!found){
+            DebugStop();
+        }
+    }
+
+    //let us refine near the circles
+    constexpr int nrefdir{2};
+    wgma::gmeshtools::DirectionalRefinement(gmesh, circles_ids, nrefdir);
+    
     //print gmesh to .txt and .vtk format
     if(printGMesh)
     {
@@ -187,36 +218,18 @@ int main(int argc, char *argv[]) {
     modal_mats["cladding"] = std::make_tuple(rho_clad,lambda_clad,mu_clad);
   
     std::map<int, wgma::bc::type> modal_bcs;
-    {
-        //all air-si interfaces are modelled as free surfaces
-        for(auto &arc : arcdata){
-            modal_bcs[arc.m_matid] = wgma::bc::type::PMC;
-        }
-        
-        //now we overwrite the bc for the acoustic_bnd material
-        constexpr int bcdim{1};
-        bool found{false};
-        for(auto [name,id] : gmshmats[bcdim]){
-            //we need to create this
-            if(name == "acoustic_bnd"){
-                found = true;
-                modal_bcs[id] = wgma::bc::type::PMC;
-                break;
-            }
-        }
-        if(!found){
-            DebugStop();
-        }
+    //all air-si interfaces are modelled as free surfaces
+    for(auto id : circles_ids){
+        modal_bcs[id] = wgma::bc::type::PMC;
     }
 
-    auto modal_cmesh =
-      CreateCMesh(gmesh,pOrder,beta,scale_mat,gmshmats,modal_mats,modal_bcs);
+    auto modal_cmesh = CreateCMesh(gmesh,pOrder,beta,scale_mat,torsion,gmshmats,modal_mats,modal_bcs);
 
   
     //WGAnalysis class is responsible for managing the modal analysis
-    auto analysis = CreateAnalysis(modal_cmesh,nThreads,optimizeBandwidth,filterBoundaryEqs);
+    auto analysis = CreateAnalysis(modal_cmesh,nThreads,optimizeBandwidth);
 
-    auto solver = SetupSolver(nEigenvalues,target, sortingRule, usingSLEPC);
+    auto solver = SetupSolver(nEigenvalues,target, krylovDim, sortingRule, usingSLEPC);
   
     analysis.SetSolver(solver);
     
@@ -261,6 +274,7 @@ TPZAutoPointer<TPZCompMesh>
 CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
             const int pOrder, 
             const CSTATE beta, const STATE scale,
+            const STATE torsion,
             const TPZVec<std::map<std::string, int>> &gmshmats,
             const std::map<std::string, std::tuple<STATE, STATE, STATE>> &modal_mats,
             const std::map<int, wgma::bc::type> &modal_bcs)
@@ -278,6 +292,7 @@ CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
             vol_ids.insert(id);
             auto [rho, lambda, mu] = modal_mats.at(name);
             auto *mat = new wgma::materials::AcousticModesOmega(id,mu,lambda,rho,beta,scale);
+            mat->SetTorsion(torsion);
             cmesh->InsertMaterialObject(mat);
         }
     }
@@ -309,7 +324,11 @@ CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     std::set_union(vol_ids.begin(), vol_ids.end(),
                    bc_ids.begin(), bc_ids.end(),
                    std::inserter(all_ids, all_ids.begin()));
-  
+
+    std::cout<<"ids: "<<std::endl;
+    for(auto id : all_ids){
+      std::cout<<id<<std::endl;
+    }
     //seting the polynomial order in the computational mesh
     cmesh->SetDefaultOrder(pOrder);
     //actually creates the computational elements
@@ -323,30 +342,21 @@ CreateCMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
 
 TPZEigenAnalysis
 CreateAnalysis(TPZAutoPointer<TPZCompMesh> cmesh, const int nThreads,
-               const bool optimizeBandwidth,const bool filterBoundaryEqs)
+               const bool optimizeBandwidth)
 {
     TPZEigenAnalysis analysis(cmesh, RenumType::ECutHillMcKee);
+    std::cout<<"neq: "<<cmesh->NEquations()<<std::endl;
     TPZAutoPointer<TPZStructMatrix> strmtrx =
       new TPZSpStructMatrix<CSTATE>(cmesh);
 
     strmtrx->SetNumThreads(nThreads);
-    if(filterBoundaryEqs){
-        TPZVec<int64_t> activeEquations;
-        const auto ndofs_before = cmesh->NEquations();
-        std::set<int64_t> boundConnects;
-        wgma::cmeshtools::FilterBoundaryEquations(cmesh, activeEquations,
-                                                  boundConnects);
-        const auto ndofs = activeEquations.size();
-        std::cout<<"neq(before): "<<ndofs_before
-                 <<"\tneq(after): "<<ndofs<<std::endl;
-        strmtrx->EquationFilter().SetActiveEquations(activeEquations);
-    }
     analysis.SetStructuralMatrix(strmtrx);
     return analysis;
 }
 
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const int neigenpairs, const CSTATE target,
+            const int krylovDim,
             TPZEigenSort sorting, bool usingSLEPC)
 {
 
@@ -360,7 +370,6 @@ SetupSolver(const int neigenpairs, const CSTATE target,
 
   TPZAutoPointer<TPZEigenSolver<CSTATE>> solver{nullptr};
 
-  constexpr int krylovDim{-1};
   if (usingSLEPC){
     using namespace wgma::slepc;
     /*
