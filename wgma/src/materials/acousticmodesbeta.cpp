@@ -117,16 +117,17 @@ AcousticModesBeta::ContributeK(
                                      data.axes);
     }
 
-    TPZFNMatrix<3*nphimax,CSTATE> phivec(3*nphi,3,0);
+    TPZFNMatrix<3*nphimax,CSTATE> phivec(3,3*nphi,0);
 
     //L matrix
     TPZFNMatrix<6*3*nphimax,CSTATE> lxy(6,3*nphi,0);
     ComputeLxy(grad_phi,data.x,lxy);
 
     for(int i = 0; i < nphi; i++){
-        phivec.Put(3*i+0,0,phi.Get(i,0));
-        phivec.Put(3*i+1,1,phi.Get(i,0));
-        phivec.Put(3*i+2,2,phi.Get(i,0));
+        const auto phival = phi.Get(i,0);
+        phivec.Put(0,3*i+0,phival);
+        phivec.Put(1,3*i+1,phival);
+        phivec.Put(2,3*i+2,phival);
     }
 
     //C matrix in voigt notation
@@ -147,7 +148,7 @@ AcousticModesBeta::ContributeK(
     Cmat.Multiply(lxy,tmp);
     ek.AddContribution(0,0,lxy,true,tmp,false,weight);
     //-w^2 rho phi_i phi_j
-    ek.AddContribution(0,0,phivec,false,phivec,true,-omega2rho*weight);
+    ek.AddContribution(0,0,phivec,true,phivec,false,-omega2rho*weight);
 }
 
 void
@@ -180,12 +181,12 @@ AcousticModesBeta::ContributeL(
     /*****************ACTUAL COMPUTATION OF CONTRIBUTION****************/
     TPZFNMatrix<3*nphimax*3*nphimax,CSTATE> tmp;
 
-    //lxy^T C lz
-    Cmat.Multiply(lz,tmp);
-    ek.AddContribution(0,0,lxy,true,tmp,false, weight);
     //lz^T C lxy
     Cmat.Multiply(lxy,tmp);
-    ek.AddContribution(0,0,lz,true,tmp,false, -weight);
+    ek.AddContribution(0,0,lz,true,tmp,false,   weight);
+    //lxy^T C lz
+    Cmat.Multiply(lz,tmp);
+    ek.AddContribution(0,0,lxy,true,tmp,false, -weight);
 }
 
 void
