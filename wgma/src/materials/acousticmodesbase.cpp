@@ -36,8 +36,6 @@ AcousticModesBase::ComputeLxy(const TPZFMatrix<STATE> &dphi,
         lxy.Put(3,3*i+0, dphiy);
         //(-x dudy + y dudx) * tau
         lxy.Put(4,3*i+0, lambda);
-        //tau
-        lxy.Put(5,3*i+0, tau);
         
         //dvdy
         lxy.Put(1,3*i+1, dphiy);
@@ -45,8 +43,6 @@ AcousticModesBase::ComputeLxy(const TPZFMatrix<STATE> &dphi,
         lxy.Put(3,3*i+1, dphix);
         //(-x dvdy + y dvdx) * tau
         lxy.Put(5,3*i+1, lambda);
-        //tau
-        lxy.Put(4,3*i+1, tau);
         
         //(-x dwdy + y dwdx) * tau
         lxy.Put(2,3*i+2, lambda);
