@@ -86,12 +86,12 @@ int main(int argc, char *argv[]) {
       2007,
       neff = 1.43877448428430
       thus
-      beta = 5832141.9901666185
+      beta = 5832314
      */
-    constexpr CSTATE beta{2*5.8321419901666185};
+    constexpr CSTATE beta{2*5832314};
 
     constexpr REAL scale_geom{1};
-    constexpr REAL scale_mat{char_length};
+    constexpr REAL scale_mat{char_length*scale_geom};
 
     /******************
      *  fem options   *
@@ -111,6 +111,7 @@ int main(int argc, char *argv[]) {
     constexpr int nEigenvalues{10};
     constexpr bool usingSLEPC{true};
     constexpr int krylovDim{150};
+    //we search for dominant modes
     const CSTATE target = 0;
 
     constexpr bool computeVectors{true};
@@ -258,7 +259,7 @@ int main(int argc, char *argv[]) {
         const auto &eigenvectors = analysis.GetEigenvectors();
         const auto neq = eigenvectors.Rows();
         for (int isol = 0; isol < ev.size(); isol++) {
-          auto currentOmega = sqrt(ev[isol]);
+            auto currentOmega = sqrt(ev[isol])/scale_mat;
             std::cout<<"\rPost processing step "<<isol+1<<" out of "<<ev.size()
                      <<ev[isol]<<" (w = "<<currentOmega<<")"<<std::endl;
             
