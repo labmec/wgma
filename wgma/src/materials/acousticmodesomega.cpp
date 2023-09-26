@@ -110,7 +110,7 @@ AcousticModesOmega::ContributeA(
     
 
     const REAL scale = this->fScaleFactor;
-    const CSTATE beta = GetBeta()*scale*scale;
+    const CSTATE beta = GetBeta()*scale;
 
     /*****************ACTUAL COMPUTATION OF CONTRIBUTION****************/
     TPZFNMatrix<3*nphimax*3*nphimax,CSTATE> tmp;
@@ -146,7 +146,8 @@ AcousticModesOmega::ContributeB(
         phivec.Put(1,3*i+1,phival);
         phivec.Put(2,3*i+2,phival);
     }
-    const REAL rho = this->GetRho();
+    const REAL scale = this->fScaleFactor;
+    const REAL rho = this->GetRho()*scale*scale*scale;
     ek.AddContribution(0,0,phivec,true,phivec,false,rho*weight);
 }
 
