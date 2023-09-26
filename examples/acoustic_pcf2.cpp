@@ -71,9 +71,10 @@ int main(int argc, char *argv[]) {
     constexpr STATE char_length = {1/1e6};
     
     //taken from https://pubs.aip.org/aip/app/article/4/7/071101/1024179/Brillouin-optomechanics-in-nanophotonic-structures
-    constexpr STATE rho_clad{2203};
+    //value in tonne/m^3
+    constexpr STATE rho_clad{2.203};
     //this value is in GPa
-    constexpr STATE young_clad{73.1*1e9};
+    constexpr STATE young_clad{73.1};
     constexpr STATE poisson_clad{0.17};
     constexpr STATE lambda_clad = ComputeLambda(young_clad, poisson_clad);
     constexpr STATE mu_clad = ComputeMu(young_clad, poisson_clad);
@@ -86,18 +87,19 @@ int main(int argc, char *argv[]) {
       2007,
       neff = 1.43877448428430
       thus
-      beta = 5832314
+      beta = 5832314 rad/m
+      
      */
-    constexpr CSTATE beta{2*5832314};
+    constexpr CSTATE beta{2*5.832314};
 
     constexpr REAL scale_geom{1};
-    constexpr REAL scale_mat{char_length*scale_geom};
+    constexpr REAL scale_mat{1};
 
     /******************
      *  fem options   *
      ******************/
     // polynomial order to be used in the modal analysis
-    constexpr int pOrder{1};
+    constexpr int pOrder{2};
   
     /******************
      * solver options *
