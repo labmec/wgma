@@ -73,8 +73,8 @@ AcousticModesBase::ComputeC(TPZFMatrix<CSTATE> &Cmat)
 {
     Cmat.Redim(6,6);
     const REAL scale = this->fScaleFactor;
-    const REAL lambda = GetLambda()*scale*scale;
-    const REAL mu = GetMu()*scale*scale;
+    const REAL lambda = GetLambda()*scale;
+    const REAL mu = GetMu()*scale;
     
     for(int i = 0; i < 3; i++){
         Cmat.Put(i,i,2*mu);
