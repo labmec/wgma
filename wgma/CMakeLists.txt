@@ -21,6 +21,7 @@ set(headers
   include/slepcepshandler.hpp
   include/precond.hpp
   include/util.hpp
+  include/json_util.hpp
   include/post/eldata.hpp
   include/post/integrator.hpp
   include/post/solutionnorm.hpp
