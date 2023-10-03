@@ -39,7 +39,7 @@ target_link_libraries(pcwg PUBLIC wgma)
 add_pz_target(
   NAME slab_disc
   SOURCES slab_disc.cpp
-  FILES meshes/slab_disc.msh
+  FILES meshes/slab_disc.msh input/slab_disc.json
   )
 target_link_libraries(slab_disc PUBLIC wgma)
 

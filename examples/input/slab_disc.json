@@ -1,0 +1,19 @@
+{
+    "modal_analysis_left":{
+        "materials":{
+            "source_clad_left":{
+                "isotropic":true,
+                "n":1.0,
+                "ur":1
+            },
+            "source_core_left":{
+                "isotropic":true,
+                "n":1.55,
+                "ur":1
+            }
+        },
+        "bcs":{
+            "source_left_bnd":"PEC"
+        }
+    }
+}

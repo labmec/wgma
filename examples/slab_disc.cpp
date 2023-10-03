@@ -16,6 +16,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <slepcepshandler.hpp>
 #include <post/orthosol.hpp>
 #include <post/waveguideportbc.hpp>
+#include <json_util.hpp>
 // pz includes
 #include <MMeshType.h>      //for MMeshType
 #include <TPZSimpleTimer.h> //for TPZSimpleTimer
@@ -104,6 +105,12 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           const TPZVec<int> &nmodes,
                           TPZVTKGenerator &vtk);
 
+using json = nlohmann::json;
+
+void ReadModalAnalysisDataFromJson(const json &json_data,
+                                   const std::string_view name,
+                                   wgma::cmeshtools::PhysicalData &modal_data);
+
 int main(int argc, char *argv[]) {
 
 #ifdef PZ_LOG
@@ -177,14 +184,20 @@ int main(int argc, char *argv[]) {
     wgma::gmeshtools::PrintGeoMesh(gmesh, filename);
   }
 
-
+  /*
+    reading json file
+   */
+  std::ifstream f("input/slab_disc.json");
+  json json_data = json::parse(f);
   /********************************
    * cmesh(modal analysis: left)  *
    ********************************/
 
-  auto modal_l_cmesh = [gmesh,&gmshmats](){
+  auto modal_l_cmesh = [gmesh,&gmshmats, &json_data](){
     // setting up cmesh data
     wgma::cmeshtools::PhysicalData modal_data;
+
+    ReadModalAnalysisDataFromJson(json_data,"modal_analysis_left",modal_data);
 
     std::map<std::string, std::pair<CSTATE, CSTATE>> modal_mats;
     modal_mats["source_clad_left"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad, 1.);
@@ -774,3 +787,33 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   }
 }
 
+void ReadModalAnalysisDataFromJson(const json &json_data,
+                                   const std::string_view name,
+                                   wgma::cmeshtools::PhysicalData &modal_data)
+{
+  if(json_data.contains(name) == 0){
+    std::cout<<"could not find key "<<name<<" in json file! Aborting..."
+             <<std::endl;
+    DebugStop();
+  }
+  auto simdata = json_data[name];
+
+  std::map<std::string, std::pair<CSTATE, CSTATE>> modal_mats;
+  //now we read material info from json
+  for(auto &[key,val] : simdata["materials"].items()){
+    //reffractive index
+    if(val.contains("isotropic") && val["isotropic"] == false){
+      std::cout<<"not yet implemented!"<<std::endl;
+      DebugStop();
+    }
+    const CSTATE nmat =  val["n"];
+    const CSTATE urmat = val["ur"];
+    modal_mats[key] = {nmat*nmat,urmat};
+  }
+  std::map<std::string, wgma::bc::type> modal_bcs;
+  //now we read boundary info from json
+  for(auto &[key,val] : simdata["bcs"].items()){
+    //allowed values: PEC,PMC,PERIODIC
+    modal_bcs[key] = wgma::bc::from_string(val.get<std::string>());
+  }
+}
