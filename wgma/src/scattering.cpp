@@ -242,7 +242,8 @@ namespace wgma::scattering{
                                const TPZVec<int64_t> &mem_indices,
                                const TPZIntPoints &intrule,
                                TPZInterpolationSpace *cel,
-                               TPZTransform<> t)
+                               TPZTransform<> t,
+                               CSTATE coeff)
   {
 
     //number of integration points
@@ -272,7 +273,7 @@ namespace wgma::scattering{
         //x (for debugging)
         ptsol.x = data.x;
         //sol
-        ptsol.sol = data.sol[0][0];
+        ptsol.sol = coeff*data.sol[0][0];
         //let us take the derivatives to the global coordinates
         if constexpr(CELDIM==2){
           TPZFNMatrix<3,CSTATE> dsol(CELDIM, 1, 0.);
@@ -282,7 +283,7 @@ namespace wgma::scattering{
           TPZAxesTools<CSTATE>::Axes2XYZ(dsol, dsolx, data.axes);
 
           CSTATE im {0,1};
-          for(auto ix = 0; ix < 3; ix++){ptsol.dsol[ix] = dsolx.GetVal(ix,0);}
+          for(auto ix = 0; ix < 3; ix++){ptsol.dsol[ix] = coeff*dsolx.GetVal(ix,0);}
         }//otherwise the normal derivative is zero
       
         (*(mat->GetMemory()))[mem_indices[ipt]] = ptsol;
@@ -292,7 +293,8 @@ namespace wgma::scattering{
   void LoadModalAnalysisSource2D(TPZScatteringSrc *mat,
                                  const TPZVec<int64_t> &mem_indices,
                                  const TPZIntPoints &intrule,
-                                 TPZMultiphysicsElement *mfcel)
+                                 TPZMultiphysicsElement *mfcel,
+                                 CSTATE coeff)
   {
 
     //number of integration points
@@ -327,8 +329,8 @@ namespace wgma::scattering{
           we are only interested in the tangential component of the solution
          */
         const auto &hcurl_sol = datavec[TPZWgma::HCurlIndex()].sol[0];
-        ptsol.sol[0] = hcurl_sol[0];
-        ptsol.sol[1] = hcurl_sol[1];
+        ptsol.sol[0] = coeff*hcurl_sol[0];
+        ptsol.sol[1] = coeff*hcurl_sol[1];
         (*(mat->GetMemory()))[mem_indices[ipt]] = ptsol;
       }
   }
@@ -337,7 +339,8 @@ namespace wgma::scattering{
     TPZAutoPointer<TPZCompMesh> scatt_cmesh,
     std::variant<
     wgma::scattering::Source1D,
-    wgma::scattering::SourceWgma> source
+    wgma::scattering::SourceWgma> source,
+    CSTATE coeff
     )
   {
     const bool prescribed_source =
@@ -399,7 +402,7 @@ namespace wgma::scattering{
           auto dcel =
             dynamic_cast<TPZInterpolationSpace*>(modal_cel);
           assert(dcel);
-          LoadModalAnalysisSource<1>(mat, mem_indices, intrule, dcel, dummy_t);
+          LoadModalAnalysisSource<1>(mat, mem_indices, intrule, dcel, dummy_t,coeff);
         }else{
           //periodic modal analysis
           
@@ -434,7 +437,7 @@ namespace wgma::scattering{
             dynamic_cast<TPZInterpolationSpace*>(neigh_gel->Reference());
           assert(neigh_cel);
 
-          LoadModalAnalysisSource<2>(mat,mem_indices,intrule,neigh_cel,t1);
+          LoadModalAnalysisSource<2>(mat,mem_indices,intrule,neigh_cel,t1,coeff);
         }
       }
     }
@@ -450,7 +453,8 @@ namespace wgma::scattering{
     TPZAutoPointer<TPZCompMesh> scatt_cmesh,
     std::variant<
     wgma::scattering::Source2D,
-    wgma::scattering::SourceWgma> source
+    wgma::scattering::SourceWgma> source,
+    CSTATE coeff
     )
   {
     const bool prescribed_source =
@@ -522,7 +526,7 @@ namespace wgma::scattering{
         auto mfcel =
           dynamic_cast<TPZMultiphysicsElement*>(modal_cel);
         if(mfcel){
-          LoadModalAnalysisSource2D(mat, mem_indices, intrule, mfcel);
+          LoadModalAnalysisSource2D(mat, mem_indices, intrule, mfcel,coeff);
         }else{
           std::cout<<__PRETTY_FUNCTION__
                    <<"\nCould not obtain multiphysics element!"

@@ -185,12 +185,14 @@ Usually the source will be the result of a previously computed modal analysis.
 
      @param[in] scatt_cmesh computational mesh of the scattering problem
      @param[in] source source for the scattering problem
+     @param[in] coeff coefficient for modal analysis source (amplitude)
   */
   void
   LoadSource1D(TPZAutoPointer<TPZCompMesh> cmesh,
              std::variant<
              wgma::scattering::Source1D,
-             wgma::scattering::SourceWgma> source);
+             wgma::scattering::SourceWgma> source,
+             CSTATE coeff=1.);
 
   /**
      @brief Loads a source for the scattering analysis in three dimensions.
@@ -207,12 +209,14 @@ Usually the source will be the result of a previously computed modal analysis.
 
      @param[in] scatt_cmesh computational mesh of the scattering problem
      @param[in] source source for the scattering problem
+     @param[in] coeff coefficient for modal analysis source (amplitude)
   */
   void
   LoadSource2D(TPZAutoPointer<TPZCompMesh> cmesh,
              std::variant<
              wgma::scattering::Source2D,
-             wgma::scattering::SourceWgma> source);
+             wgma::scattering::SourceWgma> source,
+             CSTATE src=1.);
 };
 
 #endif /* _SCATTERING_HPP_ */
