@@ -1,6 +1,7 @@
 #ifndef _BCTYPES_HPP_
 #define _BCTYPES_HPP_
 #include <ostream>
+#include <pzerror.h>
 
 namespace wgma{
   namespace bc{
@@ -32,6 +33,14 @@ namespace wgma{
       return "error";
     }
 
+    inline type from_string(std::string_view name){
+      if(name == "PEC") return type::PEC;
+      if(name == "PMC") return type::PMC;
+      if(name == "PERIODIC") return type::PERIODIC;
+      DebugStop();
+      return type::PEC;
+    }
+    
     inline std::ostream& operator<<( std::ostream& out, const type& t ){
       return out << to_string(t);
     }
