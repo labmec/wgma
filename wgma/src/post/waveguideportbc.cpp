@@ -66,7 +66,7 @@ namespace wgma::post{
         this->m_k_scratch[index][isol] += weight * fabs(data.detjac) * kval;
         //load vector term
         if(is_src){
-          const CSTATE fval = 2.*m_coeff[isol]*kval;
+          const CSTATE fval = 2.*m_coeff[isol]*kval*sign;
           this->m_f_scratch[index][isol] += weight * fabs(data.detjac) * fval;
         }
       }
