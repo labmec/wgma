@@ -29,4 +29,29 @@ if(USING_SLEPC)
   include(cmake/enable_slepc.cmake)
   enable_slepc(wgma)
 endif()
+
+#now we check for json library
+find_package(nlohmann_json 3.11.2 QUIET)
+if(NOT TARGET nlohmann_json::nlohmann_json)
+  #could not find package, downloading it
+  include(FetchContent)
+
+  # Optional: set this to ON if your target publicly links to nlohmann_json and needs to install() 
+  # set(JSON_Install ON)
+
+  if(NOT json_SOURCE_DIR)
+    message(STATUS "Downloading nlohmann_json")
+  endif()
+  FetchContent_Declare(json
+    GIT_REPOSITORY https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent
+    GIT_PROGRESS TRUE
+    GIT_SHALLOW TRUE
+    GIT_TAG v3.11.2)
+
+  FetchContent_MakeAvailable(json)
+
+endif()
+target_link_libraries(wgma PUBLIC nlohmann_json::nlohmann_json)
+
+#let us add all the examples
 add_subdirectory(examples)
