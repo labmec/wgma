@@ -9,6 +9,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include "cmeshtools.hpp"
 #include "gmeshtools.hpp"
 #include "pmltypes.hpp"
+#include <TPZEigenAnalysis.h>
 #include <wganalysis.hpp>
 #include <scattering.hpp>
 #include <util.hpp>
@@ -24,15 +25,43 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <pzinterpolationspace.h>
 
 #include <regex>//for string search
-
+#include <thread>
 
 constexpr bool optimizeBandwidth{true};
 constexpr bool filterBoundaryEqs{true};
-constexpr int nThreads{2};
+const unsigned int nThreads{std::thread::hardware_concurrency()};
 constexpr int nThreadsDebug{0};
 constexpr int vtkRes{0};
-constexpr bool extendRightDomain{false};
-constexpr bool extendLeftDomain{false};
+/***********************
+ * setting the problem *
+ ***********************/
+// operational wavelength
+
+// the meshes were designed in micrometers, so lambda has to follow
+constexpr STATE lambda{1.55};
+
+  
+constexpr STATE ncore{1.55};
+constexpr STATE nclad{1.000};
+
+constexpr STATE alphaPMLx {0.75};
+constexpr STATE alphaPMLy {0.75};
+/*
+  Given the small dimensions of the domain, scaling it can help in
+  achieving good precision. Using 1./k0 as a scale factor results in
+  the eigenvalues -(propagationConstant/k0)^2 = -effectiveIndex^2.
+  This scale factor is often referred to as characteristic length
+  of the domain.
+*/
+constexpr REAL scale{lambda / (2 * M_PI)};
+
+constexpr wgma::planarwg::mode mode{wgma::planarwg::mode::TE};
+
+/******************
+ *  fem options   *
+ ******************/
+// polynomial order to be used in the approximation
+constexpr int pOrder{3};
 
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const CSTATE target, const int neigenpairs,
@@ -48,12 +77,32 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
                       std::string filename,
                       const int vtkres);
 
+void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
+                     wgma::wganalysis::WgmaPlanar &src_an,
+                     wgma::wganalysis::WgmaPlanar &match_an,
+                     const TPZVec<std::map<std::string, int>> &gmshmats,
+                     const CSTATE ncore, const CSTATE nclad,
+                     const CSTATE alphaPMLx, const CSTATE alphaPMLy,
+                     const int n_eigenpairs_left,
+                     const bool extendDomains,
+                     const std::string &prefix);
+  
+void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_mesh,
+                  wgma::wganalysis::WgmaPlanar& src_an,
+                  const TPZVec<CSTATE> &source_coeffs,
+                  TPZVTKGenerator &vtk);
+
+int64_t RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
+                     TPZAutoPointer<TPZCompMesh> match_mesh,
+                     const int nm,
+                     const std::set<int64_t> bound_connects);
+  
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           wgma::wganalysis::WgmaPlanar& src_an,
                           wgma::wganalysis::WgmaPlanar& match_an,
                           const TPZVec<CSTATE> &source_coeffs,
                           const TPZVec<int> &nmodes,
-                          const std::string &prefix);
+                          TPZVTKGenerator &vtk);
 
 int main(int argc, char *argv[]) {
 
@@ -62,36 +111,6 @@ int main(int argc, char *argv[]) {
    * the log should be initialised as:*/
   TPZLogger::InitializePZLOG();
 #endif
-  /***********************
-   * setting the problem *
-   ***********************/
-  // operational wavelength
-
-  // the meshes were designed in micrometers, so lambda has to follow
-  constexpr STATE lambda{1.55};
-
-  
-  constexpr STATE ncore{1.55};
-  constexpr STATE nclad{1.000};
-
-  constexpr STATE alphaPMLx {0.75};
-  constexpr STATE alphaPMLy {0.75};
-  /*
-    Given the small dimensions of the domain, scaling it can help in
-    achieving good precision. Using 1./k0 as a scale factor results in
-    the eigenvalues -(propagationConstant/k0)^2 = -effectiveIndex^2.
-    This scale factor is often referred to as characteristic length
-    of the domain.
-  */
-  constexpr REAL scale{lambda / (2 * M_PI)};
-
-  constexpr wgma::planarwg::mode mode{wgma::planarwg::mode::TE};
-
-  /******************
-   *  fem options   *
-   ******************/
-  // polynomial order to be used in the approximation
-  constexpr int pOrder{3};
 
   /******************
    * solver options *
@@ -119,8 +138,8 @@ int main(int argc, char *argv[]) {
   wgma::util::CreatePath(wgma::util::ExtractPath(prefix));
 
 
-  constexpr int nEigenpairs_left{5};
-  constexpr int nEigenpairs_right{5};
+  constexpr int nEigenpairs_left{100};
+  constexpr int nEigenpairs_right{100};
 
   constexpr CSTATE target{ncore*ncore};
 
@@ -164,7 +183,7 @@ int main(int argc, char *argv[]) {
    * cmesh(modal analysis: left)  *
    ********************************/
 
-  auto modal_l_cmesh = [gmesh,&gmshmats,scale](){
+  auto modal_l_cmesh = [gmesh,&gmshmats](){
     // setting up cmesh data
     wgma::cmeshtools::PhysicalData modal_data;
 
@@ -213,7 +232,7 @@ int main(int argc, char *argv[]) {
    * cmesh(modal analysis: right)  *
    ********************************/
 
-  auto modal_r_cmesh = [gmesh,&gmshmats,scale](){
+  auto modal_r_cmesh = [gmesh,&gmshmats](){
     // setting up cmesh data
     wgma::cmeshtools::PhysicalData modal_data;
 
@@ -258,131 +277,11 @@ int main(int argc, char *argv[]) {
     std::string modal_left_file{prefix+"_modal_right"};
     PostProcessModes(modal_r_an, modal_r_cmesh, modal_right_file, vtkRes);
   }
-  //now we need to project the scattering solution over the computed modes
 
-  
-  
-  auto scatt_cmesh = [gmesh,&gmshmats](){
-    
-    // setting up cmesh data
-    wgma::cmeshtools::PhysicalData scatt_data;
-    std::map<std::string, std::pair<CSTATE, CSTATE>> scatt_mats;
-    scatt_mats["core_left"] = std::make_pair<CSTATE, CSTATE>(ncore*ncore, 1.);
-    scatt_mats["core_right"] = std::make_pair<CSTATE, CSTATE>(ncore*ncore, 1.);
-    scatt_mats["cladding_left"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad,1.);
-    scatt_mats["cladding_right"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad,1.);
-    std::map<std::string, wgma::bc::type> scatt_bcs;
-    scatt_bcs["scatt_bnd_mid"] = wgma::bc::type::PEC;
-    if constexpr(extendRightDomain){
-      scatt_bcs["scatt_bnd_right"] = wgma::bc::type::PEC;
-    }
-    if constexpr(extendLeftDomain){
-      scatt_bcs["scatt_bnd_left"] = wgma::bc::type::PEC;
-    }
-
-    
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
-                                            {alphaPMLx,alphaPMLy}, scatt_data);
-
-
-    //materials that will represent our source
-    std::set<int> src_ids;
-    if constexpr(extendLeftDomain){
-      const std::string srcMat[] = {"source_core_left", "source_clad_left"};
-      for(const auto &mat : srcMat){
-        src_ids.insert(gmshmats[1].at(mat));
-      }
-      //now we add the pml mats to source mats
-
-      for(const auto &pml : scatt_data.pmlvec){
-        const std::string pattern{"source_clad_left"};
-        const auto rx = std::regex{pattern, std::regex_constants::icase };
-    
-        const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
-        if(found_pattern){
-          const auto matdim = 1;
-          const auto id = gmshmats[matdim].at(*pml->names.begin());
-          src_ids.insert(id);
-        }
-      }
-    }
-    
-
-
-    //materials in which we would like to evaluate the solution
-    std::vector<std::string> probeMats = {"source_clad_right", "source_core_right"};
-    if(!extendLeftDomain){
-      probeMats.push_back("source_clad_left");
-      probeMats.push_back("source_core_left");
-    }
-    
-    for(auto &mat : probeMats){
-      const auto matdim = 1;
-      const auto id = gmshmats[matdim].at(mat);
-      scatt_data.probevec.push_back({id,matdim});
-    }
-
-    for(const auto &pml : scatt_data.pmlvec){
-      const std::string pattern{"source_clad_right"};
-      const auto rx = std::regex{pattern, std::regex_constants::icase };
-    
-      bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
-      if constexpr(!extendLeftDomain){
-        const std::string pattern{"source_clad_left"};
-        const auto rx = std::regex{pattern, std::regex_constants::icase };
-    
-        found_pattern = found_pattern || std::regex_search(*(pml->names.begin()), rx);
-      }
-      if(found_pattern){
-        const auto matdim = 1;
-        const auto id = gmshmats[matdim].at(*pml->names.begin());
-        std::cout<<"id "<<id<<" name "<<*pml->names.begin()<<std::endl;
-        scatt_data.probevec.push_back({id,matdim});
-      }
-    }
-    
-    
-    if constexpr(!extendRightDomain || !extendLeftDomain){
-      std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
-      for(const auto &pml : scatt_data.pmlvec){
-        const std::string pattern_left{"xm"};
-        const auto rx_left = std::regex{pattern_left, std::regex_constants::icase };
-    
-        const bool found_left = std::regex_search(*(pml->names.begin()), rx_left);
-
-        const std::string pattern_right{"xp"};
-        const auto rx_right = std::regex{pattern_right, std::regex_constants::icase };
-    
-        const bool found_right = std::regex_search(*(pml->names.begin()), rx_right);
-        
-        if((found_right && !extendRightDomain) ||(found_left && !extendLeftDomain)){
-          continue;
-        }
-        pmlvec.push_back(pml);
-      }
-
-      
-      scatt_data.pmlvec = pmlvec;
-    }
-    
-    
-    return wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder, scatt_data,src_ids,
-                                               lambda,scale);
-  }();
-  /*********************
-   * solve(scattering) *  
-   *********************/  
-  TPZSimpleTimer tscatt("Scattering");
-
-
-  //index of the mode to be used as a source (left wg)
-  TPZVec<CSTATE> src_index = {0.,0.,1.,0.,0.};
-  //index of the number of modes to be used to restrict the dofs of the scatt mesh(right wg)
-  TPZVec<int> nmodes = {5};
-
-  
-  RestrictDofsAndSolve(scatt_cmesh, modal_l_an, modal_r_an,
-                       src_index, nmodes, prefix);
+  bool extendDomain{false};
+  SolveScattering(gmesh, modal_l_an, modal_r_an, gmshmats, ncore, nclad, alphaPMLx, alphaPMLy, nEigenpairs_left, extendDomain, prefix);
+  extendDomain=true;
+  SolveScattering(gmesh, modal_l_an, modal_r_an, gmshmats, ncore, nclad, alphaPMLx, alphaPMLy, nEigenpairs_left, extendDomain, prefix);
   return 0;
 }
 
@@ -601,12 +500,209 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
   }
 }
 
+void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
+                     wgma::wganalysis::WgmaPlanar &src_an,
+                     wgma::wganalysis::WgmaPlanar &match_an,
+                     const TPZVec<std::map<std::string, int>> &gmshmats,
+                     const CSTATE ncore, const CSTATE nclad,
+                     const CSTATE alphaPMLx, const CSTATE alphaPMLy,
+                     const int n_eigenpairs_left,
+                     const bool extendDomains,
+                     const std::string &prefix)
+{
+  auto scatt_cmesh = [gmesh,&gmshmats,ncore,nclad,alphaPMLx,alphaPMLy,
+                      extendDomains](){
+    
+    // setting up cmesh data
+    wgma::cmeshtools::PhysicalData scatt_data;
+    std::map<std::string, std::pair<CSTATE, CSTATE>> scatt_mats;
+    scatt_mats["core_left"] = std::make_pair<CSTATE, CSTATE>(ncore*ncore, 1.);
+    scatt_mats["core_right"] = std::make_pair<CSTATE, CSTATE>(ncore*ncore, 1.);
+    scatt_mats["cladding_left"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad,1.);
+    scatt_mats["cladding_right"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad,1.);
+    std::map<std::string, wgma::bc::type> scatt_bcs;
+    scatt_bcs["scatt_bnd_mid"] = wgma::bc::type::PEC;
+    if(extendDomains){
+      scatt_bcs["scatt_bnd_right"] = wgma::bc::type::PEC;
+      scatt_bcs["scatt_bnd_left"] = wgma::bc::type::PEC;
+    }
+
+    
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
+                                            {alphaPMLx,alphaPMLy}, scatt_data);
+
+
+    //materials that will represent our source
+    std::set<int> src_ids;
+    /*
+      if the domain is extended, we will create a current source at
+      source_core_left and source_clad_left.
+      otherwise, the source is modelled as a waveguide port boundary
+      condition and there is no need for source mats
+     */
+    if (extendDomains){
+      const std::string srcMat[] = {"source_core_left", "source_clad_left"};
+      for(const auto &mat : srcMat){
+        src_ids.insert(gmshmats[1].at(mat));
+      }
+      //now we add the 1d pml mats to source mats
+      for(const auto &pml : scatt_data.pmlvec){
+        const std::string pattern{"source_clad_left"};
+        const auto rx = std::regex{pattern, std::regex_constants::icase };
+    
+        const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
+        if(found_pattern){
+          const auto matdim = 1;
+          const auto id = gmshmats[matdim].at(*pml->names.begin());
+          src_ids.insert(id);
+        }
+      }
+    }
+    
+
+
+    /*
+      probe mats are regions of the domain in which we want to be able
+      to evaluate our solution
+      they are also used to ensure that the computational elements are created
+      so every region that will be used in a waveguide port bc must be
+      also inserted as a probe mat
+    */
+    std::vector<std::string> probeMats;
+    if (!extendDomains){
+      probeMats.push_back("source_clad_right");
+      probeMats.push_back("source_core_right");
+      probeMats.push_back("source_clad_left");
+      probeMats.push_back("source_core_left");
+      //now for 1d pml mats
+      for(const auto &pml : scatt_data.pmlvec){
+        const std::string pattern_left{"source_clad_left"};
+        const auto rx_left =
+          std::regex{pattern_left, std::regex_constants::icase };
+        const std::string pattern_right{"source_clad_right"};
+        const auto rx_right =
+          std::regex{pattern_right, std::regex_constants::icase };
+        
+        const bool found_pattern =
+          std::regex_search(*(pml->names.begin()), rx_left) ||
+          std::regex_search(*(pml->names.begin()), rx_right);
+
+        if(found_pattern){
+          probeMats.push_back(*pml->names.begin());
+        }
+      }
+      for(auto &mat : probeMats){
+        const auto matdim = 1;
+        const auto id = gmshmats[matdim].at(mat);
+        scatt_data.probevec.push_back({id,matdim});
+      }
+    }
+    
+    
+
+    
+    
+    /*when using waveguide port bc we need to filter out some PML regions*/
+    if (!extendDomains){
+      std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
+      for(const auto &pml : scatt_data.pmlvec){
+        const std::string pattern_left{"xm"};
+        const auto rx_left = std::regex{pattern_left, std::regex_constants::icase };
+        const std::string pattern_right{"xp"};
+        const auto rx_right = std::regex{pattern_right, std::regex_constants::icase };
+    
+        const bool found_pattern =
+          std::regex_search(*(pml->names.begin()), rx_left) ||
+          std::regex_search(*(pml->names.begin()), rx_right);
+        
+        if(found_pattern){//we discard these regions
+          continue;
+        }
+        pmlvec.push_back(pml);
+      }
+      scatt_data.pmlvec = pmlvec;
+    }
+    return wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder, scatt_data,src_ids,
+                                               lambda,scale);
+  }();
+  /*********************
+   * solve(scattering) *  
+   *********************/  
+  TPZSimpleTimer tscatt("Scattering");
+
+
+  /*
+    the source is written as a linear combination of the modes
+    this vector contains the coefficients of such combination
+   */
+  TPZVec<CSTATE> src_coeffs(n_eigenpairs_left,0);
+  src_coeffs[0] = 1;
+
+  //set up post processing
+  TPZVec<std::string> fvars = {
+    "Field_real",
+    "Field_imag",
+    "Field_abs"};
+  const std::string suffix = extendDomains ? "w_pml" : "";
+  const std::string scatt_file = prefix+"_scatt"+suffix;
+  auto vtk = TPZVTKGenerator(scatt_cmesh, fvars, scatt_file, vtkRes);
+  
+  if(extendDomains){
+    SolveWithPML(scatt_cmesh,src_an,src_coeffs,vtk);
+  }else{
+    //index of the number of modes to be used to restrict the dofs on waveguide bcs
+    TPZVec<int> nmodes = {1,5,10,20,50,100};
+    RestrictDofsAndSolve(scatt_cmesh, src_an, match_an,
+                         src_coeffs, nmodes, vtk);
+  }
+}
+
+void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
+                  wgma::wganalysis::WgmaPlanar& src_an,
+                  const TPZVec<CSTATE> &src_coeffs,
+                  TPZVTKGenerator &vtk)
+{
+  auto scatt_an = wgma::scattering::Analysis(scatt_cmesh, nThreads,
+                                               optimizeBandwidth, filterBoundaryEqs);
+    
+  auto src_mesh = src_an.GetMesh();
+  //get id of source materials
+  wgma::scattering::SourceWgma src;
+  for(auto [id,mat] : src_mesh->MaterialVec()){
+    src.id.insert(id);
+  }
+  src.modal_cmesh = src_mesh;
+
+  TPZFMatrix<CSTATE> sol(scatt_cmesh->NEquations(),1);
+  //we will add the components of the solution one by one
+  const int nsol = src_coeffs.size();
+  bool first_assemble{true};
+  for(int isol = 0; isol < nsol; isol++){
+    if(IsZero(src_coeffs[isol])){continue;}
+    src_an.LoadSolution(isol);
+    auto beta = std::sqrt(src_an.GetEigenvalues()[isol]);
+    wgma::scattering::LoadSource1D(scatt_cmesh, src, src_coeffs[isol]);
+    wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
+    if(first_assemble){
+      first_assemble = false;
+      scatt_an.Assemble();
+    }else{
+      scatt_an.AssembleRhs(src.id);
+    }
+    scatt_an.Solve();
+    scatt_an.LoadSolution();
+    TPZFMatrix<CSTATE> &curr_sol = scatt_an.Solution();
+    sol+=curr_sol;
+  }
+  vtk.Do();
+}
+
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           wgma::wganalysis::WgmaPlanar& src_an,
                           wgma::wganalysis::WgmaPlanar& match_an,
                           const TPZVec<CSTATE> &source_coeffs,
                           const TPZVec<int> &nmodes,
-                          const std::string &prefix)
+                          TPZVTKGenerator &vtk)
 {
   TPZFMatrix<CSTATE> ev = match_an.GetEigenvectors();
   const auto evr = ev.Rows();
@@ -620,8 +716,9 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
   auto match_mesh = match_an.GetMesh();
   auto src_mesh = src_an.GetMesh();
-  //first we compute the waveguide port bc values for the match mesh
+  
   TPZVec<CSTATE> wgbc_k_right, wgbc_f_right;
+  //first we compute the waveguide port bc values for the match mesh
   {
     wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(match_mesh);
     TPZVec<CSTATE> betavec = match_an.GetEigenvalues();
@@ -634,7 +731,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
   TPZVec<CSTATE> wgbc_k_left,wgbc_f_left;
   //now we compute the waveguide port bc values for the source mesh
-  if(!extendLeftDomain){
+  {
     wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(src_mesh);
     TPZVec<CSTATE> betavec = src_an.GetEigenvalues();
     for(auto &b : betavec){b = std::sqrt(b);}
@@ -644,15 +741,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     wgbc.ComputeContribution();
     wgbc.GetContribution(wgbc_k_left,wgbc_f_left);
   }
-  
-
-  //set up post processing
-  TPZVec<std::string> fvars = {
-    "Field_real",
-    "Field_imag",
-    "Field_abs"};
-  const std::string scatt_file = prefix+"_scatt";
-  auto vtk = TPZVTKGenerator(scatt_mesh, fvars, scatt_file, vtkRes);
+ 
 
   /**
    **/
@@ -660,67 +749,29 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   wgma::cmeshtools::FindDirichletConnects(scatt_mesh, boundConnects);
 
   int64_t indep_con_id_right{-1}, indep_con_id_left{-1};
+  
   for(auto nm : nmodes){
-    if(nm){
-      indep_con_id_right = RestrictDofs(scatt_mesh, match_mesh, nm, boundConnects);
-      if constexpr (!extendLeftDomain){
-        indep_con_id_left = RestrictDofs(scatt_mesh, src_mesh, nm, boundConnects);
-      }
-    }
+    indep_con_id_right = RestrictDofs(scatt_mesh, match_mesh, nm, boundConnects);
+    indep_con_id_left = RestrictDofs(scatt_mesh, src_mesh, nm, boundConnects);
 
     auto scatt_an = wgma::scattering::Analysis(scatt_mesh, nThreads,
                                                optimizeBandwidth, filterBoundaryEqs);
 
   
     std::cout<<"nmodes on outgoing boundary: "<<nm<<std::endl;
-    if(extendLeftDomain){
-      auto src_mesh = src_an.GetMesh();
-      //get id of source materials
-      wgma::scattering::SourceWgma src;
-      for(auto [id,mat] : src_mesh->MaterialVec()){
-        src.id.insert(id);
-      }
-      src.modal_cmesh = src_mesh;
-
-      TPZFMatrix<CSTATE> sol(scatt_mesh->NEquations(),1);
-      const int nsol = source_coeffs.size();
-      for(int isol = 0; isol < nsol; isol++){
-        src_an.LoadSolution(isol);
-        auto beta = std::sqrt(src_an.GetEigenvalues()[isol]);
-        wgma::scattering::LoadSource1D(scatt_mesh, src);
-        wgma::scattering::SetPropagationConstant(scatt_mesh, beta*source_coeffs[isol]);
-        if(isol == 0){
-          scatt_an.Assemble();
-          if(nm){
-            AddWaveguidePortContribution(scatt_an, indep_con_id_right, nm, wgbc_k_right, wgbc_f_right);
-          }
-        }else{
-          scatt_an.AssembleRhs(src.id);
-          TPZFMatrix<CSTATE> &rhs = scatt_an.Rhs();
-          std::cout<<"rhs norm "<<Norm(rhs)<<std::endl;
-        }
-        scatt_an.Solve();
-        scatt_an.LoadSolution();
-        TPZFMatrix<CSTATE> &curr_sol = scatt_an.Solution();
-        sol+=curr_sol;
-      }
-      scatt_an.LoadSolution(sol);
-    }else{
-      scatt_an.Assemble();
-      //now we must add the waveguide port terms
-      if(nm){
-        AddWaveguidePortContribution(scatt_an, indep_con_id_right, nm, wgbc_k_right, wgbc_f_right);
-      }
-      AddWaveguidePortContribution(scatt_an, indep_con_id_left, nm, wgbc_k_left, wgbc_f_left);
-      scatt_an.Solve();
-    }
+    
+    scatt_an.Assemble();
+    //now we must add the waveguide port terms
+    AddWaveguidePortContribution(scatt_an, indep_con_id_right, nm, wgbc_k_right, wgbc_f_right);
+    AddWaveguidePortContribution(scatt_an, indep_con_id_left, nm, wgbc_k_left, wgbc_f_left);
+    scatt_an.Solve();
+    
 
     vtk.Do();
 
-    if(nm){
-      wgma::cmeshtools::RemovePeriodicity(scatt_mesh);
-    }    
+    wgma::cmeshtools::RemovePeriodicity(scatt_mesh);
     scatt_mesh->ComputeNodElCon();
     scatt_mesh->CleanUpUnconnectedNodes();
   }
 }
+

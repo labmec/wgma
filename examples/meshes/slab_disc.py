@@ -21,10 +21,10 @@ from utils.gmsh import (
 #############################################
 #                  BEGIN                    #
 #############################################
-# h1 = 0.4
-# h2 = 1.5
-h1 = 1.0
-h2 = 1.0
+h1 = 0.4
+h2 = 1.5
+# h1 = 1.0
+# h2 = 1.0
 
 
 h_domain = 5
@@ -76,7 +76,7 @@ gmsh.model.occ.remove_all_duplicates()
 # create source line
 source_left = LineData()
 source_left.xb = -d_src
-source_left.yb =  rec_left.h/2
+source_left.yb = rec_left.h/2
 source_left.xe = -d_src
 source_left.ye = -rec_left.h/2
 create_line(source_left, el_clad)
@@ -109,7 +109,7 @@ for tag in source_left.tag:
     up = up[0]
     src_left_clad_tags.append(
         tag) if up in rec_left.tag else src_left_core_tags.append(tag)
-    
+
 # right domain (cladding+core)
 rec_right = RectData()
 rec_right.xc = 0
@@ -171,15 +171,25 @@ for tag in source_right.tag:
     src_right_clad_tags.append(
         tag) if up in rec_right.tag else src_right_core_tags.append(tag)
 
-#just to make sure, let us update our 1D tags for the source regions
-src_left_core_tags, _ = split_region_dir(gmsh.model.get_boundary([(2,t) for t in rec_lcore.tag],oriented=False), 'x')
-src_left_clad_tags, _ = split_region_dir(gmsh.model.get_boundary([(2,t) for t in rec_left.tag],oriented=False), 'x')
-_, src_right_core_tags = split_region_dir(gmsh.model.get_boundary([(2,t) for t in rec_rcore.tag],oriented=False), 'x')
-_, src_right_clad_tags = split_region_dir(gmsh.model.get_boundary([(2,t) for t in rec_right.tag],oriented=False), 'x')
-src_left_core_tags = [t for _,t in src_left_core_tags]
-src_left_clad_tags = [t for _,t in src_left_clad_tags]
-src_right_core_tags = [t for _,t in src_right_core_tags]
-src_right_clad_tags = [t for _,t in src_right_clad_tags]
+# just to make sure, let us update our 1D tags for the source regions
+src_left_core_tags, _ = split_region_dir(gmsh.model.get_boundary(
+    [(2, t) for t in rec_lcore.tag], oriented=False), 'x')
+src_left_clad_tags, _ = split_region_dir(gmsh.model.get_boundary(
+    [(2, t) for t in rec_left.tag], oriented=False), 'x')
+_, src_right_core_tags = split_region_dir(
+    gmsh.model.get_boundary(
+        [(2, t) for t in rec_rcore.tag],
+        oriented=False),
+    'x')
+_, src_right_clad_tags = split_region_dir(
+    gmsh.model.get_boundary(
+        [(2, t) for t in rec_right.tag],
+        oriented=False),
+    'x')
+src_left_core_tags = [t for _, t in src_left_core_tags]
+src_left_clad_tags = [t for _, t in src_left_clad_tags]
+src_right_core_tags = [t for _, t in src_right_core_tags]
+src_right_clad_tags = [t for _, t in src_right_clad_tags]
 
 # split the domains for setting up the PMLs
 dim = 2
@@ -215,17 +225,19 @@ src_left_clad_dimtags = [(1, t) for t in src_left_clad_tags]
 pmldim = 2
 pml1d_src_left = find_pml_region(src_left_clad_dimtags, pmlmap, pmldim)
 pml1d_src_right = find_pml_region(src_right_clad_dimtags, pmlmap, pmldim)
-#since src domains are directly adjacent to the pml, we will have erroneous lines here
-#we know that these lines are immersed in the xm(xp, for right src) attenuating region, so it is easy to exclude them
-pml1d_src_left = {(direction,tag):neigh for (direction,tag),neigh in pml1d_src_left.items() if "xm" not in direction}
-pml1d_src_right = {(direction,tag):neigh for (direction,tag),neigh in pml1d_src_right.items() if "xp" not in direction}
+# since src domains are directly adjacent to the pml, we will have erroneous lines here
+# we know that these lines are immersed in the xm(xp, for right src) attenuating region, so it is easy to exclude them
+pml1d_src_left = {(direction, tag): neigh for (direction, tag),
+                  neigh in pml1d_src_left.items() if "xm" not in direction}
+pml1d_src_right = {(direction, tag): neigh for (direction, tag),
+                   neigh in pml1d_src_right.items() if "xp" not in direction}
 
 
 pmlmap1d = {}
 pmlmap1d.update(pml1d_src_left)
 pmlmap1d.update(pml1d_src_right)
-pml1d_src_left_tags = [tag for _,tag in pml1d_src_left.keys()]
-pml1d_src_right_tags = [tag for _,tag in pml1d_src_right.keys()]
+pml1d_src_left_tags = [tag for _, tag in pml1d_src_left.keys()]
+pml1d_src_right_tags = [tag for _, tag in pml1d_src_right.keys()]
 # get boundaries
 dim = 2
 all_domains = gmsh.model.get_entities(dim)
@@ -233,26 +245,33 @@ all_bounds = gmsh.model.get_boundary(
     all_domains, combined=True, oriented=False, recursive=False)
 all_bounds = [bnd[1] for bnd in all_bounds]
 
-#we must divide the boundaries in three since we want to check the truncation of the domain
-#this way we can ignore the leftmost/rightmost domains
+# we must divide the boundaries in three since we want to check the truncation of the domain
+# this way we can ignore the leftmost/rightmost domains
 
-#now we get only boundaries from the left side
+# now we get only boundaries from the left side
 left_pml_tags = [tag for direction, tag in pmlmap.keys() if "xm" in direction]
 left_domains = left_pml_tags
 
-left_bounds = [bnd[1] for bnd in gmsh.model.get_boundary(
-    [(2,d) for d in left_domains], combined=True, oriented=False, recursive=False)]
+left_bounds = [
+    bnd[1]
+    for bnd in gmsh.model.get_boundary(
+        [(2, d) for d in left_domains],
+        combined=True, oriented=False, recursive=False)]
 left_bounds = [b for b in left_bounds if b in all_bounds]
 
-#now we get only boundaries from the right side
+# now we get only boundaries from the right side
 right_pml_tags = [tag for direction, tag in pmlmap.keys() if "xp" in direction]
 right_domains = right_pml_tags
 
-right_bounds = [bnd[1] for bnd in gmsh.model.get_boundary(
-    [(2,d) for d in right_domains], combined=True, oriented=False, recursive=False)]
+right_bounds = [
+    bnd[1]
+    for bnd in gmsh.model.get_boundary(
+        [(2, d) for d in right_domains],
+        combined=True, oriented=False, recursive=False)]
 right_bounds = [b for b in right_bounds if b in all_bounds]
 
-middle_bounds = [b for b in all_bounds if b not in right_bounds and b not in left_bounds]
+middle_bounds = [b for b in all_bounds
+                 if b not in right_bounds and b not in left_bounds]
 
 # 1D bounds have changed due to PML
 source_left_pts = gmsh.model.get_boundary(
