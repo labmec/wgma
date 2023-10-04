@@ -21,6 +21,9 @@ set(headers
   include/precond.hpp
   include/util.hpp
   include/json_util.hpp
+  include/data/geom.hpp
+  include/data/eigensolver.hpp
+  include/data/wgmadata.hpp
   include/post/eldata.hpp
   include/post/integrator.hpp
   include/post/solutionnorm.hpp
@@ -42,6 +45,9 @@ set(sources
   src/slepcepshandler.cpp
   src/precond.cpp
   src/util.cpp
+  src/data/geom.cpp
+  src/data/eigensolver.cpp
+  src/data/wgmadata.cpp
   src/post/integrator.cpp
   src/post/solutionnorm.cpp
   src/post/orthosol.cpp
