@@ -5,14 +5,14 @@
 #include "pmltypes.hpp"
 #include "modetypes.hpp"
 #include <pzreal.h>
+#include <tpzautopointer.h>
 #include <set>
 #include <vector>
 #include <map>
 
 template<class T>
 class TPZVec;
-template<class T>
-class TPZAutoPointer;
+
 
 class TPZCompMesh;
 class TPZGeoMesh;
