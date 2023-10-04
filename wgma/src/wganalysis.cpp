@@ -1175,6 +1175,9 @@ namespace wgma::wganalysis{
     case wgma::planarwg::mode::TM:
       matmode = TPZScalarField::ModeType::TM;
       break;
+    case wgma::planarwg::mode::Invalid:
+      DebugStop();
+      break;
     }
     for (auto [id, er, ur] : data.matinfovec) {
       auto *mat =
@@ -1279,6 +1282,9 @@ namespace wgma::wganalysis{
       break;
     case wgma::planarwg::mode::TM:
       matmode = TPZPeriodicWgma::ModeType::TM;
+      break;
+    case wgma::planarwg::mode::Invalid:
+      DebugStop();
       break;
     }
     for (auto [id, er, ur] : data.matinfovec) {

@@ -574,6 +574,9 @@ namespace wgma::scattering{
     case wgma::planarwg::mode::TM:
       matmode = TPZPlanarWgScatt::ModeType::TM;
       break;
+    case wgma::planarwg::mode::Invalid:
+      DebugStop();
+      break;
     }
     for(auto [id,er,ur] : data.matinfovec){
       auto *mat = new TPZPlanarWgScatt(id,er,ur,lambda,matmode,scale);
