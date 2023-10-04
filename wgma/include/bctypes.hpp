@@ -1,6 +1,7 @@
 #ifndef _BCTYPES_HPP_
 #define _BCTYPES_HPP_
 #include <ostream>
+#include <map>
 #include <pzerror.h>
 
 namespace wgma{
@@ -34,9 +35,15 @@ namespace wgma{
     }
 
     inline type from_string(std::string_view name){
-      if(name == "PEC") return type::PEC;
-      if(name == "PMC") return type::PMC;
-      if(name == "PERIODIC") return type::PERIODIC;
+      static const std::map<std::string_view,type> stringvals{
+        {"PEC",type::PEC},
+        {"PMC",type::PMC},
+        {"PERIODIC",type::PERIODIC}
+      };
+      auto itr = stringvals.find(name);
+      if( itr != stringvals.end() ) {
+        return itr->second;
+      }
       DebugStop();
       return type::PEC;
     }
