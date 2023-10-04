@@ -8,8 +8,10 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 // wgma includes
 #include "cmeshtools.hpp"
 #include "gmeshtools.hpp"
+#include "modetypes.hpp"
 #include "pmltypes.hpp"
 #include <TPZEigenAnalysis.h>
+#include <pzreal.h>
 #include <wganalysis.hpp>
 #include <scattering.hpp>
 #include <util.hpp>
@@ -30,45 +32,14 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 
 using json = nlohmann::json;
 
-constexpr bool optimizeBandwidth{true};
-constexpr bool filterBoundaryEqs{true};
-const unsigned int nThreads{std::thread::hardware_concurrency()};
-constexpr int nThreadsDebug{0};
-constexpr int vtkRes{0};
-/***********************
- * setting the problem *
- ***********************/
-// operational wavelength
-
-// the meshes were designed in micrometers, so lambda has to follow
-constexpr STATE lambda{1.55};
-
-  
-constexpr STATE ncore{1.55};
-constexpr STATE nclad{1.000};
-
-constexpr STATE alphaPMLx {0.75};
-constexpr STATE alphaPMLy {0.75};
-/*
-  Given the small dimensions of the domain, scaling it can help in
-  achieving good precision. Using 1./k0 as a scale factor results in
-  the eigenvalues -(propagationConstant/k0)^2 = -effectiveIndex^2.
-  This scale factor is often referred to as characteristic length
-  of the domain.
-*/
-constexpr REAL scale{lambda / (2 * M_PI)};
-
-constexpr wgma::planarwg::mode mode{wgma::planarwg::mode::TE};
-
-/******************
- *  fem options   *
- ******************/
-// polynomial order to be used in the approximation
-constexpr int pOrder{3};
+TPZAutoPointer<TPZCompMesh>
+CreateModalCMesh(const json &json_data,
+                 const TPZVec<std::map<std::string,int>> &gmshmats,
+                 TPZAutoPointer<TPZGeoMesh> gmesh,
+                 const STATE lambda, const STATE scale);
 
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
-SetupSolver(const CSTATE target, const int neigenpairs,
-            TPZEigenSort sorting, bool usingSLEPC);
+SetupSolver(const json &);
 
 void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
                   TPZAutoPointer<TPZCompMesh> mesh,
@@ -83,6 +54,7 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
 void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      wgma::wganalysis::WgmaPlanar &src_an,
                      wgma::wganalysis::WgmaPlanar &match_an,
+                     const STATE lambda, const REAL scale,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
                      const CSTATE ncore, const CSTATE nclad,
                      const CSTATE alphaPMLx, const CSTATE alphaPMLy,
@@ -107,76 +79,49 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           const TPZVec<int> &nmodes,
                           TPZVTKGenerator &vtk);
 
-void ReadModalAnalysisDataFromJson(const json &json_data,
-                                   const std::string_view name,
-                                   std::map<std::string, std::pair<CSTATE, CSTATE>> &modal_mats,
-                                   std::map<std::string, wgma::bc::type> &modal_bcs,
-                                   int &modaldim,
-                                   TPZVec<CSTATE> &alphapml,
-                                   std::string &pmlpattern);
+#include "data/geom.hpp"
+#include "data/eigensolver.hpp"
+#include "data/wgmadata.hpp"
 int main(int argc, char *argv[]) {
+
+  const int nThreads = std::thread::hardware_concurrency(); 
 
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
    * the log should be initialised as:*/
   TPZLogger::InitializePZLOG();
 #endif
+  // scoped-timer
+  TPZSimpleTimer total("Total");
 
-  /******************
-   * solver options *
-   ******************/
+  /*
+    reading json file
+   */
+  std::ifstream f("input/slab_disc.json");
+  json json_data = json::parse(f);
 
-  // how to sort eigenvalues
-  constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
-  constexpr bool usingSLEPC {true};
-
-  /*********************
-   * exporting options *
-   *********************/
-
-  // whether to print the geometric mesh in .txt and .vtk formats
-  constexpr bool printGMesh{true};
-  // whether to export the solution as a .vtk file
-  constexpr bool exportVtk{true};
   // path for output files
-  const std::string path {"res_slab_disc/"};
+  const std::string path = json_data["path"];
   // common prefix for both meshes and output files
-  const std::string basisName{"slab_disc"};
+  const std::string basisName = json_data["basisname"];
   // prefix for exported files
   const std::string prefix{path+basisName};
   //just to make sure we will output results
   wgma::util::CreatePath(wgma::util::ExtractPath(prefix));
+  
 
-
-  constexpr int nEigenpairs_left{100};
-  constexpr int nEigenpairs_right{100};
-
-  constexpr CSTATE target{ncore*ncore};
-
-  /*********
-   * begin *
-   *********/
-
-
-
-
-  /*************
-   * geometry  *
-   ************/
-  // scoped-timer
-  TPZSimpleTimer total("Total");
-
-  // creates gmesh
+  //lambda is always in micrometers
+  const STATE lambda = json_data["wavelength"];
+  //geometry scaling might depend on lambda
+  wgma::data::Geom geomdata(json_data,lambda);
+  // whether to print the geometric mesh in .txt and .vtk formats
+  const bool printGMesh = geomdata.print;
+  const REAL scale = geomdata.scale;
   // file containing the .msh mesh
-  const std::string meshfile{"meshes/"+basisName+".msh"};
+  const std::string meshfile = geomdata.meshfile;
 
-  /**
-     in order to exactly represent all the circles in the mesh,
-     the python script that generated the mesh also generated this .csv file
-  **/
-  const std::string arcfile{"meshes/"+basisName+"_circdata.csv"};
+  const bool verbosity_lvl = geomdata.verbosity;
   TPZVec<std::map<std::string, int>> gmshmats;
-  constexpr bool verbosity_lvl{false};
   auto gmesh = wgma::gmeshtools::ReadGmshMesh(meshfile, scale,gmshmats,
                                               verbosity_lvl);
 
@@ -187,127 +132,127 @@ int main(int argc, char *argv[]) {
     wgma::gmeshtools::PrintGeoMesh(gmesh, filename);
   }
 
-  /*
-    reading json file
-   */
-  std::ifstream f("input/slab_disc.json");
-  json json_data = json::parse(f);
+  
   /********************************
    * cmesh(modal analysis: left)  *
    ********************************/
-
-  auto modal_l_cmesh = [gmesh,&gmshmats, &json_data](){
-    // setting up cmesh data
-    wgma::cmeshtools::PhysicalData modal_data;
-
-    ReadModalAnalysisDataFromJson(json_data,"modal_analysis_left",modal_data);
-
-    std::map<std::string, std::pair<CSTATE, CSTATE>> modal_mats;
-    modal_mats["source_clad_left"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad, 1.);
-    modal_mats["source_core_left"] = std::make_pair<CSTATE, CSTATE>(ncore*ncore, 1.);
-    std::map<std::string, wgma::bc::type> modal_bcs;
-    modal_bcs["source_left_bnd"] = wgma::bc::type::PEC;
-    //dimension of the modal analysis 
-    constexpr int modal_dim{1};
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
-                                            {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
-    //we must now filter the 1D PMLs
-    std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
-    for(const auto &pml : modal_data.pmlvec){
-      const std::string pattern{"source_clad_left"};
-      const auto rx = std::regex{pattern, std::regex_constants::icase };
-    
-      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
-      if(found_pattern){pmlvec.push_back(pml);}
-    }
-    modal_data.pmlvec = pmlvec;
-    return wgma::wganalysis::CMeshWgma1D(gmesh,mode,pOrder,modal_data,
-                                         lambda, scale);
-  }();
+  auto json_modal_left = json_data["modal_analysis_left"];
+  auto modal_l_cmesh =
+    CreateModalCMesh(json_modal_left, gmshmats, gmesh, lambda, scale);
 
   /******************************
    * solve(modal analysis left) *
    ******************************/
-  auto solver_left = SetupSolver(target, nEigenpairs_left, sortingRule, usingSLEPC);
+  auto solver_left = SetupSolver(json_modal_left);
 
+  const bool optimizeBandwidth_l =
+    json_modal_left["neopz"].value("optimizebandwidth",true);
+  const bool filterBoundaryEqs_l =
+    json_modal_left["neopz"].value("filterbceqs",true);
+  
   wgma::wganalysis::WgmaPlanar
     modal_l_an(modal_l_cmesh, nThreads,
-             optimizeBandwidth, filterBoundaryEqs);
+             optimizeBandwidth_l, filterBoundaryEqs_l);
   modal_l_an.SetSolver(*solver_left);
 
   std::string modal_left_file{prefix+"_modal_left"};
   //no need to orthogonalise modes
   constexpr bool ortho{false};
   ComputeModes(modal_l_an, modal_l_cmesh, ortho, nThreads);
-  if(exportVtk){
-    PostProcessModes(modal_l_an, modal_l_cmesh, modal_left_file, vtkRes);
+
+  const bool exportVtk_l =
+    json_modal_left["neopz"].value("exportvtk",true);
+  const int vtkRes_l =
+    json_modal_left["neopz"].value("vtkres",0);
+  
+  if(exportVtk_l){
+    PostProcessModes(modal_l_an, modal_l_cmesh, modal_left_file, vtkRes_l);
   }
 
   /********************************
    * cmesh(modal analysis: right)  *
    ********************************/
-
-  auto modal_r_cmesh = [gmesh,&gmshmats](){
-    // setting up cmesh data
-    wgma::cmeshtools::PhysicalData modal_data;
-
-    std::map<std::string, std::pair<CSTATE, CSTATE>> modal_mats;
-    modal_mats["source_clad_right"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad, 1.);
-    modal_mats["source_core_right"] = std::make_pair<CSTATE, CSTATE>(ncore*ncore, 1.);
-    std::map<std::string, wgma::bc::type> modal_bcs;
-    modal_bcs["source_right_bnd"] = wgma::bc::type::PEC;
-    //dimension of the modal analysis 
-    constexpr int modal_dim{1};
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
-                                            {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
-
-    //we must now filter the 1D PMLs
-    std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
-    for(const auto &pml : modal_data.pmlvec){
-      const std::string pattern{"source_clad_right"};
-      const auto rx = std::regex{pattern, std::regex_constants::icase };
-    
-      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
-      if(found_pattern){pmlvec.push_back(pml);}
-    }
-    modal_data.pmlvec = pmlvec;
-    return wgma::wganalysis::CMeshWgma1D(gmesh,mode,pOrder,modal_data,
-                                         lambda, scale);
-  }();
+  auto json_modal_right = json_data["modal_analysis_right"];
+  auto modal_r_cmesh =
+    CreateModalCMesh(json_modal_right, gmshmats, gmesh, lambda, scale);
 
   /******************************
-   * solve(modal analysis: right) *
+   * solve(modal analysis right) *
    ******************************/
-  auto solver_right = SetupSolver(target, nEigenpairs_right, sortingRule, usingSLEPC);
+  auto solver_right = SetupSolver(json_modal_right);
+
+  const bool optimizeBandwidth_r =
+    json_modal_right["neopz"].value("optimizebandwidth",true);
+  const bool filterBoundaryEqs_r =
+    json_modal_right["neopz"].value("filterbceqs",true);
   
   wgma::wganalysis::WgmaPlanar
     modal_r_an(modal_r_cmesh, nThreads,
-             optimizeBandwidth, filterBoundaryEqs);
+             optimizeBandwidth_r, filterBoundaryEqs_r);
   modal_r_an.SetSolver(*solver_right);
 
   std::string modal_right_file{prefix+"_modal_right"};
-  
   ComputeModes(modal_r_an, modal_r_cmesh, ortho, nThreads);
-  if(exportVtk){
-    std::string modal_left_file{prefix+"_modal_right"};
-    PostProcessModes(modal_r_an, modal_r_cmesh, modal_right_file, vtkRes);
+
+  const bool exportVtk_r =
+    json_modal_right["neopz"].value("exportvtk",true);
+  const int vtkRes_r =
+    json_modal_right["neopz"].value("vtkres",0);
+  
+  if(exportVtk_l){
+    PostProcessModes(modal_l_an, modal_l_cmesh, modal_right_file, vtkRes_l);
   }
 
-  bool extendDomain{false};
-  SolveScattering(gmesh, modal_l_an, modal_r_an, gmshmats, ncore, nclad, alphaPMLx, alphaPMLy, nEigenpairs_left, extendDomain, prefix);
-  extendDomain=true;
-  SolveScattering(gmesh, modal_l_an, modal_r_an, gmshmats, ncore, nclad, alphaPMLx, alphaPMLy, nEigenpairs_left, extendDomain, prefix);
+  CSTATE ncore{1.55};
+  CSTATE nclad{1.00};
+  CSTATE alphaPMLx{0.75};
+  CSTATE alphaPMLy{0.75};
+  const int nEigenpairs_left = solver_left->NEigenpairs();
+  bool extendDomain{true};
+  SolveScattering(gmesh, modal_l_an, modal_r_an, lambda, scale,
+                  gmshmats, ncore, nclad, alphaPMLx, alphaPMLy, nEigenpairs_left, extendDomain, prefix);
+  extendDomain=false;
+  SolveScattering(gmesh, modal_l_an, modal_r_an, lambda, scale,
+                  gmshmats, ncore, nclad, alphaPMLx, alphaPMLy, nEigenpairs_left, extendDomain, prefix);
   return 0;
+}
+
+TPZAutoPointer<TPZCompMesh>
+CreateModalCMesh(const json &json_data,
+                 const TPZVec<std::map<std::string,int>> &gmshmats,
+                 TPZAutoPointer<TPZGeoMesh> gmesh,
+                 const STATE lambda, const STATE scale){
+
+  wgma::data::WgmaData1D read_data(json_data,gmshmats);
+  auto &modal_data = read_data.modal_data;
+  auto &pmlpattern = read_data.pmlpattern;
+  //we must now filter the 1D PMLs
+  std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
+  for(const auto &pml : modal_data.pmlvec){
+    const auto rx = std::regex{pmlpattern, std::regex_constants::icase };
+    
+    const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
+    if(found_pattern){pmlvec.push_back(pml);}
+  }
+  modal_data.pmlvec = pmlvec;
+  const auto mode = read_data.mode;
+  const auto porder = read_data.porder;
+  return wgma::wganalysis::CMeshWgma1D(gmesh,mode,porder,modal_data,
+                                       lambda, scale);
 }
 
 #include <slepcepshandler.hpp>
 #include <TPZKrylovEigenSolver.h>
 //utility functions
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
-SetupSolver(const CSTATE target,const int neigenpairs,
-            TPZEigenSort sorting, bool usingSLEPC)
+SetupSolver(const json& data)
 {
 
+  wgma::data::Eigensolver solverdata(data);
+  const auto target = solverdata.target;
+  const auto neigenpairs = solverdata.neigenpairs;
+  const auto sorting = solverdata.sort;
+  const auto usingSLEPC = solverdata.slepc;
 #ifndef WGMA_USING_SLEPC
   if(usingSLEPC){
     std::cout<<"wgma was not configured with slepc. defaulting to: "
@@ -518,6 +463,7 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
 void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      wgma::wganalysis::WgmaPlanar &src_an,
                      wgma::wganalysis::WgmaPlanar &match_an,
+                     const STATE lambda, const REAL scale,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
                      const CSTATE ncore, const CSTATE nclad,
                      const CSTATE alphaPMLx, const CSTATE alphaPMLy,
@@ -526,7 +472,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      const std::string &prefix)
 {
   auto scatt_cmesh = [gmesh,&gmshmats,ncore,nclad,alphaPMLx,alphaPMLy,
-                      extendDomains](){
+                      extendDomains, &lambda, &scale](){
     
     // setting up cmesh data
     wgma::cmeshtools::PhysicalData scatt_data;
@@ -637,6 +583,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       }
       scatt_data.pmlvec = pmlvec;
     }
+    const wgma::planarwg::mode mode(wgma::planarwg::mode::TE);
+    const int pOrder = 2;
     return wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder, scatt_data,src_ids,
                                                lambda,scale);
   }();
@@ -787,67 +735,5 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     wgma::cmeshtools::RemovePeriodicity(scatt_mesh);
     scatt_mesh->ComputeNodElCon();
     scatt_mesh->CleanUpUnconnectedNodes();
-  }
-}
-
-void ReadModalAnalysisDataFromJson(const json &json_data,
-                                   const std::string_view name,
-                                   std::map<std::string, std::pair<CSTATE, CSTATE>> &modal_mats,
-                                   std::map<std::string, wgma::bc::type> &modal_bcs,
-                                   int &modaldim,
-                                   TPZVec<CSTATE> &alphapml,
-                                   std::string &pmlpattern)
-{
-  if(json_data.contains(name) == 0){
-    std::cout<<"could not find key "<<name<<" in json file! Aborting..."
-             <<std::endl;
-    DebugStop();
-  }
-  auto simdata = json_data[name];
-
-  //now we read material info from json
-  for(auto &[key,val] : simdata["materials"].items()){
-    //reffractive index
-    if(val.contains("isotropic") && val["isotropic"] == false){
-      std::cout<<"not yet implemented!"<<std::endl;
-      DebugStop();
-    }
-    const CSTATE nmat =  val["n"];
-    const CSTATE urmat = val["ur"];
-    modal_mats[key] = {nmat*nmat,urmat};
-  }
-  //now we read boundary info from json
-  for(auto &[key,val] : simdata["bcs"].items()){
-    //allowed values: PEC,PMC,PERIODIC
-    modal_bcs[key] = wgma::bc::from_string(val.get<std::string>());
-  }
-  modaldim = simdata["dim"];
-  if(simdata.contains("pml")){
-    auto pmldata = simdata["pml"];
-    if(pmldata.contains("alphax")){
-      //cartesian pml
-      alphapml.push_back(pmldata["alphax"]);
-      if(pmldata.contains("alphay")){
-        alphapml.push_back(pmldata["alphay"]);
-      }
-      if(pmldata.contains("alphaz")){
-        alphapml.push_back(pmldata["alphaz"]);
-      }
-    }else if(pmldata.contains("alphar")){
-      //cylindrical pml (todo: what about spherical?)
-      alphapml.push_back(pmldata["alphar"]);
-      if(pmldata.contains("alphaz")){
-        alphapml.push_back(pmldata["alphaz"]);
-      }
-    }else{
-      DebugStop();
-    }
-    if(pmldata.contains("pattern")){
-      pmlpattern = pmldata["pattern"];
-    }else{
-      pmlpattern="*";
-    }
-  }else{
-    alphapml={};
   }
 }

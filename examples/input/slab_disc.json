@@ -1,5 +1,19 @@
 {
+    "wavelength":1.55,
+    "path":"res_slab_disc/",
+    "basisname":"slab_disc",
+    "geom":{
+        "meshfile":"meshes/slab_disc.msh",
+        "arcfile":"meshes/slab_disc_circdata.csv",
+        "verbosity":true,
+        "print_gmsh":true,
+        "arc3d":true,
+        "scale":"k0"
+    },
     "modal_analysis_left":{
+        "mode":"TE",
+        "dim":1,
+        "porder":2,
         "materials":{
             "source_clad_left":{
                 "isotropic":true,
@@ -14,6 +28,99 @@
         },
         "bcs":{
             "source_left_bnd":"PEC"
+        },
+        "pml":{
+            "alphax":0.75,
+            "alphay":0.75,
+            "pattern":"source_clad_left"
+        },
+        "solver":{
+            "slepc":true,
+            "krylovdim":300,
+            "neigenpairs":150,
+            "target":2.4025
+        },
+        "neopz":{
+            "exportvtk":true,
+            "vtkres":0,
+            "optimizebandwidth":true,
+            "filterbceqs":true
+        }
+    },
+    "modal_analysis_right":{
+        "mode":"TE",
+        "dim":1,
+        "porder":2,
+        "materials":{
+            "source_clad_right":{
+                "isotropic":true,
+                "n":1.0,
+                "ur":1
+            },
+            "source_core_right":{
+                "isotropic":true,
+                "n":1.55,
+                "ur":1
+            }
+        },
+        "bcs":{
+            "source_right_bnd":"PEC"
+        },
+        "pml":{
+            "alphax":0.75,
+            "alphay":0.75,
+            "pattern":"source_clad_right"
+        },
+        "solver":{
+            "slepc":true,
+            "krylovdim":300,
+            "neigenpairs":150,
+            "target":2.4025
+        },
+        "neopz":{
+            "exportvtk":true,
+            "vtkres":0,
+            "optimizebandwidth":true,
+            "filterbceqs":true
+        }
+    },
+    "scattering":{
+        "mode":"TE",
+        "dim":2,
+        "porder":2,
+        "materials":{
+            "source_clad_left":{
+                "isotropic":true,
+                "n":1.0,
+                "ur":1
+            },
+            "source_core_left":{
+                "isotropic":true,
+                "n":1.55,
+                "ur":1
+            },
+            "source_clad_right":{
+                "isotropic":true,
+                "n":1.0,
+                "ur":1
+            },
+            "source_core_right":{
+                "isotropic":true,
+                "n":1.55,
+                "ur":1
+            }
+        },
+        "pml":{
+            "alphax":0.75,
+            "alphay":0.75,
+            "pattern":["xp","
+        }
+        "neopz":{
+            "exportvtk":true,
+            "vtkres":0,
+            "optimizebandwidth":true,
+            "filterbceqs":true
         }
     }
+    
 }
