@@ -39,9 +39,9 @@ namespace wgma::scattering{
     TPZAutoPointer<TPZStructMatrix> strmtrx = nullptr;
 
     if(m_sym){
-      strmtrx = new TPZSSpStructMatrix<CSTATE,TPZStructMatrixOT<CSTATE>>(m_cmesh);
+      strmtrx = new TPZSSpStructMatrix<CSTATE,TPZStructMatrixOR<CSTATE>>(m_cmesh);
     }else{
-      strmtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOT<CSTATE>>(m_cmesh);
+      strmtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOR<CSTATE>>(m_cmesh);
     }
 
     strmtrx->SetNumThreads(n_threads);
