@@ -28,6 +28,8 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <regex>//for string search
 #include <thread>
 
+using json = nlohmann::json;
+
 constexpr bool optimizeBandwidth{true};
 constexpr bool filterBoundaryEqs{true};
 const unsigned int nThreads{std::thread::hardware_concurrency()};
@@ -105,12 +107,13 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           const TPZVec<int> &nmodes,
                           TPZVTKGenerator &vtk);
 
-using json = nlohmann::json;
-
 void ReadModalAnalysisDataFromJson(const json &json_data,
                                    const std::string_view name,
-                                   wgma::cmeshtools::PhysicalData &modal_data);
-
+                                   std::map<std::string, std::pair<CSTATE, CSTATE>> &modal_mats,
+                                   std::map<std::string, wgma::bc::type> &modal_bcs,
+                                   int &modaldim,
+                                   TPZVec<CSTATE> &alphapml,
+                                   std::string &pmlpattern);
 int main(int argc, char *argv[]) {
 
 #ifdef PZ_LOG
@@ -789,7 +792,11 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
 void ReadModalAnalysisDataFromJson(const json &json_data,
                                    const std::string_view name,
-                                   wgma::cmeshtools::PhysicalData &modal_data)
+                                   std::map<std::string, std::pair<CSTATE, CSTATE>> &modal_mats,
+                                   std::map<std::string, wgma::bc::type> &modal_bcs,
+                                   int &modaldim,
+                                   TPZVec<CSTATE> &alphapml,
+                                   std::string &pmlpattern)
 {
   if(json_data.contains(name) == 0){
     std::cout<<"could not find key "<<name<<" in json file! Aborting..."
@@ -798,7 +805,6 @@ void ReadModalAnalysisDataFromJson(const json &json_data,
   }
   auto simdata = json_data[name];
 
-  std::map<std::string, std::pair<CSTATE, CSTATE>> modal_mats;
   //now we read material info from json
   for(auto &[key,val] : simdata["materials"].items()){
     //reffractive index
@@ -810,10 +816,38 @@ void ReadModalAnalysisDataFromJson(const json &json_data,
     const CSTATE urmat = val["ur"];
     modal_mats[key] = {nmat*nmat,urmat};
   }
-  std::map<std::string, wgma::bc::type> modal_bcs;
   //now we read boundary info from json
   for(auto &[key,val] : simdata["bcs"].items()){
     //allowed values: PEC,PMC,PERIODIC
     modal_bcs[key] = wgma::bc::from_string(val.get<std::string>());
+  }
+  modaldim = simdata["dim"];
+  if(simdata.contains("pml")){
+    auto pmldata = simdata["pml"];
+    if(pmldata.contains("alphax")){
+      //cartesian pml
+      alphapml.push_back(pmldata["alphax"]);
+      if(pmldata.contains("alphay")){
+        alphapml.push_back(pmldata["alphay"]);
+      }
+      if(pmldata.contains("alphaz")){
+        alphapml.push_back(pmldata["alphaz"]);
+      }
+    }else if(pmldata.contains("alphar")){
+      //cylindrical pml (todo: what about spherical?)
+      alphapml.push_back(pmldata["alphar"]);
+      if(pmldata.contains("alphaz")){
+        alphapml.push_back(pmldata["alphaz"]);
+      }
+    }else{
+      DebugStop();
+    }
+    if(pmldata.contains("pattern")){
+      pmlpattern = pmldata["pattern"];
+    }else{
+      pmlpattern="*";
+    }
+  }else{
+    alphapml={};
   }
 }
