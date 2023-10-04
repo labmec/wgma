@@ -167,9 +167,8 @@ int main(int argc, char *argv[]) {
   const std::string arcfile{"meshes/"+basisName+"_circdata.csv"};
   TPZVec<std::map<std::string, int>> gmshmats;
   constexpr bool verbosity_lvl{false};
-  std::map<int64_t,int64_t> periodic_els;
-  auto gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(meshfile, scale,gmshmats,
-                                                      periodic_els,verbosity_lvl);
+  auto gmesh = wgma::gmeshtools::ReadGmshMesh(meshfile, scale,gmshmats,
+                                              verbosity_lvl);
 
   // print wgma_gmesh to .txt and .vtk format
   if (printGMesh) {
