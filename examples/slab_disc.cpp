@@ -15,6 +15,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <util.hpp>
 #include <slepcepshandler.hpp>
 #include <post/orthosol.hpp>
+#include <post/solutionnorm.hpp>
 #include <post/waveguideportbc.hpp>
 // pz includes
 #include <MMeshType.h>      //for MMeshType
@@ -138,7 +139,7 @@ SimData GetSimData()
   data.nclad = 1.00;
   data.alphaPMLx = 0.75;
   data.alphaPMLy = 0.75;
-  data.porder = 3;
+  data.porder = 4;
   data.filterBoundEqs = true;
   data.printGmesh=true;
   data.exportVtk = true;
@@ -166,8 +167,8 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   constexpr bool usingSLEPC {true};
-  constexpr int nEigenpairs_left{100};
-  constexpr int nEigenpairs_right{100};
+  constexpr int nEigenpairs_left{200};
+  constexpr int nEigenpairs_right{200};
   const CSTATE target{simdata.ncore*simdata.ncore};
 
   /*********
@@ -439,12 +440,61 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
 
   auto cmesh = an.GetMesh();
   auto vtk = TPZVTKGenerator(cmesh, fvars, file, vtkres);
-  const auto nsol = an.GetEigenvectors().Cols();
+  const int64_t maxval{50};
+  const auto nsol = std::min(maxval,an.GetEigenvectors().Cols());
   std::cout<<"Exporting "<<nsol<<" solutions"<<std::endl;
-  for(auto isol = 0; isol < nsol; isol++){
+  for(auto isol = 0; isol < nsol ; isol++){
     an.LoadSolution(isol);
     vtk.Do();
   }
+}
+
+
+
+
+#include <TPZParallelUtils.h>
+
+void Extract1DSolFrom2DMesh(TPZAutoPointer<TPZCompMesh> mesh_1d,
+                            TPZAutoPointer<TPZCompMesh> mesh_2d,
+                            TPZFMatrix<CSTATE> &sol_1d)
+{
+  sol_1d.Zero();
+  const TPZFMatrix<CSTATE> &sol_2d = mesh_2d->Solution();
+  const auto &block_1d = mesh_1d->Block();
+  const auto &block_2d = mesh_2d->Block();
+  const int nel = mesh_1d->NElements();
+  pzutils::ParallelFor(0,nel,[mesh_1d,&block_1d,&block_2d,
+                              &sol_1d,&sol_2d](int iel){
+    auto el_1d = mesh_1d->Element(iel);
+    if(el_1d->Dimension() < mesh_1d->Dimension()){return;}
+    //geometric mesh has 2d mesh as reference
+    auto el_2d = el_1d->Reference()->Reference();
+    if(!el_2d){DebugStop();}
+    const auto ncon = el_2d->NConnects();
+    if(ncon != el_1d->NConnects()){
+      DebugStop();
+    }
+    for(auto icon = 0; icon < ncon; icon++){
+      auto &con_2d = el_2d->Connect(icon);
+      auto &con_1d = el_1d->Connect(icon);
+        
+      const int64_t dfseq_1d = con_1d.SequenceNumber();
+      const int64_t pos_1d = block_1d.Position(dfseq_1d);
+
+      const int64_t dfseq_2d = con_2d.SequenceNumber();
+      const int64_t pos_2d = block_2d.Position(dfseq_2d);
+        
+      const int nshape = block_1d.Size(dfseq_1d);
+      if(nshape!= block_2d.Size(dfseq_2d)){
+        DebugStop();
+      }
+      for(int is = 0; is < nshape; is++){
+        sol_1d.Put(pos_1d+is,0,sol_2d.Get(pos_2d+is,0));
+      }
+        
+    }
+  });
+  mesh_1d->LoadSolution(sol_1d);
 }
 
 void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
@@ -617,6 +667,17 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     vtk.Do();
   }
 
+  //here we will store the error between pml approx and wgbc approx
+  TPZAutoPointer<TPZCompMesh> error_mesh = src_an.GetMesh()->Clone();
+  //first we set the solution as the solution to the pml approx
+  scatt_mesh_pml->LoadReferences();
+
+  TPZFMatrix<CSTATE> sol_pml = error_mesh->Solution();
+  {
+    Extract1DSolFrom2DMesh(error_mesh, scatt_mesh_pml, sol_pml);
+  }
+
+  
   //now we solve varying the number of modes used in the wgbc
   {
     auto scatt_mesh_wgbc = CreateScattMesh(false);
@@ -637,8 +698,12 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     ComputeWgbcCoeffs(match_an, match_data.wgbc_k, match_data.wgbc_f,true, {});
     
     //index of the number of modes to be used to restrict the dofs on waveguide bcs
-    TPZVec<int> nmodes = {1,5,10,20,50,100};
-
+    TPZVec<int> nmodes = {1,2,5,10,15,20,30,50,100,200};
+    //just to get the same size, we will zero it later
+    auto sol_wgbc = sol_pml;
+    const std::string error_file = simdata.prefix+"_error_";
+    auto vtk_error = TPZVTKGenerator(error_mesh, fvars, error_file, simdata.vtkRes);
+    std::map<int,STATE> error_res;
     for(int im = 0; im < nmodes.size(); im++){
       const int nm = nmodes[im];
       if(!nm){continue;}
@@ -647,12 +712,27 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       //plot
       vtk.Do();
       //now we compute the error
+      Extract1DSolFrom2DMesh(error_mesh, scatt_mesh_wgbc, sol_wgbc);
+      sol_wgbc -= sol_pml;
+      error_mesh->LoadSolution(sol_wgbc);
+      vtk_error.Do();
+      auto normsol =
+        wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
+      normsol.SetNThreads(std::thread::hardware_concurrency());
+      const auto norm = normsol.ComputeNorm();
+      std::cout<<"nmodes "<<nm<<" error "<<norm<<std::endl;
+      error_res.insert({nm,norm});
+      
       //removing restrictions
       wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wgbc);
       scatt_mesh_wgbc->ComputeNodElCon();
       scatt_mesh_wgbc->CleanUpUnconnectedNodes();
     }
-    
+    std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
+    for(auto [nm,error] : error_res){
+      std::cout<<"nmodes "<<nm<<" norm error: "<<error<<std::endl;
+    }
+    std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
   }
 }
 
