@@ -16,20 +16,15 @@ namespace wgma::post{
                  TPZVec<TPZCompEl*> elvec,
                  int nThreads = 4) : TSPACE(mesh,elvec,nThreads) {}
     //! Compute norm of a given solution
-    STATE ComputeNorm(int s = 0);
-    //! Normalise all solutions
-    void Normalise();
-  protected:
-    //! Index of the solution to be used
-    void SetSol(int s){m_which = s;}
-    //! Gets index of the solution to be used
-    int WhichSol() const {return m_which;}
+    STATE ComputeNorm(int s);
+    //! Compute norm of all solutions
+    TPZVec<STATE> ComputeNorm();
+    //! Normalise all solutions and return their norm before normalising
+    TPZVec<STATE> Normalise();
     //! Computes contribution at an integration point
     void Compute(const ElData &data, REAL weight, int thread) override;
-    //! Which solution is being calculated
-    int m_which{-1};
     //! Results (one position for thread)
-    TPZVec<REAL> m_res;
+    TPZVec<TPZVec<STATE>> m_res;
   };
 };
 

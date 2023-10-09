@@ -6,64 +6,97 @@
 namespace wgma::post{
 
   template<class TSPACE>
-  void SolutionNorm<TSPACE>::Normalise()
+  TPZVec<STATE> SolutionNorm<TSPACE>::ComputeNorm()
   {
-
     auto mesh = this->Mesh();
+    const int size_res = std::max(this->NThreads(),1);
+    const int nsol = mesh->Solution().Cols();
+    m_res.Resize(size_res,TPZVec<STATE>(nsol,0.));
+    this->Integrate(this->m_elvec);
+    
+    TPZVec<STATE> res(nsol,0.);
+    for (auto &it : m_res){
+      for(int isol = 0; isol < nsol; isol++){
+        res[isol] += it[isol];
+      }
+    }
 
+    for(int isol = 0; isol < nsol; isol++){
+      res[isol] = sqrt(res[isol]);
+      // std::cout<<"computed norm of solution "<<isol<<": "<<res[isol]<<std::endl;
+    }
+    return res;
+  }
+  
+  template<class TSPACE>
+  TPZVec<STATE> SolutionNorm<TSPACE>::Normalise()
+  {
+    auto res = ComputeNorm();
+    
+    auto mesh = this->Mesh();
     TPZFMatrix<CSTATE> &evectors = mesh->Solution();
     const int nev = evectors.Cols();
     const int neq = mesh->NEquations();
     //we iterate through the eigenvectors
     for(int iev = 0; iev < nev; iev++){
-      const auto norm = this->ComputeNorm(iev);
+      const auto norm = res[iev];
       const int offset = iev * neq;
       TPZFMatrix<CSTATE> ei(neq,1,evectors.Elem() + offset,neq);
-      std::cout<<"computed norm of solution "<<iev<<": "<<norm<<std::endl;
       ei *= 1./norm;
     }
+    return res;
   }
 
   template<class TSPACE>
   STATE SolutionNorm<TSPACE>::ComputeNorm(int s){
-    const int size_res = std::max(this->NThreads(),1);
-    m_res.Resize(size_res);
-    m_res.Fill(0.);
-    this->SetSol(s);
-    this->Integrate(this->m_elvec);
-    STATE res = 0;
-    for (auto &it : m_res){
-      res += it;
+    //we store the solution
+    TPZFMatrix<CSTATE> solcp = this->Mesh()->Solution();
+    const auto neq = solcp.Rows();
+    const auto nsols = solcp.Cols();
+    if(s >= nsols){
+      DebugStop();
     }
-    return sqrt(res);
+    //we set only desired sol in mesh
+    TPZFMatrix<CSTATE> desired_sol(neq,1,&solcp.s(0,s),neq);
+    this->Mesh()->LoadSolution(desired_sol);
+    //normalise it
+    auto res = this->Normalise();
+    //restore previous solution
+    this->Mesh()->LoadSolution(std::move(solcp));
+    return res[0];
   }
 
   template<class TSPACE>
   void SolutionNorm<TSPACE>::Compute(const ElData &eldata, REAL weight, int index)
   {
-    const auto which = WhichSol();
-    
     if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
       const TPZMaterialDataT<CSTATE> &data = eldata;
-      const auto &cursol =  data.sol[which];
-      const auto solsize = cursol.size();
-      STATE val = 0;
-      for(auto ix = 0; ix < solsize; ix++){
-         val += std::real(cursol[ix] * std::conj(cursol[ix]));
-      }
-      this->m_res[index] += weight * fabs(data.detjac) * val;
-    }else{
-      const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
-      const auto nspace = datavec.size();
-      for(int is = 0; is < nspace; is++){
-        const auto &data = datavec[is];
-        const auto &cursol =  data.sol[which];
+      
+      const int nsol = data.sol.size();
+      for(int isol = 0; isol < nsol; isol++){
+        const auto &cursol =  data.sol[isol];
         const auto solsize = cursol.size();
         STATE val = 0;
         for(auto ix = 0; ix < solsize; ix++){
           val += std::real(cursol[ix] * std::conj(cursol[ix]));
         }
-        this->m_res[index] += weight * fabs(data.detjac) * val;
+        this->m_res[index][isol] += weight * fabs(data.detjac) * val;
+      }
+    }else{
+      const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
+      const auto nspace = datavec.size();
+      for(int is = 0; is < nspace; is++){
+        const auto &data = datavec[is];
+        const int nsol = data.sol.size();
+        for(int isol = 0; isol < nsol; isol++){
+          const auto &cursol =  data.sol[isol];
+          const auto solsize = cursol.size();
+          STATE val = 0;
+          for(auto ix = 0; ix < solsize; ix++){
+            val += std::real(cursol[ix] * std::conj(cursol[ix]));
+          }
+          this->m_res[index][isol] += weight * fabs(data.detjac) * val;
+        }
       }
     }
   }
