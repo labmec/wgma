@@ -68,7 +68,7 @@ struct SimData{
 //!needed data from modal analysis to create waveguide port bc
 struct WgbcData{
   TPZAutoPointer<TPZCompMesh> cmesh;
-  TPZVec<CSTATE> wgbc_k;
+  TPZFMatrix<CSTATE> wgbc_k;
   TPZVec<CSTATE> wgbc_f;
 };
 
@@ -109,7 +109,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           const SimData &simdata);
 
 void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
-                       TPZVec<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
+                       TPZFMatrix<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
                        const bool positive_z, const TPZVec<CSTATE> &coeff);
 
 
@@ -842,7 +842,7 @@ int64_t RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an, 
                                   const int64_t indep_con_id,
                                   const int nm,
-                                  const TPZVec<CSTATE> &wgbc_k,
+                                  const TPZFMatrix<CSTATE> &wgbc_k,
                                   const TPZVec<CSTATE> &wgbc_f)
 {
   auto mat = scatt_an.GetSolver().Matrix();
@@ -859,18 +859,21 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
   posvec_filt = posvec_orig;
   scatt_an.StructMatrix()->EquationFilter().Filter(posvec_orig, posvec_filt);
   for(auto imode = 0; imode < nm; imode++){
-    const auto pos_k = posvec_filt[imode];
-    const auto kval = mat->Get(pos_k,pos_k);
-    mat->Put(pos_k,pos_k, kval+wgbc_k[imode]);
     const auto pos_f = posvec_orig[imode];
     const auto fval = fvec.Get(pos_f,0);
     fvec.Put(pos_f,0, fval+wgbc_f[imode]);
+    for(auto jmode = 0; jmode < nm; jmode++){
+      const auto ipos = posvec_filt[imode];
+      const auto jpos = posvec_filt[jmode];
+      const auto kval = mat->Get(ipos,jpos);
+      mat->Put(ipos,jpos,kval+wgbc_k.Get(imode,jmode));
+    }
   }
 }
 
 
 void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
-                       TPZVec<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
+                       TPZFMatrix<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
                        const bool positive_z, const TPZVec<CSTATE> &coeff){
   auto mesh = an.GetMesh();
   wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(mesh);
