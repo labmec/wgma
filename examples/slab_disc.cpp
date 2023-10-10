@@ -167,8 +167,8 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   constexpr bool usingSLEPC {true};
-  constexpr int nEigenpairs_left{200};
-  constexpr int nEigenpairs_right{200};
+  constexpr int nEigenpairs_left{500};
+  constexpr int nEigenpairs_right{500};
   const CSTATE target{simdata.ncore*simdata.ncore};
 
   /*********
@@ -446,7 +446,7 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
 
   auto cmesh = an.GetMesh();
   auto vtk = TPZVTKGenerator(cmesh, fvars, file, vtkres);
-  const int64_t maxval{50};
+  const int64_t maxval{100};
   const auto nsol = std::min(maxval,an.GetEigenvectors().Cols());
   std::cout<<"Exporting "<<nsol<<" solutions"<<std::endl;
   for(auto isol = 0; isol < nsol ; isol++){
@@ -668,7 +668,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   {
     const std::string suffix = "pml";
     const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
-    auto vtk = TPZVTKGenerator(scatt_mesh_pml, fvars, scatt_file, simdata.vtkRes);
+    auto vtk = TPZVTKGenerator(scatt_mesh_pml, fvars, scatt_file, simdata.vtkRes+2);
     SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
     vtk.Do();
   }
@@ -704,7 +704,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     ComputeWgbcCoeffs(match_an, match_data.wgbc_k, match_data.wgbc_f,true, {});
     
     //index of the number of modes to be used to restrict the dofs on waveguide bcs
-    TPZVec<int> nmodes = {1,2,5,10,15,20,30,50,100,200};
+    TPZVec<int> nmodes = {1,2,5,10,15,20,30,50,100,200,400};
     //just to get the same size, we will zero it later
     auto sol_wgbc = sol_pml;
     const std::string error_file = simdata.prefix+"_error_";
