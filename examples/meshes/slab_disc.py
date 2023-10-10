@@ -31,12 +31,12 @@ h_domain = 5
 w_domain = 5
 d_src = 1
 d_far = 6*d_src
-el_core = 0.1/1.55
+el_core = 0.06/1.55
 thickness = 2*max(h1, h2)
 el_clad = 0.1
-d_pmlx = 3
-d_pmly = 1
-nlayerspml = 5
+d_pmlx = 2
+d_pmly = 2
+nlayerspml = 10
 
 
 gmsh.initialize()
