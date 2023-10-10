@@ -407,10 +407,16 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   an.Solve(computeVectors);
   //load all obtained modes into the mesh
   an.LoadAllSolutions();
+
+  auto cmesh = an.GetMesh();
+  //leave empty for all valid matids
+  std::set<int> matids {};
+  wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,nThreads).Normalise();
+  
+  TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
+  //we update analysis object
+  an.SetEigenvectors(mesh_sol);
   if(orthogonalise){
-    auto cmesh = an.GetMesh();
-    //leave empty for all valid matids
-    std::set<int> matids {};
     auto ortho = wgma::post::OrthoSol<wgma::post::SingleSpaceIntegrator>(cmesh, matids, nThreads);
     //orthogonalise the modes
     auto normsol = ortho.Orthogonalise();
@@ -719,7 +725,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       auto normsol =
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
       normsol.SetNThreads(std::thread::hardware_concurrency());
-      const auto norm = normsol.ComputeNorm();
+      const auto norm = normsol.ComputeNorm()[0];
       std::cout<<"nmodes "<<nm<<" error "<<norm<<std::endl;
       error_res.insert({nm,norm});
       
