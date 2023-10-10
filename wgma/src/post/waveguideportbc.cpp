@@ -18,20 +18,23 @@ namespace wgma::post{
     if(m_coeff.size() != 0 && m_coeff.size() != nsol){
       DebugStop();
     }
-    m_kii.Resize(nsol);
-    m_kii.Fill(0);
+    m_kii.Redim(nsol,nsol);
 
     m_k_scratch.Resize(size_res);
-    for(auto &res : m_k_scratch) {res.Resize(nsol,0.);}
+    for(auto &res : m_k_scratch) {res.Redim(nsol,nsol);}
 
-    m_f_scratch = m_k_scratch;
-    m_fi = m_kii;
+    m_fi.Resize(nsol,0.);
+    m_f_scratch.Resize(size_res);
+    for(auto &res : m_f_scratch) {res.Resize(nsol,0);}
+    
     this->Integrate(this->m_elvec);
     
     for (int ires = 0; ires< size_res; ires++){
       for(auto isol = 0; isol < nsol; isol++){
-        m_kii[isol] += m_k_scratch[ires][isol];
         m_fi[isol] += m_f_scratch[ires][isol];
+        for(auto jsol = 0; jsol < nsol; jsol++){
+          m_kii(isol,jsol) += m_k_scratch[ires](isol,jsol);
+        }
       }
     }
     
@@ -60,13 +63,17 @@ namespace wgma::post{
       }
       STATE val = 0;
       for(auto isol = 0; isol < solsize; isol++){
-        //matrix term
-        const auto beta = m_beta[isol];
-        const CSTATE kval =  1i*beta* sol[isol][0] * sol[isol][0];
-        this->m_k_scratch[index][isol] += weight * fabs(data.detjac) * kval;
+        for(auto jsol = 0; jsol < solsize; jsol++){
+          //matrix term
+          const auto beta = m_beta[jsol]*sign;
+          const CSTATE kval =  1i*beta* sol[jsol][0] * std::conj(sol[isol][0]);
+          this->m_k_scratch[index](isol,jsol) += weight * fabs(data.detjac) * kval;
+        }
         //load vector term
         if(is_src){
-          const CSTATE fval = 2.*m_coeff[isol]*kval*sign;
+          const auto beta = m_beta[isol]*sign;
+          const CSTATE kval =  1i*beta* sol[isol][0] * std::conj(sol[isol][0]);
+          const CSTATE fval = 2.*m_coeff[isol]*kval;
           this->m_f_scratch[index][isol] += weight * fabs(data.detjac) * fval;
         }
       }
@@ -92,7 +99,7 @@ namespace wgma::post{
           et[ix] /= beta;
           val += (1i*beta*et[ix]+sign*grad_ez.Get(ix,0))*et[ix];
         }
-        this->m_k_scratch[index][isol] += weight * fabs(detjac) * val;
+        this->m_k_scratch[index](isol,isol) += weight * fabs(detjac) * val;
       }
     }
   }
