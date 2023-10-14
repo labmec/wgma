@@ -558,7 +558,8 @@ void ComputeModes(wgma::wganalysis::Wgma2D &an,
   if(orthogonalise){
     //leave empty for all valid matids
     std::set<int> matids {};
-    auto ortho = SolutionNorm<MultiphysicsIntegrator>(cmesh, matids, nThreads);
+    constexpr bool conj = true;
+    auto ortho = SolutionNorm<MultiphysicsIntegrator>(cmesh, matids, conj, nThreads);
     //orthogonalise the modes
     ortho.Normalise();
   }
