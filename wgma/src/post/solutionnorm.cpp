@@ -6,15 +6,15 @@
 namespace wgma::post{
 
   template<class TSPACE>
-  TPZVec<STATE> SolutionNorm<TSPACE>::ComputeNorm()
+  TPZVec<CSTATE> SolutionNorm<TSPACE>::ComputeNorm()
   {
     auto mesh = this->Mesh();
     const int size_res = std::max(this->NThreads(),1);
     const int nsol = mesh->Solution().Cols();
-    m_res.Resize(size_res,TPZVec<STATE>(nsol,0.));
+    m_res.Resize(size_res,TPZVec<CSTATE>(nsol,0.));
     this->Integrate(this->m_elvec);
     
-    TPZVec<STATE> res(nsol,0.);
+    TPZVec<CSTATE> res(nsol,0.);
     for (auto &it : m_res){
       for(int isol = 0; isol < nsol; isol++){
         res[isol] += it[isol];
@@ -29,7 +29,7 @@ namespace wgma::post{
   }
   
   template<class TSPACE>
-  TPZVec<STATE> SolutionNorm<TSPACE>::Normalise()
+  TPZVec<CSTATE> SolutionNorm<TSPACE>::Normalise()
   {
     auto res = ComputeNorm();
     
@@ -48,7 +48,7 @@ namespace wgma::post{
   }
 
   template<class TSPACE>
-  STATE SolutionNorm<TSPACE>::ComputeNorm(int s){
+  CSTATE SolutionNorm<TSPACE>::ComputeNorm(int s){
     //we store the solution
     TPZFMatrix<CSTATE> solcp = this->Mesh()->Solution();
     const auto neq = solcp.Rows();
@@ -76,9 +76,10 @@ namespace wgma::post{
       for(int isol = 0; isol < nsol; isol++){
         const auto &cursol =  data.sol[isol];
         const auto solsize = cursol.size();
-        STATE val = 0;
+        CSTATE val = 0;
         for(auto ix = 0; ix < solsize; ix++){
-          val += std::real(cursol[ix] * std::conj(cursol[ix]));
+          val += m_conj ? cursol[ix] * std::conj(cursol[ix])
+            : cursol[ix] * cursol[ix];
         }
         this->m_res[index][isol] += weight * fabs(data.detjac) * val;
       }
@@ -91,9 +92,10 @@ namespace wgma::post{
         for(int isol = 0; isol < nsol; isol++){
           const auto &cursol =  data.sol[isol];
           const auto solsize = cursol.size();
-          STATE val = 0;
+          CSTATE val = 0;
           for(auto ix = 0; ix < solsize; ix++){
-            val += std::real(cursol[ix] * std::conj(cursol[ix]));
+            val += m_conj ?
+              cursol[ix] * std::conj(cursol[ix]) : cursol[ix] * cursol[ix];
           }
           this->m_res[index][isol] += weight * fabs(data.detjac) * val;
         }

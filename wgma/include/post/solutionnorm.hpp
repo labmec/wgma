@@ -9,22 +9,28 @@ namespace wgma::post{
   template<class TSPACE>
   class SolutionNorm: public TSPACE{
   public:
-    SolutionNorm(TPZAutoPointer<TPZCompMesh> mesh,
-                 std::set<int> matids = {},
-                 int nThreads = 4) : TSPACE(mesh,matids,nThreads) {}
-    SolutionNorm(TPZAutoPointer<TPZCompMesh> mesh,
-                 TPZVec<TPZCompEl*> elvec,
-                 int nThreads = 4) : TSPACE(mesh,elvec,nThreads) {}
+    explicit SolutionNorm(TPZAutoPointer<TPZCompMesh> mesh,
+                          std::set<int> matids = {},
+                          bool conj = true,
+                          int nThreads = 4) :
+      TSPACE(mesh,matids,nThreads), m_conj(conj) {}
+    explicit SolutionNorm(TPZAutoPointer<TPZCompMesh> mesh,
+                          TPZVec<TPZCompEl*> elvec,
+                          bool conj = true,
+                          int nThreads = 4) :
+      TSPACE(mesh,elvec,nThreads), m_conj(conj) {}
     //! Compute norm of a given solution
-    STATE ComputeNorm(int s);
+    CSTATE ComputeNorm(int s);
     //! Compute norm of all solutions
-    TPZVec<STATE> ComputeNorm();
+    TPZVec<CSTATE> ComputeNorm();
     //! Normalise all solutions and return their norm before normalising
-    TPZVec<STATE> Normalise();
+    TPZVec<CSTATE> Normalise();
     //! Computes contribution at an integration point
     void Compute(const ElData &data, REAL weight, int thread) override;
     //! Results (one position for thread)
-    TPZVec<TPZVec<STATE>> m_res;
+    TPZVec<TPZVec<CSTATE>> m_res;
+    //! Whether to compute actual norm (phi*conj(phi))  or not
+    bool m_conj{true};
   };
 };
 
