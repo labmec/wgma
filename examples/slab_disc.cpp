@@ -17,6 +17,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <post/orthosol.hpp>
 #include <post/solutionnorm.hpp>
 #include <post/waveguideportbc.hpp>
+#include <post/waveguidecoupling.hpp>
 // pz includes
 #include <MMeshType.h>      //for MMeshType
 #include <TPZSimpleTimer.h> //for TPZSimpleTimer
@@ -57,6 +58,8 @@ struct SimData{
   bool printGmesh{false};
   //!post process fields
   bool exportVtk{false};
+  //!whether to compute coupling mat
+  bool couplingmat{false};
   //!vtk resolution
   int vtkRes{0};
   //!number of threads
@@ -80,6 +83,10 @@ SetupSolver(const CSTATE target, const int neigenpairs,
 void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
                   const bool orthogonalise,
                   const int nThreads);
+
+void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
+                        std::string filename,
+                        std::string matname);
 
 void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
                       std::string filename,
@@ -143,6 +150,7 @@ SimData GetSimData()
   data.filterBoundEqs = true;
   data.printGmesh=true;
   data.exportVtk = true;
+  data.couplingmat = true;
   data.vtkRes=0;
   data.prefix = prefix;
   return std::move(data);
@@ -251,6 +259,9 @@ int main(int argc, char *argv[]) {
   //no need to orthogonalise modes
   constexpr bool ortho{false};
   ComputeModes(modal_l_an, ortho, simdata.nThreads);
+  if(simdata.couplingmat){
+    ComputeCouplingMat(modal_l_an, simdata.prefix+"_mat_src.txt", "src");
+  }
   if(simdata.exportVtk){
     PostProcessModes(modal_l_an, modal_left_file, simdata.vtkRes);
   }
@@ -308,6 +319,9 @@ int main(int argc, char *argv[]) {
   std::string modal_right_file{simdata.prefix+"_modal_right"};
   
   ComputeModes(modal_r_an, ortho, simdata.nThreads);
+  if(simdata.couplingmat){
+    ComputeCouplingMat(modal_r_an, simdata.prefix+"_mat_match.txt", "match");
+  }
   if(simdata.exportVtk){
     std::string modal_left_file{simdata.prefix+"_modal_right"};
     PostProcessModes(modal_r_an, modal_right_file, simdata.vtkRes);
@@ -426,6 +440,32 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
     an.LoadAllSolutions();
   }
   
+}
+
+void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
+                        std::string filename,
+                        std::string matname)
+{
+  
+  using namespace wgma::post;
+
+  std::set<int> matids;
+  constexpr bool conj{false};
+  const int nthreads = std::thread::hardware_concurrency();
+  WaveguideCoupling<SingleSpaceIntegrator> integrator(an.GetMesh(),
+                                                      matids,
+                                                      conj,
+                                                      nthreads
+                                                      );
+  TPZVec<CSTATE> betavec = an.GetEigenvalues();
+  for(auto &b : betavec){b = sqrt(b);}
+  integrator.SetBeta(betavec);
+  integrator.ComputeCoupling();
+  TPZFMatrix<CSTATE> couplingmat;
+  integrator.GetCoupling(couplingmat);
+  std::ofstream matfile(filename);
+  std::string name = matname+"=";
+  couplingmat.Print(name.c_str(),matfile,EMathematicaInput);
 }
 
 void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
