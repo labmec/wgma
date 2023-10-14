@@ -52,11 +52,15 @@ namespace wgma::post{
           TPZFMatrix<CSTATE> ej(neq,1,evectors.Elem() + offset,neq);
           ei -= res[jev] * ej;
         }
+        mesh->LoadSolution(ei);
+        auto solnorm =
+          SolutionNorm<TSPACE>(mesh, this->m_elvec, m_conj, this->NThreads());
+        auto norm = solnorm.ComputeNorm();
+        if(norm.size()!=1){
+          DebugStop();
+        }
+        ei *= 1./norm[0];
       }
-
-      auto solnorm = SolutionNorm<TSPACE>(mesh, this->m_elvec, this->NThreads());
-      auto norm = solnorm.ComputeNorm(iev);
-      ei *= 1./norm;
     }
 
     return std::move(evectors);
@@ -71,7 +75,8 @@ namespace wgma::post{
     const auto solsize = cursol.size();
     for(auto isol = 0; isol < which; isol++){
       for(auto ix = 0; ix < solsize; ix++){
-        const auto val = cursol[ix] * std::conj(data.sol[isol][ix]);
+        const auto val = m_conj ?
+          cursol[ix] * std::conj(data.sol[isol][ix]) : cursol[ix] * data.sol[isol][ix];
         m_res(index,isol) += weight * fabs(data.detjac) * val;
       }
     }

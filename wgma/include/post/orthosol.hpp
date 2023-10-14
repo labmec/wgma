@@ -8,14 +8,16 @@ namespace wgma::post{
   template<class TSPACE>
   class OrthoSol: public TSPACE{
   public:
-    OrthoSol(TPZAutoPointer<TPZCompMesh> mesh,
+    explicit OrthoSol(TPZAutoPointer<TPZCompMesh> mesh,
              std::set<int> matids = {},
+             bool conj=true,
              int nThreads = 4) :
-      TSPACE(mesh,matids,nThreads) {}
-    OrthoSol(TPZAutoPointer<TPZCompMesh> mesh,
+      TSPACE(mesh,matids,nThreads),m_conj(conj) {}
+    explicit OrthoSol(TPZAutoPointer<TPZCompMesh> mesh,
              TPZVec<TPZCompEl*> elvec,
+             bool conj=true,
              int nThreads = 4) :
-      TSPACE(mesh,elvec,nThreads) {}
+      TSPACE(mesh,elvec,nThreads), m_conj(conj) {}
     //! Orthogonalise all solutions and return them
     TPZFMatrix<CSTATE> Orthogonalise();
   protected:
@@ -29,6 +31,8 @@ namespace wgma::post{
     int m_which{-1};
     //! Results (one row per thread, one column per solution)
     TPZFMatrix<CSTATE> m_res;
+    //! Whether to orthogonalise relative to complex conjugate
+    bool m_conj{true};
   };
 };
 
