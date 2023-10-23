@@ -409,15 +409,16 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   an.LoadAllSolutions();
 
   auto cmesh = an.GetMesh();
+  constexpr bool conj{false};
   //leave empty for all valid matids
   std::set<int> matids {};
-  wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,nThreads).Normalise();
+  wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,conj,nThreads).Normalise();
   
   TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
   //we update analysis object
   an.SetEigenvectors(mesh_sol);
   if(orthogonalise){
-    auto ortho = wgma::post::OrthoSol<wgma::post::SingleSpaceIntegrator>(cmesh, matids, nThreads);
+    auto ortho = wgma::post::OrthoSol<wgma::post::SingleSpaceIntegrator>(cmesh, matids, conj,nThreads);
     //orthogonalise the modes
     auto normsol = ortho.Orthogonalise();
     //let us set the orthogonalised modes
@@ -725,7 +726,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       auto normsol =
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
       normsol.SetNThreads(std::thread::hardware_concurrency());
-      const auto norm = normsol.ComputeNorm()[0];
+      const auto norm = std::real(normsol.ComputeNorm()[0]);
       std::cout<<"nmodes "<<nm<<" error "<<norm<<std::endl;
       error_res.insert({nm,norm});
       
