@@ -146,11 +146,11 @@ SimData GetSimData()
   data.nclad = 1.00;
   data.alphaPMLx = 0.75;
   data.alphaPMLy = 0.75;
-  data.porder = 4;
+  data.porder = 2;
   data.filterBoundEqs = true;
   data.printGmesh=true;
   data.exportVtk = true;
-  data.couplingmat = true;
+  data.couplingmat = false;
   data.vtkRes=0;
   data.prefix = prefix;
   return std::move(data);
@@ -175,8 +175,8 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   constexpr bool usingSLEPC {true};
-  constexpr int nEigenpairs_left{500};
-  constexpr int nEigenpairs_right{500};
+  constexpr int nEigenpairs_left{50};
+  constexpr int nEigenpairs_right{50};
   const CSTATE target{simdata.ncore*simdata.ncore};
 
   /*********
@@ -867,7 +867,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   //now we solve varying the number of modes used in the wgbc
   
   //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  TPZVec<int> nmodes = {0,1,2,5,10,15,20,30,50,100,200,400};
+  TPZVec<int> nmodes = {0,1,2,5,10,15,20,30};//,50,100,200,400};
   src_an.LoadAllSolutions();
   match_an.LoadAllSolutions();
 
