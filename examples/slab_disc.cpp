@@ -506,6 +506,7 @@ void Extract1DSolFrom2DMesh(TPZAutoPointer<TPZCompMesh> mesh_1d,
                             TPZFMatrix<CSTATE> &sol_1d)
 {
   sol_1d.Zero();
+  mesh_2d->LoadReferences();
   const TPZFMatrix<CSTATE> &sol_2d = mesh_2d->Solution();
   const auto &block_1d = mesh_1d->Block();
   const auto &block_2d = mesh_2d->Block();
@@ -541,8 +542,8 @@ void Extract1DSolFrom2DMesh(TPZAutoPointer<TPZCompMesh> mesh_1d,
         
     }
   });
-  mesh_1d->LoadSolution(sol_1d);
 }
+
 #include <materials/solutionprojection.hpp>
 #include <TPZNullMaterial.h>
 
