@@ -713,74 +713,69 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
     vtk.Do();
   }
+  //now we solve varying the number of modes used in the wgbc
+  
+  //index of the number of modes to be used to restrict the dofs on waveguide bcs
+  TPZVec<int> nmodes = {0,1,2,5,10,15,20,30,50,100,200,400};
+  src_an.LoadAllSolutions();
+  match_an.LoadAllSolutions();
 
+  
+  auto scatt_mesh_wgbc = CreateScattMesh(false);
+  const std::string suffix = "wgbc";
+  const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
+  auto vtk = TPZVTKGenerator(scatt_mesh_wgbc, fvars, scatt_file, simdata.vtkRes);
+
+  //compute wgbc coefficients
+  WgbcData src_data;
+  src_data.cmesh = src_an.GetMesh();
+  ComputeWgbcCoeffs(src_an, src_data.wgbc_k, src_data.wgbc_f, false, src_coeffs);
+
+  WgbcData match_data;
+  match_data.cmesh = match_an.GetMesh();
+  ComputeWgbcCoeffs(match_an, match_data.wgbc_k, match_data.wgbc_f,true, {});
+    
+    
   //here we will store the error between pml approx and wgbc approx
   TPZAutoPointer<TPZCompMesh> error_mesh = src_an.GetMesh()->Clone();
-  //first we set the solution as the solution to the pml approx
-  scatt_mesh_pml->LoadReferences();
-
   TPZFMatrix<CSTATE> sol_pml = error_mesh->Solution();
   {
     Extract1DSolFrom2DMesh(error_mesh, scatt_mesh_pml, sol_pml);
   }
-
-  
-  //now we solve varying the number of modes used in the wgbc
-  {
-    auto scatt_mesh_wgbc = CreateScattMesh(false);
-    const std::string suffix = "wgbc";
-    const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
-    auto vtk = TPZVTKGenerator(scatt_mesh_wgbc, fvars, scatt_file, simdata.vtkRes);
-
-    //compute wgbc coefficients
-    src_an.LoadAllSolutions();
-    WgbcData src_data;
-    src_data.cmesh = src_an.GetMesh();
-    ComputeWgbcCoeffs(src_an, src_data.wgbc_k, src_data.wgbc_f, false, src_coeffs);
-
-    
-    match_an.LoadAllSolutions();
-    WgbcData match_data;
-    match_data.cmesh = match_an.GetMesh();
-    ComputeWgbcCoeffs(match_an, match_data.wgbc_k, match_data.wgbc_f,true, {});
-    
-    //index of the number of modes to be used to restrict the dofs on waveguide bcs
-    TPZVec<int> nmodes = {1,2,5,10,15,20,30,50,100,200,400};
-    //just to get the same size, we will zero it later
-    auto sol_wgbc = sol_pml;
-    const std::string error_file = simdata.prefix+"_error_";
-    auto vtk_error = TPZVTKGenerator(error_mesh, fvars, error_file, simdata.vtkRes);
-    std::map<int,STATE> error_res;
-    for(int im = 0; im < nmodes.size(); im++){
-      const int nm = nmodes[im];
-      if(!nm){continue;}
-      RestrictDofsAndSolve(scatt_mesh_wgbc, src_data, match_data,
-                           src_coeffs, nm,simdata);
-      //plot
-      vtk.Do();
-      //now we compute the error
-      Extract1DSolFrom2DMesh(error_mesh, scatt_mesh_wgbc, sol_wgbc);
-      sol_wgbc -= sol_pml;
-      error_mesh->LoadSolution(sol_wgbc);
-      vtk_error.Do();
-      auto normsol =
-        wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
-      normsol.SetNThreads(std::thread::hardware_concurrency());
-      const auto norm = std::real(normsol.ComputeNorm()[0]);
-      std::cout<<"nmodes "<<nm<<" error "<<norm<<std::endl;
-      error_res.insert({nm,norm});
+  //just to get the same size, we will zero it later
+  auto sol_wgbc = sol_pml;
+  const std::string error_file = simdata.prefix+"_error_";
+  auto vtk_error = TPZVTKGenerator(error_mesh, fvars, error_file, simdata.vtkRes);
+  std::map<int,STATE> error_res;
+  for(int im = 0; im < nmodes.size(); im++){
+    const int nm = nmodes[im];
+    if(!nm){continue;}
+    RestrictDofsAndSolve(scatt_mesh_wgbc, src_data, match_data,
+                         src_coeffs, nm,simdata);
+    //plot
+    vtk.Do();
+    //now we compute the error
+    Extract1DSolFrom2DMesh(error_mesh, scatt_mesh_wgbc, sol_wgbc);
+    sol_wgbc -= sol_pml;
+    error_mesh->LoadSolution(sol_wgbc);
+    vtk_error.Do();
+    auto normsol =
+      wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
+    normsol.SetNThreads(std::thread::hardware_concurrency());
+    const auto norm = std::real(normsol.ComputeNorm()[0]);
+    std::cout<<"nmodes "<<nm<<" error "<<norm<<std::endl;
+    error_res.insert({nm,norm});
       
-      //removing restrictions
-      wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wgbc);
-      scatt_mesh_wgbc->ComputeNodElCon();
-      scatt_mesh_wgbc->CleanUpUnconnectedNodes();
-    }
-    std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
-    for(auto [nm,error] : error_res){
-      std::cout<<"nmodes "<<nm<<" norm error: "<<error<<std::endl;
-    }
-    std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
+    //removing restrictions
+    wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wgbc);
+    scatt_mesh_wgbc->ComputeNodElCon();
+    scatt_mesh_wgbc->CleanUpUnconnectedNodes();
   }
+  std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
+  for(auto [nm,error] : error_res){
+    std::cout<<"nmodes "<<nm<<" norm error: "<<error<<std::endl;
+  }
+  std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
 }
 
 void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
