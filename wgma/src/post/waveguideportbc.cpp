@@ -48,6 +48,9 @@ namespace wgma::post{
     TSPACE::InitData(el,data);
     data.SetMaterial(el->Material());
   }
+
+
+  #include <Electromagnetics/TPZScalarField.h>
   
   template<class TSPACE>
   void WaveguidePortBC<TSPACE>::Compute(const ElData &eldata, REAL weight, int index)
@@ -56,25 +59,27 @@ namespace wgma::post{
     const bool is_src = m_coeff.size() != 0;
     if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
       const TPZMaterialDataT<CSTATE> &data = eldata;
+      auto mat = dynamic_cast<const TPZScalarField*>(eldata.GetMaterial());
+      TPZFNMatrix<9,CSTATE> ur;
+      mat->GetPermeability(data.x, ur);
       const auto &sol =  data.sol;
       const auto solsize = sol.size();
       if(solsize != m_beta.size()){
         DebugStop();
       }
       STATE val = 0;
+      const CSTATE urval = 1./ur.Get(2,2);
       for(auto isol = 0; isol < solsize; isol++){
-        for(auto jsol = 0; jsol < solsize; jsol++){
+        for(auto jsol = isol; jsol < isol+1; jsol++){
           //matrix term
-          const auto beta = m_beta[jsol]*sign;
-          const CSTATE kval =  1i*beta* sol[jsol][0] * std::conj(sol[isol][0]);
-          this->m_k_scratch[index](isol,jsol) += weight * fabs(data.detjac) * kval;
-        }
-        //load vector term
-        if(is_src){
-          const auto beta = m_beta[isol]*sign;
-          const CSTATE kval =  1i*beta* sol[isol][0] * std::conj(sol[isol][0]);
-          const CSTATE fval = 2.*m_coeff[isol]*kval;
-          this->m_f_scratch[index][isol] += weight * fabs(data.detjac) * fval;
+          const auto beta = m_beta[jsol];
+          const CSTATE kval =  1i*beta*sol[jsol][0] * std::conj(sol[isol][0]);
+          this->m_k_scratch[index](isol,jsol) += weight * urval * fabs(data.detjac) * kval;
+          //load vector term
+          if(is_src){
+            const CSTATE fval = 2.*sign*m_coeff[jsol]*kval;
+            this->m_f_scratch[index][isol] += weight * urval * fabs(data.detjac) * fval;
+          }
         }
       }
     }else{
