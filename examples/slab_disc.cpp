@@ -941,9 +941,11 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
                   const TPZVec<CSTATE> &src_coeffs,
                   const SimData &simdata)
 {
+  constexpr bool sym{false};
   auto scatt_an = wgma::scattering::Analysis(scatt_cmesh, simdata.nThreads,
                                              simdata.optimizeBandwidth,
-                                             simdata.filterBoundEqs);
+                                             simdata.filterBoundEqs,
+                                             sym);
     
   auto src_mesh = src_an.GetMesh();
   //get id of source materials
@@ -1108,9 +1110,11 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   const int64_t indep_con_id_src =
     RestrictDofs(scatt_mesh, src_mesh, nmodes, boundConnects);
 
+  constexpr bool sym{false};
   auto scatt_an = wgma::scattering::Analysis(scatt_mesh, simdata.nThreads,
                                              simdata.optimizeBandwidth,
-                                             simdata.filterBoundEqs);
+                                             simdata.filterBoundEqs,
+                                             sym);
 
   
   std::cout<<"nmodes on outgoing boundary: "<<nmodes<<std::endl;
