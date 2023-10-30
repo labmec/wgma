@@ -79,7 +79,15 @@ namespace wgma::scattering{
   void Analysis::Assemble(){
     TPZSimpleTimer assemble("Assemble");
     //assembles the system
-    TPZLinearAnalysis::Assemble();    
+    TPZLinearAnalysis::Assemble();
+    ///by default, matrices are set as symmetric
+    //user can change it before calling solve if needed
+    //(i.e., lossless systems can result in hermitian mats)
+    if(m_sym){
+      auto mat = this->GetSolver().Matrix();
+      mat->SetSymmetry(SymProp::Sym);
+      mat->SetDefPositive(false);
+    }
   }
   
   void Analysis::AssembleRhs(std::set<int> matids){
@@ -92,12 +100,6 @@ namespace wgma::scattering{
   
   void Analysis::Solve(){
     TPZSimpleTimer solve("Solve");
-    ///solves the system
-    if(m_sym){
-      auto mat = this->GetSolver().Matrix();
-      mat->SetSymmetry(SymProp::Sym);
-      mat->SetDefPositive(false);
-    }
     TPZLinearAnalysis::Solve();
   }
   void Analysis::Run(){
