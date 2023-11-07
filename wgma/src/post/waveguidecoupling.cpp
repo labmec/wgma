@@ -13,10 +13,13 @@ namespace wgma::post{
   template<class TSPACE>
   void WaveguideCoupling<TSPACE>::ComputeCoupling(){
     const int size_res = std::max(this->NThreads(),1);
-    
-    const int nsol = this->Mesh()->Solution().Cols();
-    if(m_coeff.size() != 0 && m_coeff.size() != nsol){
-      DebugStop();
+    const int ncols = this->Mesh()->Solution().Cols();
+    //if we deal with the adjoint problem as well, we have 2n solutions
+    const int nsol = m_adj ? ncols/2 : ncols;
+    if constexpr (std::is_same_v<TSPACE,MultiphysicsIntegrator>){
+      if(m_beta.size() != 0 && m_beta.size() != nsol){
+        DebugStop();
+      }
     }
     m_kii.Redim(nsol,nsol);
 
@@ -49,46 +52,58 @@ namespace wgma::post{
     if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
       const TPZMaterialDataT<CSTATE> &data = eldata;
       const auto &sol =  data.sol;
-      const auto solsize = sol.size();
-      if(solsize != m_beta.size()){
-        DebugStop();
-      }
-      STATE val = 0;
-      for(auto isol = 0; isol < solsize; isol++){
-        const auto jbeta = 1i*m_beta[isol];
-        for(auto jsol = 0; jsol < solsize; jsol++){
-          const CSTATE kval = m_conj ?
-            jbeta* sol[jsol][0] * std::conj(sol[isol][0]) :
-            jbeta* sol[jsol][0] * sol[isol][0];
-          this->m_k_scratch[index](isol,jsol) += weight * fabs(data.detjac) * kval;
+      const auto nsol = m_adj ? sol.size()/2 : sol.size();
+      const int firstj = m_adj ? nsol : 0;
+      auto mat = dynamic_cast<const TPZScalarField*>(eldata.GetMaterial());
+      TPZFNMatrix<9,CSTATE> ur;
+      mat->GetPermeability(data.x, ur);
+      const CSTATE urval = 1./ur.Get(1,1);
+      const CSTATE cte = urval * weight * fabs(data.detjac);
+      for(auto is = 0; is < nsol; is++){
+        const auto isol = sol[is][0];
+        for(auto js = 0; js < nsol; js++){
+          const auto jsol = sol[firstj+js][0];
+          const CSTATE kval = m_conj ? isol * std::conj(jsol) : isol * jsol;
+          this->m_k_scratch[index](is,js) += cte * kval;
         }
       }
     }else{
+      //NOT YET TESTED
       //we expect a TPZWgma material
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
 
-      TPZManVector<CSTATE,3> et(3,0.);
-      TPZFNMatrix<3,CSTATE> grad_ez(3,1,0.);
-
+      auto mat = dynamic_cast<const TPZWgma*>(eldata.GetMaterial());
+      TPZFNMatrix<9,CSTATE> ur;
+      mat->GetPermeability(datavec[0].x, ur);
+      ur.Decompose(ELU);
+      
+      TPZFNMatrix<3,CSTATE> et_i(3,1,0.), et_j(3,1,0);
+      TPZFNMatrix<1,CSTATE> tmp(3,3,0);
+      
       const int solsize = datavec[0].sol.size();
+      const auto nsol = m_adj ? solsize/2 : solsize;
+      const int firstj = m_adj ? nsol : 0;
       const auto &axes = datavec[0].axes;
       const auto detjac = datavec[0].detjac;
-      STATE val = 0;
-      for(auto isol = 0; isol < solsize; isol++){
-        et = datavec[ TPZWgma::HCurlIndex() ].sol[isol];
-        const TPZFMatrix<CSTATE> &dsoldaxes = datavec[ TPZWgma::H1Index()].dsol[isol];
-        TPZAxesTools<CSTATE>::Axes2XYZ(dsoldaxes, grad_ez, axes);
+      const CSTATE cte = weight*fabs(detjac);
+      for(auto isol = 0; isol < nsol; isol++){
+        auto &et_ref = datavec[ TPZWgma::HCurlIndex() ].sol[isol];
         CSTATE val = 0;
         const auto jbeta = 1i*m_beta[isol];
         for(int ix = 0; ix < 3; ix++) {
-          grad_ez(ix,0) *= 1i;
-          et[ix] /= m_beta[isol];
-          
-          val += m_conj ?
-            (jbeta*et[ix]+grad_ez.Get(ix,0))*std::conj(et[ix]):
-            (jbeta*et[ix]+grad_ez.Get(ix,0))*et[ix];
+          et_i(ix,0)= et_ref[ix]/ m_beta[isol];
         }
-        this->m_k_scratch[index](isol,isol) += weight * fabs(detjac) * val;
+        //et_i = ur^-1 et_i
+        ur.Substitution(&et_i);
+        for(auto jsol = 0; jsol < nsol; jsol++){
+          auto &et_ref = datavec[ TPZWgma::HCurlIndex() ].sol[firstj+jsol];
+          CSTATE val = 0;
+          const auto jbeta = 1i*m_beta[jsol];
+          for(int ix = 0; ix < 3; ix++) {
+            et_j(ix,0)= et_ref[ix]/ m_beta[jsol];
+          }
+          this->m_k_scratch[index].AddContribution(isol,jsol,et_i,true,et_j,false,cte);
+        }
       }
     }
   }
