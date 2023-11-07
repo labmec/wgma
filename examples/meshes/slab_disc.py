@@ -27,7 +27,7 @@ h2 = 1.5
 # h2 = 1.0
 
 
-h_domain = 5
+h_domain = 10
 w_domain = 5
 d_src = 1
 d_far = 6*d_src
