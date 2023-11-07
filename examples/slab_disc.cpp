@@ -81,12 +81,17 @@ SetupSolver(const CSTATE target, const int neigenpairs,
             TPZEigenSort sorting, bool usingSLEPC);
 
 void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
+                  TPZFMatrix<CSTATE> &sol_conj,
                   const bool orthogonalise,
                   const int nThreads);
 
 void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
                         std::string filename,
                         std::string matname);
+void ComputeCouplingMatTwoMeshes(wgma::wganalysis::WgmaPlanar &an_orig,
+                                 const TPZFMatrix<CSTATE> &sol_conj,
+                                 std::string filename,
+                                 std::string matname);
 
 void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
                       std::string filename,
@@ -94,7 +99,9 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
 
 void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      wgma::wganalysis::WgmaPlanar &src_an,
+                     TPZFMatrix<CSTATE> &src_adjoint_sol,
                      wgma::wganalysis::WgmaPlanar &match_an,
+                     TPZFMatrix<CSTATE> &match_adjoint_sol,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
                      const SimData &simdata);
 
@@ -116,6 +123,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           const SimData &simdata);
 
 void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
+                       const TPZFMatrix<CSTATE> &sol_conj,
                        TPZFMatrix<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
                        const bool positive_z, const TPZVec<CSTATE> &coeff);
 
@@ -144,13 +152,13 @@ SimData GetSimData()
   data.mode = wgma::planarwg::mode::TE;
   data.ncore = 1.55;
   data.nclad = 1.00;
-  data.alphaPMLx = 0.75;
-  data.alphaPMLy = 0.75;
+  data.alphaPMLx = {0, 0.75};
+  data.alphaPMLy = {0, 0.75};
   data.porder = 2;
   data.filterBoundEqs = true;
   data.printGmesh=true;
   data.exportVtk = true;
-  data.couplingmat = false;
+  data.couplingmat = true;
   data.vtkRes=0;
   data.prefix = prefix;
   return std::move(data);
@@ -175,8 +183,8 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   constexpr bool usingSLEPC {true};
-  constexpr int nEigenpairs_left{50};
-  constexpr int nEigenpairs_right{50};
+  constexpr int nEigenpairs_left{30};
+  constexpr int nEigenpairs_right{30};
   const CSTATE target{simdata.ncore*simdata.ncore};
 
   /*********
@@ -244,7 +252,6 @@ int main(int argc, char *argv[]) {
     return wgma::wganalysis::CMeshWgma1D(gmesh,mode,pOrder,modal_data,
                                          lambda, scale);
   }();
-
   /******************************
    * solve(modal analysis left) *
    ******************************/
@@ -258,13 +265,17 @@ int main(int argc, char *argv[]) {
   std::string modal_left_file{simdata.prefix+"_modal_left"};
   //no need to orthogonalise modes
   constexpr bool ortho{false};
-  ComputeModes(modal_l_an, ortho, simdata.nThreads);
+  TPZFMatrix<CSTATE> sol_l_conj;
+  ComputeModes(modal_l_an, sol_l_conj, ortho, simdata.nThreads);
   if(simdata.couplingmat){
     ComputeCouplingMat(modal_l_an, simdata.prefix+"_mat_src.txt", "src");
+    ComputeCouplingMatTwoMeshes(modal_l_an, sol_l_conj,
+                                simdata.prefix+"_mat_src_conj.txt", "src");
   }
   if(simdata.exportVtk){
     PostProcessModes(modal_l_an, modal_left_file, simdata.vtkRes);
   }
+  
 
   /********************************
    * cmesh(modal analysis: right)  *
@@ -317,8 +328,8 @@ int main(int argc, char *argv[]) {
   modal_r_an.SetSolver(*solver_right);
 
   std::string modal_right_file{simdata.prefix+"_modal_right"};
-  
-  ComputeModes(modal_r_an, ortho, simdata.nThreads);
+  TPZFMatrix<CSTATE> sol_r_conj;
+  ComputeModes(modal_r_an, sol_r_conj, ortho, simdata.nThreads);
   if(simdata.couplingmat){
     ComputeCouplingMat(modal_r_an, simdata.prefix+"_mat_match.txt", "match");
   }
@@ -327,7 +338,8 @@ int main(int argc, char *argv[]) {
     PostProcessModes(modal_r_an, modal_right_file, simdata.vtkRes);
   }
 
-  SolveScattering(gmesh, modal_l_an, modal_r_an,
+  SolveScattering(gmesh, modal_l_an, sol_l_conj,
+                  modal_r_an, sol_r_conj,
                   gmshmats,simdata);
   return 0;
 }
@@ -410,7 +422,10 @@ SetupSolver(const CSTATE target,const int neigenpairs,
   return solver;
 }
 
+#include <TPZYSMPMatrix.h>
+
 void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
+                  TPZFMatrix<CSTATE> &sol_conj,
                   const bool orthogonalise,
                   const int nThreads)
 {
@@ -418,7 +433,66 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   TPZSimpleTimer analysis("Modal analysis");
   an.Assemble();
   static constexpr bool computeVectors{true};
+  /*we also need the solutions of the adjoint problem*/
+
+  //our solver can either be a EPSHandler or KrylovEigenSolver
+  TPZAutoPointer<TPZLinearEigenSolver<CSTATE>> solver_conj = [&an]()
+    -> TPZLinearEigenSolver<CSTATE>*
+  {
+    auto clone = an.GetSolver().Clone();
+    auto krylov = dynamic_cast<TPZKrylovEigenSolver<CSTATE>*>(clone);
+    if(krylov){return krylov;}
+    else{
+      auto eps = dynamic_cast<wgma::slepc::EPSHandler<CSTATE>*>(clone);
+      if(eps){return eps;}
+    }
+    DebugStop();
+    return nullptr;
+  }();
+
+  //copying the matrix before solving
+  solver_conj->MatrixA() = solver_conj->MatrixA()->Clone();
+  solver_conj->MatrixB() = solver_conj->MatrixB()->Clone();
   an.Solve(computeVectors);
+  /*
+    modify matrices to represent adjoint problem
+   */
+  auto ConjMatrix = [](TPZAutoPointer<TPZMatrix<CSTATE>> mat){
+    auto sparse_mat =
+      TPZAutoPointerDynamicCast<TPZFYsmpMatrix<CSTATE>>(mat);
+    if(!sparse_mat){
+      DebugStop();
+    }
+    int64_t *ia{nullptr}, *ja{nullptr};
+    CSTATE *avec{nullptr};
+    sparse_mat->GetData(ia,ja,avec);
+    const int nrows = sparse_mat->Rows();
+    //number of non-zero entries in the sparse matrix
+    const int last_pos=ia[nrows];
+    for(int i = 0; i < last_pos; i++){
+      *avec++ = std::conj(*avec);
+    }
+  };
+
+  ConjMatrix(solver_conj->MatrixA());
+  ConjMatrix(solver_conj->MatrixB());
+  /*
+    now we need to know:
+    n reduced equations (eq filter)
+    n equations
+    n eigenvalues
+   */
+  const auto nev = solver_conj->NEigenpairs();
+  auto &eqfilt = an.StructMatrix()->EquationFilter();
+  const auto neq = eqfilt.NEqExpand();
+  const auto neqreduced = eqfilt.NActiveEquations();
+
+  sol_conj.Redim(neq,nev);
+  TPZVec<CSTATE> w_conj(nev, 0.);
+  TPZFMatrix<CSTATE> sol_conj_gather(neqreduced,nev);
+  solver_conj->Solve(w_conj, sol_conj_gather);
+  //this is the solution that should be loaded in the computational mesh
+  eqfilt.Scatter(sol_conj_gather,sol_conj);
   //load all obtained modes into the mesh
   an.LoadAllSolutions();
 
@@ -437,6 +511,8 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
     auto normsol = ortho.Orthogonalise();
     //let us set the orthogonalised modes
     an.SetEigenvectors(normsol);
+    an.LoadAllSolutions();
+  }else{
     an.LoadAllSolutions();
   }
   
@@ -466,6 +542,57 @@ void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
   std::ofstream matfile(filename);
   std::string name = matname+"=";
   couplingmat.Print(name.c_str(),matfile,EMathematicaInput);
+}
+
+#include <Electromagnetics/TPZScalarField.h>
+#include <TPZNullMaterialCS.h>
+#include <pzbuildmultiphysicsmesh.h>
+
+void ComputeCouplingMatTwoMeshes(wgma::wganalysis::WgmaPlanar &an,
+                                 const TPZFMatrix<CSTATE> &sol_conj,
+                                 std::string filename,
+                                 std::string matname)
+{
+  
+  using namespace wgma::post;
+  auto mesh = an.GetMesh();
+  auto gmesh = mesh->Reference();
+  const auto dim = mesh->Dimension();
+  //now we transfer the solutions from adjoint problem to original problem
+  TPZFMatrix<CSTATE>& sol_orig = mesh->Solution();
+  const int neq = sol_orig.Rows();
+  const int nsol = sol_orig.Cols();
+  if(nsol != sol_conj.Cols() || sol_conj.Rows() != sol_orig.Rows()) {
+    //how to deal with dependencies in original mesh sol?
+    DebugStop();
+  }
+  sol_orig.Resize(neq,2*nsol);
+
+  CSTATE *ptr_orig = &sol_orig.g(0, nsol);
+  CSTATE *ptr_conj = &sol_conj.g(0, 0);
+  for(int ipos = 0; ipos < nsol*neq; ipos++){
+    *ptr_orig++ = *ptr_conj++;
+  }
+
+  std::set<int> matids;
+  constexpr bool conj{true};
+  const int nthreads = std::thread::hardware_concurrency();
+  
+  WaveguideCoupling<SingleSpaceIntegrator> integrator(mesh,
+                                                      matids,
+                                                      conj,
+                                                      nthreads
+                                                      );
+
+  integrator.SetAdjoint(true);
+  integrator.ComputeCoupling();
+  TPZFMatrix<CSTATE> couplingmat;
+  integrator.GetCoupling(couplingmat);
+  std::ofstream matfile(filename);
+  std::string name = matname+"=";
+  couplingmat.Print(name.c_str(),matfile,EMathematicaInput);
+  //now we resize it again to its original size
+  sol_orig.Resize(neq,nsol);
 }
 
 void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
@@ -553,6 +680,8 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
                                   const TPZVec<int> &nmodes)
 {
   std::map<int,STATE> error_proj;
+  //load all solutions
+  src_an.LoadAllSolutions();
   //1d mesh
   TPZAutoPointer<TPZCompMesh> src_mesh = src_an.GetMesh();
   //mesh used to project the solution into the restricted space
@@ -582,12 +711,47 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
 
   //now we get reference sol
   TPZFMatrix<CSTATE> sol_pml = proj_mesh->Solution();
+  sol_pml.Redim(sol_pml.Rows(),1);
   std::cout<<"neqs without restriction: "<<sol_pml.Rows()<<std::endl;
   Extract1DSolFrom2DMesh(proj_mesh, scatt_mesh, sol_pml);
   //just to set size
   auto sol_proj = sol_pml;
 
 
+
+  // {
+  //   auto eqfilt = src_an.StructMatrix()->EquationFilter();
+  //   auto neqcondense = eqfilt.NActiveEquations();
+  //   std::string sol2dfilename = simdata.prefix+"sol2d.csv";
+  //   std::ofstream sol2dfile(sol2dfilename);
+  //   std::string sol2dname = "sol2d=";
+  //   TPZFMatrix<CSTATE> sol2d(neqcondense,1);
+  //   eqfilt.Gather(sol_proj, sol2d);
+  //   std::cout<<"sol2d dimensions: "<<sol2d.Rows()<<","<<sol2d.Cols()<<std::endl;
+  //   sol2d.Print(sol2dname.c_str(),sol2dfile,ECSV);
+
+  //   std::string vmatfilename = simdata.prefix+"vmat.csv";
+  //   std::ofstream vmatfile(vmatfilename);
+  //   std::string vmatname = "vmat=";
+  //   auto &eigenvectors = src_an.GetEigenvectors();
+  //   TPZFMatrix<CSTATE> vmat(neqcondense,eigenvectors.Cols());
+  //   eqfilt.Gather(eigenvectors, vmat);
+  //   for(int i = 0; i < 10; i++){
+  //     for(int j = 0; j < 10; j++){
+  //       std::cout<<eigenvectors.Get(i,j)<<' ';
+  //     }
+  //     std::cout<<std::endl;
+  //   }
+  //   for(int i = 0; i < 10; i++){
+  //     for(int j = 0; j < 10; j++){
+  //       std::cout<<vmat.Get(i,j)<<' ';
+  //     }
+  //     std::cout<<std::endl;
+  //   }
+  //   std::cout<<"vmat dimensions: "<<vmat.Rows()<<","<<vmat.Cols()<<std::endl;
+  //   vmat.Print(vmatname.c_str(),vmatfile,ECSV);
+  // }
+  
   /*
     dirichlet boundary connects should not be restricted, otherwise
     this will result in all the equations on the same dependency
@@ -690,15 +854,18 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
   }
 
   std::cout<<"**********PROJECTION**********"<<std::endl;
+  std::cout<<"nmodes  norm error: "<<std::endl;
   for(auto [nm,error] : error_proj){
-    std::cout<<"nmodes "<<nm<<" norm error: "<<error<<std::endl;
+    std::cout<<nm<<","<<error<<std::endl;
   }
   std::cout<<"******************************"<<std::endl;
 }
 
 void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      wgma::wganalysis::WgmaPlanar &src_an,
+                     TPZFMatrix<CSTATE> &src_adjoint_sol,
                      wgma::wganalysis::WgmaPlanar &match_an,
+                     TPZFMatrix<CSTATE> &match_adjoint_sol,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
                      const SimData &simdata)
 {
@@ -868,13 +1035,13 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   //now we solve varying the number of modes used in the wgbc
   
   //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  TPZVec<int> nmodes = {0,1,2,5,10,15,20,30};//,50,100,200,400};
+  TPZVec<int> nmodes = {0,1,2,5,10,15,20};//,30,50,100,200,300,349};//,50,100,200,400};
   src_an.LoadAllSolutions();
   match_an.LoadAllSolutions();
 
   //as an initial test, one could just simply project the solution and check
   //the results
-  constexpr bool test_proj{false};
+  constexpr bool test_proj{true};
   if(test_proj){
     ProjectSolIntoRestrictedMesh(src_an, scatt_mesh_pml, simdata, nmodes);
   }
@@ -887,11 +1054,13 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   //compute wgbc coefficients
   WgbcData src_data;
   src_data.cmesh = src_an.GetMesh();
-  ComputeWgbcCoeffs(src_an, src_data.wgbc_k, src_data.wgbc_f, false, src_coeffs);
+  ComputeWgbcCoeffs(src_an, src_adjoint_sol,
+                    src_data.wgbc_k, src_data.wgbc_f, false, src_coeffs);
 
   WgbcData match_data;
   match_data.cmesh = match_an.GetMesh();
-  ComputeWgbcCoeffs(match_an, match_data.wgbc_k, match_data.wgbc_f,true, {});
+  ComputeWgbcCoeffs(match_an, match_adjoint_sol,
+                    match_data.wgbc_k, match_data.wgbc_f,true, {});
     
     
   //here we will store the error between pml approx and wgbc approx
@@ -935,6 +1104,9 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   }
   std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
 }
+
+#include <TPZPardisoSolver.h>
+#include <TPZYSMPPardiso.h>
 
 void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
                   wgma::wganalysis::WgmaPlanar& src_an,
@@ -1069,19 +1241,42 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
 
 
 void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
+                       const TPZFMatrix<CSTATE> &sol_conj,
                        TPZFMatrix<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
                        const bool positive_z, const TPZVec<CSTATE> &coeff){
   auto mesh = an.GetMesh();
+
+  TPZFMatrix<CSTATE>& sol_orig = mesh->Solution();
+  const int neq = sol_orig.Rows();
+  const int nsol = sol_orig.Cols();
+  {
+    
+    if(nsol != sol_conj.Cols() || sol_conj.Rows() != sol_orig.Rows()) {
+      //how to deal with dependencies in original mesh sol?
+      DebugStop();
+    }
+    sol_orig.Resize(neq,2*nsol);
+
+    CSTATE *ptr_orig = &sol_orig.g(0, nsol);
+    CSTATE *ptr_conj = &sol_conj.g(0, 0);
+    for(int ipos = 0; ipos < nsol*neq; ipos++){
+      *ptr_orig++ = *ptr_conj++;
+    }
+  }
+  
   wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(mesh);
   TPZManVector<CSTATE,1000> betavec = an.GetEigenvalues();
   for(auto &b : betavec){b = std::sqrt(b);}
   wgbc.SetPositiveZ(positive_z);
+  wgbc.SetAdjoint(true);
   if(coeff.size()){
     wgbc.SetSrcCoeff(coeff);
   }
   wgbc.SetBeta(betavec);
   wgbc.ComputeContribution();
   wgbc.GetContribution(wgbc_k,wgbc_f);
+  //now we resize it again to its original size
+  sol_orig.Resize(neq,nsol);
 }
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WgbcData& src_data,
@@ -1125,6 +1320,15 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                                nmodes, match_data.wgbc_k, match_data.wgbc_f);
   AddWaveguidePortContribution(scatt_an, indep_con_id_src,
                                nmodes, src_data.wgbc_k, src_data.wgbc_f);
+  //get pardiso control
+  auto *pardiso = scatt_an.GetSolver().GetPardisoControl();
+  pardiso->SetMessageLevel(0);
+  
+  pardiso->ResetParam();
+  constexpr auto sys_type = SymProp::Sym;
+  constexpr auto prop = TPZPardisoSolver<CSTATE>::MProperty::EIndefinite;
+  pardiso->SetMatrixType(sys_type,prop);
+  TPZSimpleTimer tscatt("Solve",true);
   scatt_an.Solve();
 }
 
