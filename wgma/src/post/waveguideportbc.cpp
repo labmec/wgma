@@ -13,8 +13,9 @@ namespace wgma::post{
   template<class TSPACE>
   void WaveguidePortBC<TSPACE>::ComputeContribution(){
     const int size_res = std::max(this->NThreads(),1);
-    
-    const int nsol = this->Mesh()->Solution().Cols();
+    const int ncols = this->Mesh()->Solution().Cols();
+    //if we deal with the adjoint problem as well, we have 2n solutions
+    const int nsol = m_adj ? ncols/2 : ncols;
     if(m_coeff.size() != 0 && m_coeff.size() != nsol){
       DebugStop();
     }
@@ -59,26 +60,27 @@ namespace wgma::post{
     const bool is_src = m_coeff.size() != 0;
     if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
       const TPZMaterialDataT<CSTATE> &data = eldata;
+      const auto &sol =  data.sol;
+      const auto nsol = m_adj ? sol.size()/2 : sol.size();
+      const int firstj = m_adj ? nsol : 0;
       auto mat = dynamic_cast<const TPZScalarField*>(eldata.GetMaterial());
       TPZFNMatrix<9,CSTATE> ur;
       mat->GetPermeability(data.x, ur);
-      const auto &sol =  data.sol;
-      const auto solsize = sol.size();
-      if(solsize != m_beta.size()){
-        DebugStop();
-      }
-      STATE val = 0;
-      const CSTATE urval = 1./ur.Get(2,2);
-      for(auto isol = 0; isol < solsize; isol++){
-        for(auto jsol = isol; jsol < isol+1; jsol++){
-          //matrix term
-          const auto beta = m_beta[jsol];
-          const CSTATE kval =  1i*beta*sol[jsol][0] * std::conj(sol[isol][0]);
-          this->m_k_scratch[index](isol,jsol) += weight * urval * fabs(data.detjac) * kval;
-          //load vector term
+      const CSTATE urval = 1./ur.Get(1,1);
+      const CSTATE cte = urval * weight * fabs(data.detjac);
+      constexpr bool m_conj = true;
+      for(auto is = 0; is < nsol; is++){
+        const auto isol = sol[is][0];
+        for(auto js = 0; js < nsol; js++){
+          const auto jsol = sol[firstj+js][0];
+          const auto beta = m_beta[js];
+          const CSTATE kval =
+            m_conj ?
+            1i*beta*jsol * std::conj(isol) : 1i*beta*isol*jsol;
+          this->m_k_scratch[index](is,js) += cte * kval;
           if(is_src){
-            const CSTATE fval = 2.*sign*m_coeff[jsol]*kval;
-            this->m_f_scratch[index][isol] += weight * urval * fabs(data.detjac) * fval;
+            const CSTATE fval = 2.*sign*m_coeff[js]*kval;
+            this->m_f_scratch[index][is] += cte * fval;
           }
         }
       }
