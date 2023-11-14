@@ -57,13 +57,13 @@ namespace wgma::post{
       auto mat = dynamic_cast<const TPZScalarField*>(eldata.GetMaterial());
       TPZFNMatrix<9,CSTATE> ur;
       mat->GetPermeability(data.x, ur);
-      const CSTATE urval = 1./ur.Get(1,1);
+      const CSTATE urval = m_use_mu ? 1./ur.Get(1,1) : 1.;
       const CSTATE cte = urval * weight * fabs(data.detjac);
       for(auto is = 0; is < nsol; is++){
         const auto isol = sol[is][0];
         for(auto js = 0; js < nsol; js++){
           const auto jsol = sol[firstj+js][0];
-          const CSTATE kval = m_conj ? isol * std::conj(jsol) : isol * jsol;
+          const CSTATE kval = m_conj ? std::conj(isol) *jsol : isol * jsol;
           this->m_k_scratch[index](is,js) += cte * kval;
         }
       }

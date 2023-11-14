@@ -29,6 +29,8 @@ namespace wgma::post{
       TSPACE(mesh,elvec,nThreads), m_conj(conj) {}
     //! Computes coupling between original and adjoint problem
     void SetAdjoint(bool m){m_adj = m;}
+    //! Whether constitutive param is used as inner product weight
+    void SetMu(bool mu){m_use_mu=mu;}
     //! Computes coupling of all modes in mesh
     void ComputeCoupling();
     //! Gets coupling associated with each mode of the waveguide
@@ -54,6 +56,8 @@ namespace wgma::post{
     bool m_adj{false};
     //! Whether to compute the conjugate cross product
     bool m_conj{true};
+    //! Whether to weight the inner product by constitutive param
+    bool m_use_mu{true};
   };
 };
 
