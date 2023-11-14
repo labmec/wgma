@@ -1274,7 +1274,9 @@ void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
   TPZFMatrix<CSTATE>& sol_orig = mesh->Solution();
   const int neq = sol_orig.Rows();
   const int nsol = sol_orig.Cols();
-  {
+
+  constexpr bool adj{false};
+  if(adj){
     
     if(nsol != sol_conj.Cols() || sol_conj.Rows() != sol_orig.Rows()) {
       //how to deal with dependencies in original mesh sol?
@@ -1293,7 +1295,7 @@ void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
   TPZManVector<CSTATE,1000> betavec = an.GetEigenvalues();
   for(auto &b : betavec){b = std::sqrt(b);}
   wgbc.SetPositiveZ(positive_z);
-  wgbc.SetAdjoint(true);
+  wgbc.SetAdjoint(adj);
   if(coeff.size()){
     wgbc.SetSrcCoeff(coeff);
   }
@@ -1301,7 +1303,7 @@ void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
   wgbc.ComputeContribution();
   wgbc.GetContribution(wgbc_k,wgbc_f);
   //now we resize it again to its original size
-  sol_orig.Resize(neq,nsol);
+  if(adj){sol_orig.Resize(neq,nsol);}
 }
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WgbcData& src_data,
