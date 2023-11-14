@@ -1175,6 +1175,7 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
   }
 }
 
+// #include <pzintel.h>
 int64_t RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                      TPZAutoPointer<TPZCompMesh> match_mesh,
                      const int nm,
@@ -1226,8 +1227,17 @@ int64_t RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
       }
     }
   }
-  scatt_mesh->ComputeNodElCon();
-  scatt_mesh->CleanUpUnconnectedNodes();
+
+  scatt_mesh->InitializeBlock();
+  // for(auto modal_el : match_mesh->ElementVec()){
+  //   //select only 1d elements, skip boundary els
+  //   if(modal_el->Dimension() < match_mesh->Dimension()){continue;}
+  //   auto scatt_el =
+  //     dynamic_cast<TPZInterpolatedElement*>(
+  //       modal_el->Reference()->Reference());
+  //   if(!scatt_el){DebugStop();}
+  //   scatt_el->CheckConstraintConsistency();
+  // }
   return indep_con_id;
 }
 
