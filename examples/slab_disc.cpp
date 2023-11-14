@@ -713,16 +713,24 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
   //mesh used to project the solution into the restricted space
   TPZAutoPointer<TPZCompMesh> proj_mesh = src_mesh->Clone();
   //replace all materials for L2 projection
+  TPZMaterialT<CSTATE> *last_mat{nullptr};
   for(auto [id,mat] : proj_mesh->MaterialVec()){
     auto bnd = dynamic_cast<TPZBndCond*>(mat);
     if(!bnd){
       auto newmat = new wgma::materials::SolutionProjection<CSTATE>(id,1);
       delete mat;
       proj_mesh->MaterialVec()[id]=newmat;
-    }else{
-      auto newmat = new TPZNullMaterial<CSTATE>(id,0);
-      delete mat;
-      proj_mesh->MaterialVec()[id]=newmat;
+      last_mat = newmat;
+    }
+  }
+  for(auto [id,mat] : proj_mesh->MaterialVec()){
+    auto bnd = dynamic_cast<TPZBndCond*>(mat);
+    if(bnd){
+      TPZFMatrix<CSTATE> v1;
+      TPZVec<CSTATE> v2;
+      auto newmat = last_mat->CreateBC(last_mat,id,0,v1,v2);
+      delete bnd;
+      proj_mesh->MaterialVec()[id]=dynamic_cast<TPZMaterial*>(newmat);
     }
   }
   TPZAutoPointer<TPZCompMesh> error_mesh = proj_mesh->Clone();
@@ -745,38 +753,25 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
 
 
 
-  // {
-  //   auto eqfilt = src_an.StructMatrix()->EquationFilter();
-  //   auto neqcondense = eqfilt.NActiveEquations();
-  //   std::string sol2dfilename = simdata.prefix+"sol2d.csv";
-  //   std::ofstream sol2dfile(sol2dfilename);
-  //   std::string sol2dname = "sol2d=";
-  //   TPZFMatrix<CSTATE> sol2d(neqcondense,1);
-  //   eqfilt.Gather(sol_proj, sol2d);
-  //   std::cout<<"sol2d dimensions: "<<sol2d.Rows()<<","<<sol2d.Cols()<<std::endl;
-  //   sol2d.Print(sol2dname.c_str(),sol2dfile,ECSV);
+  {
+    auto eqfilt = src_an.StructMatrix()->EquationFilter();
+    auto neqcondense = eqfilt.NActiveEquations();
+    std::string sol2dfilename = simdata.prefix+"_sol.csv";
+    std::ofstream sol2dfile(sol2dfilename);
+    TPZFMatrix<CSTATE> sol2d(neqcondense,1);
+    eqfilt.Gather(sol_proj, sol2d);
+    std::cout<<"sol2d dimensions: "<<sol2d.Rows()<<","<<sol2d.Cols()<<std::endl;
+    sol2d.Print("",sol2dfile,ECSV);
 
-  //   std::string vmatfilename = simdata.prefix+"vmat.csv";
-  //   std::ofstream vmatfile(vmatfilename);
-  //   std::string vmatname = "vmat=";
-  //   auto &eigenvectors = src_an.GetEigenvectors();
-  //   TPZFMatrix<CSTATE> vmat(neqcondense,eigenvectors.Cols());
-  //   eqfilt.Gather(eigenvectors, vmat);
-  //   for(int i = 0; i < 10; i++){
-  //     for(int j = 0; j < 10; j++){
-  //       std::cout<<eigenvectors.Get(i,j)<<' ';
-  //     }
-  //     std::cout<<std::endl;
-  //   }
-  //   for(int i = 0; i < 10; i++){
-  //     for(int j = 0; j < 10; j++){
-  //       std::cout<<vmat.Get(i,j)<<' ';
-  //     }
-  //     std::cout<<std::endl;
-  //   }
-  //   std::cout<<"vmat dimensions: "<<vmat.Rows()<<","<<vmat.Cols()<<std::endl;
-  //   vmat.Print(vmatname.c_str(),vmatfile,ECSV);
-  // }
+    // std::string vmatfilename = simdata.prefix+"_ev.csv";
+    // std::ofstream vmatfile(vmatfilename);
+    // std::string vmatname = "vmat=";
+    // auto &eigenvectors = src_an.GetEigenvectors();
+    // TPZFMatrix<CSTATE> vmat(neqcondense,eigenvectors.Cols());
+    // eqfilt.Gather(eigenvectors, vmat);
+    // std::cout<<"vmat dimensions: "<<vmat.Rows()<<","<<vmat.Cols()<<std::endl;
+    // vmat.Print("",vmatfile,ECSV);
+  }
   
   /*
     dirichlet boundary connects should not be restricted, otherwise
@@ -786,15 +781,39 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
   std::set<int64_t> bound_connects;
   wgma::cmeshtools::FindDirichletConnects(proj_mesh, bound_connects);
 
-  TPZVec<CSTATE> mode_norms;
-  constexpr bool check_diag_mat{false};
-  if(check_diag_mat){
-    std::set<int> matids = {};
+  auto error_an = wgma::scattering::Analysis(error_mesh, simdata.nThreads,
+                                             false,
+                                             simdata.filterBoundEqs,false);
+
+  std::ofstream s_cmesh_file{simdata.prefix+"_scatt_mesh_.txt"};
+  scatt_mesh->Print(s_cmesh_file);
+
+  constexpr bool export_mats{true};
+  TPZFMatrix<CSTATE> couplingmat;
+  {
+    using namespace wgma::post;
+    std::set<int> matids;
     constexpr bool conj{true};
-    wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator> normcalc(src_mesh,matids,conj,simdata.nThreads);
-    mode_norms = normcalc.ComputeNorm();
+    const int nthreads = std::thread::hardware_concurrency();
+    WaveguideCoupling<SingleSpaceIntegrator> integrator(src_an.GetMesh(),
+                                                        matids,
+                                                        conj,
+                                                        nthreads
+                                                        );
+    TPZVec<CSTATE> betavec = src_an.GetEigenvalues();
+    for(auto &b : betavec){b = sqrt(b);}
+    integrator.SetBeta(betavec);
+    //we want just std::conj(et_i) * et_j
+    integrator.SetMu(false);
+    integrator.ComputeCoupling();
+    integrator.GetCoupling(couplingmat);
   }
-  
+
+  if(export_mats){
+    std::ofstream couplfile{simdata.prefix+"_proj_coupl.csv"};
+    couplingmat.Print("",couplfile,ECSV);
+    couplfile.close();
+  }
   for(int im = 0; im < nmodes.size(); im++){
     const int nm = nmodes[im];
     //restrict dofs in proj mesh
@@ -806,63 +825,42 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
     /*The TPZLinearAnalysis class manages the creation of the algebric
      * problem and the matrix inversion*/
     auto proj_an = wgma::scattering::Analysis(proj_mesh, simdata.nThreads,
-                                              true,
+                                              false,
                                               simdata.filterBoundEqs,false);
-    
-
+    std::ofstream cmesh_file{simdata.prefix+"_proj_mesh_"+std::to_string(nm)+".txt"};
+    proj_mesh->Print(cmesh_file);
     //now we load desired solution into proj_mesh so we can project it
     {
       TPZFMatrix<CSTATE> &sol_reference = proj_mesh->Solution();
       Extract1DSolFrom2DMesh(proj_mesh, scatt_mesh, sol_reference);
     }
         
-    proj_an.Run();
+    proj_an.Assemble();    
 
-    /*now we get the matrix and check the diagonal:
-     diag values should be phi_i*conj(phi_i)*/
-    if(check_diag_mat){
+    if(export_mats){
+      std::ofstream projfile{simdata.prefix+"_proj_mat_"+std::to_string(nm)+".csv"};
       auto mat = proj_an.GetSolver().Matrix();
-
-      for(int imode = 0; imode < nm; imode++){
-        const auto matval = sqrt(mat->Get(imode,imode));
-        const auto modenorm = mode_norms[imode];
-        if(!IsZero(matval-modenorm)){
-          std::cout<<"matrix error:\t";
-          std::cout<<"nm "<<nm<<" imode "<<imode<<std::endl;
-          std::cout<<"\tmatval : "<<matval<<"\tmodenorm: "<<modenorm<<std::endl;
-        }
-      }
+      mat->Print("",projfile,ECSV);
+      projfile.close();
     }
+
+    // if(nm){
+    //   //this works if coupling mat is computed with ur=1
+    //   auto mat = proj_an.GetSolver().Matrix();
+    //   for(int i = 0; i < nm; i++){
+    //     for(int j = 0; j < nm; j++){
+    //       mat->Put(i,j,couplingmat.Get(i,j));
+    //     }
+    //   }
+    // }
+    
+    proj_an.Solve();
+
     
     //plot
     vtk.Do();
     //now we compute the error
     Extract1DSolFrom2DMesh(error_mesh, proj_mesh, sol_proj);
-    // if(nm && nm<30){
-    //   std::cout<<"nm : "<<nm<<std::endl;
-    //   auto mat = proj_an.GetSolver().Matrix();
-    //   std::cout<<"mat: "<<std::endl;
-    //   for (int i = 0; i < mat->Rows(); i++)
-    //   {
-    //     for (int j = 0; j < mat->Cols(); j++)
-    //     {
-    //       std::cout<<'\t'<<mat->Get(i,j);
-    //     }
-    //     std::cout<<std::endl;
-    //   }
-    //   TPZFMatrix<CSTATE> &an_rhs = proj_an.Rhs();
-    //   std::cout<<"rhs: "<<std::endl;
-    //   for (int i = 0; i < an_rhs.Rows(); i++)
-    //   {
-    //     std::cout<<'\t'<<an_rhs.Get(i,0)<<std::endl;
-    //   }
-    //   TPZFMatrix<CSTATE> &an_sol = proj_an.Solution();
-    //   std::cout<<"solution: "<<std::endl;
-    //   for (int i = 0; i < an_sol.Rows(); i++)
-    //   {
-    //     std::cout<<'\t'<<an_sol.Get(i,0)<<std::endl;
-    //   }
-    // }
     
     sol_proj -= sol_pml;
 
@@ -874,9 +872,10 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
     const auto norm = std::real(normsol.ComputeNorm()[0]);
     std::cout<<"nmodes "<<nm<<" error "<<norm<<std::endl;
     error_proj.insert({nm,norm});
-    wgma::cmeshtools::RemovePeriodicity(proj_mesh);
-    proj_mesh->ComputeNodElCon();
-    proj_mesh->CleanUpUnconnectedNodes();
+    if(nm){
+      wgma::cmeshtools::RemovePeriodicity(proj_mesh);
+      proj_mesh->InitializeBlock();
+    }
   }
 
   std::cout<<"**********PROJECTION**********"<<std::endl;
