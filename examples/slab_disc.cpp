@@ -266,7 +266,33 @@ int main(int argc, char *argv[]) {
   //no need to orthogonalise modes
   constexpr bool ortho{false};
   TPZFMatrix<CSTATE> sol_l_conj;
+  modal_l_an.Assemble();
+  constexpr bool export_mats{false};
+  //now we export the matrices
+  if(export_mats){
+    auto mata = modal_l_an.GetSolver().MatrixA();
+    auto matb = modal_l_an.GetSolver().MatrixB();
+    std::ofstream mata_file(simdata.prefix+"_mata.csv");
+    mata->Print("",mata_file,ECSV);
+    std::ofstream matb_file(simdata.prefix+"_matb.csv");
+    matb->Print("",matb_file,ECSV);
+  }
   ComputeModes(modal_l_an, sol_l_conj, ortho, simdata.nThreads);
+  if(export_mats) {
+    auto &eqfilt = modal_l_an.StructMatrix()->EquationFilter();
+    auto &ev = modal_l_an.GetEigenvectors();
+    const int nrows = eqfilt.NActiveEquations();
+    const int ncols = ev.Cols();
+    TPZFMatrix<CSTATE> ev_gather(nrows,ncols,0.);
+    eqfilt.Gather(ev, ev_gather);
+    // auto matp = &ev_gather.g(0,0);
+    // for(int i = 0; i < nrows*ncols; i++){
+    //   *matp++ = std::conj(*matp);
+    // }
+    std::ofstream sol_file(simdata.prefix+"_ev.csv");
+    ev_gather.Print("",sol_file,ECSV);
+  }
+  
   if(simdata.couplingmat){
     ComputeCouplingMat(modal_l_an, simdata.prefix+"_mat_src.txt", "src");
     ComputeCouplingMatTwoMeshes(modal_l_an, sol_l_conj,
@@ -329,6 +355,7 @@ int main(int argc, char *argv[]) {
 
   std::string modal_right_file{simdata.prefix+"_modal_right"};
   TPZFMatrix<CSTATE> sol_r_conj;
+  modal_r_an.Assemble();
   ComputeModes(modal_r_an, sol_r_conj, ortho, simdata.nThreads);
   if(simdata.couplingmat){
     ComputeCouplingMat(modal_r_an, simdata.prefix+"_mat_match.txt", "match");
@@ -431,7 +458,6 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
 {
   
   TPZSimpleTimer analysis("Modal analysis");
-  an.Assemble();
   static constexpr bool computeVectors{true};
   /*we also need the solutions of the adjoint problem*/
 
