@@ -183,8 +183,8 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   constexpr bool usingSLEPC {true};
-  constexpr int nEigenpairs_left{30};
-  constexpr int nEigenpairs_right{30};
+  constexpr int nEigenpairs_left{549};
+  constexpr int nEigenpairs_right{549};
   const CSTATE target{simdata.ncore*simdata.ncore};
 
   /*********
@@ -267,7 +267,7 @@ int main(int argc, char *argv[]) {
   constexpr bool ortho{false};
   TPZFMatrix<CSTATE> sol_l_conj;
   modal_l_an.Assemble();
-  constexpr bool export_mats{false};
+  constexpr bool export_mats{true};
   //now we export the matrices
   if(export_mats){
     auto mata = modal_l_an.GetSolver().MatrixA();
@@ -1060,7 +1060,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   //now we solve varying the number of modes used in the wgbc
   
   //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  TPZVec<int> nmodes = {0,1,2,5,10,15,20};//,30,50,100,200,300,349};//,50,100,200,400};
+  TPZVec<int> nmodes = {0,1,2,5,10,15,20,100,300,549};
   src_an.LoadAllSolutions();
   match_an.LoadAllSolutions();
 
