@@ -110,6 +110,43 @@ for tag in source_left.tag:
     src_left_clad_tags.append(
         tag) if up in rec_left.tag else src_left_core_tags.append(tag)
 
+# create eval line
+eval_left = LineData()
+eval_left.xb = -d_src*0.9
+eval_left.yb = rec_left.h/2
+eval_left.xe = -d_src*0.9
+eval_left.ye = -rec_left.h/2
+create_line(eval_left, el_clad)
+gmsh.model.occ.synchronize()  # for get_boundary
+eval_left_pts = gmsh.model.get_boundary(
+    [(1, tag) for tag in eval_left.tag],
+    combined=True, oriented=False, recursive=False)
+eval_left_pts = [reg[1] for reg in eval_left_pts]
+
+objs = []
+[objs.append((2, s)) for s in rec_left.tag]
+[objs.append((2, s)) for s in rec_lcore.tag]
+tools = []
+[tools.append((1, l)) for l in eval_left.tag]
+[tools.append((0, p)) for p in eval_left_pts]
+
+eval_map_left = apply_boolean_operation(
+    objs, tools, "fragment", True, el_clad)
+remap_tags([rec_left, rec_lcore, eval_left], eval_map_left)
+
+# update new numbering after deleting duplicates
+gmsh.model.occ.remove_all_duplicates()
+gmsh.model.occ.synchronize()
+# let us split the source domains
+eval_left_clad_tags = []
+eval_left_core_tags = []
+
+for tag in eval_left.tag:
+    up, _ = gmsh.model.get_adjacencies(1, tag)
+    up = up[0]
+    eval_left_clad_tags.append(
+        tag) if up in rec_left.tag else eval_left_core_tags.append(tag)
+
 # right domain (cladding+core)
 rec_right = RectData()
 rec_right.xc = 0
@@ -222,21 +259,27 @@ gmsh.model.occ.synchronize()
 # let us add 1d pml regions
 src_right_clad_dimtags = [(1, t) for t in src_right_clad_tags]
 src_left_clad_dimtags = [(1, t) for t in src_left_clad_tags]
+eval_left_clad_dimtags = [(1, t) for t in eval_left_clad_tags]
 pmldim = 2
 pml1d_src_left = find_pml_region(src_left_clad_dimtags, pmlmap, pmldim)
 pml1d_src_right = find_pml_region(src_right_clad_dimtags, pmlmap, pmldim)
+pml1d_eval_left = find_pml_region(eval_left_clad_dimtags, pmlmap, pmldim)
 # since src domains are directly adjacent to the pml, we will have erroneous lines here
 # we know that these lines are immersed in the xm(xp, for right src) attenuating region, so it is easy to exclude them
 pml1d_src_left = {(direction, tag): neigh for (direction, tag),
                   neigh in pml1d_src_left.items() if "xm" not in direction}
+pml1d_eval_left = {(direction, tag): neigh for (direction, tag),
+                  neigh in pml1d_eval_left.items() if "xm" not in direction}
 pml1d_src_right = {(direction, tag): neigh for (direction, tag),
                    neigh in pml1d_src_right.items() if "xp" not in direction}
 
 
 pmlmap1d = {}
 pmlmap1d.update(pml1d_src_left)
+pmlmap1d.update(pml1d_eval_left)
 pmlmap1d.update(pml1d_src_right)
 pml1d_src_left_tags = [tag for _, tag in pml1d_src_left.keys()]
+pml1d_eval_left_tags = [tag for _, tag in pml1d_eval_left.keys()]
 pml1d_src_right_tags = [tag for _, tag in pml1d_src_right.keys()]
 # get boundaries
 dim = 2
@@ -283,6 +326,15 @@ source_left_pts = gmsh.model.get_boundary(
     combined=True, oriented=False, recursive=False)
 source_left_pts = [reg[1] for reg in source_left_pts]
 
+eval_left_pts = gmsh.model.get_boundary(
+    [(1, tag) for tag in eval_left_clad_tags]
+    +
+    [(1, tag) for tag in eval_left_core_tags]
+    +
+    [(1, tag) for _, tag in pml1d_eval_left.keys()],
+    combined=True, oriented=False, recursive=False)
+eval_left_pts = [reg[1] for reg in eval_left_pts]
+
 source_right_pts = gmsh.model.get_boundary(
     [(1, tag) for tag in src_right_clad_tags]
     +
@@ -324,14 +376,17 @@ domain_physical_ids_1d = {
     "source_core_left": 6,
     "source_clad_right": 7,
     "source_core_right": 8,
-    "scatt_bnd_left": 10,
-    "scatt_bnd_right": 11,
-    "scatt_bnd_mid": 12,
+    "eval_clad_left": 9,
+    "eval_core_left": 10,
+    "scatt_bnd_left": 11,
+    "scatt_bnd_right": 12,
+    "scatt_bnd_mid": 13,
 }
 
 domain_physical_ids_0d = {
     "source_left_bnd": 20,
     "source_right_bnd": 21,
+    "eval_left_bnd": 22
 }
 
 domain_physical_ids = [domain_physical_ids_0d,
@@ -343,9 +398,12 @@ domain_regions = {"core_left": rec_lcore.tag,
                   "cladding_right": rec_right.tag,
                   "source_clad_left": src_left_clad_tags,
                   "source_core_left": src_left_core_tags,
+                  "eval_clad_left": eval_left_clad_tags,
+                  "eval_core_left": eval_left_core_tags,
                   "source_clad_right": src_right_clad_tags,
                   "source_core_right": src_right_core_tags,
                   "source_left_bnd": source_left_pts,
+                  "eval_left_bnd": eval_left_pts,
                   "source_right_bnd": source_right_pts,
                   "scatt_bnd_left": left_bounds,
                   "scatt_bnd_right": right_bounds,

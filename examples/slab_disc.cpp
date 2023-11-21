@@ -973,6 +973,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       probeMats.push_back("source_core_right");
       probeMats.push_back("source_clad_left");
       probeMats.push_back("source_core_left");
+      probeMats.push_back("eval_clad_left");
+      probeMats.push_back("eval_core_left");
       //now for 1d pml mats
       for(const auto &pml : scatt_data.pmlvec){
         const std::string pattern_left{"source_clad_left"};
@@ -981,10 +983,14 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
         const std::string pattern_right{"source_clad_right"};
         const auto rx_right =
           std::regex{pattern_right, std::regex_constants::icase };
+        const std::string pattern_eval{"eval_clad_left"};
+        const auto rx_eval =
+          std::regex{pattern_eval, std::regex_constants::icase };
         
         const bool found_pattern =
           std::regex_search(*(pml->names.begin()), rx_left) ||
-          std::regex_search(*(pml->names.begin()), rx_right);
+          std::regex_search(*(pml->names.begin()), rx_right) ||
+          std::regex_search(*(pml->names.begin()), rx_eval);
 
         if(found_pattern){
           probeMats.push_back(*pml->names.begin());
@@ -1089,7 +1095,41 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     
     
   //here we will store the error between pml approx and wgbc approx
-  TPZAutoPointer<TPZCompMesh> error_mesh = src_an.GetMesh()->Clone();
+  TPZAutoPointer<TPZCompMesh> error_mesh = [gmesh,&gmshmats, &simdata](){
+    // setting up cmesh data
+    const auto &nclad = simdata.nclad;
+    const auto &ncore = simdata.ncore;
+    const auto &alphaPMLx = simdata.alphaPMLx;
+    const auto &alphaPMLy = simdata.alphaPMLy;
+    const auto &mode = simdata.mode;
+    const auto &pOrder = simdata.porder;
+    const auto &lambda = simdata.lambda;
+    const auto &scale = simdata.scale;
+    
+    wgma::cmeshtools::PhysicalData modal_data;
+    std::map<std::string, std::pair<CSTATE, CSTATE>> modal_mats;
+    modal_mats["eval_clad_left"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad, 1.);
+    modal_mats["eval_core_left"] = std::make_pair<CSTATE, CSTATE>(ncore*ncore, 1.);
+    std::map<std::string, wgma::bc::type> modal_bcs;
+    modal_bcs["eval_left_bnd"] = wgma::bc::type::PEC;
+    //dimension of the modal analysis 
+    constexpr int modal_dim{1};
+    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
+                                            {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
+    //we must now filter the 1D PMLs
+    std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
+    for(const auto &pml : modal_data.pmlvec){
+      const std::string pattern{"eval_clad_left"};
+      const auto rx = std::regex{pattern, std::regex_constants::icase };
+    
+      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
+      if(found_pattern){pmlvec.push_back(pml);}
+    }
+    modal_data.pmlvec = pmlvec;
+    return wgma::wganalysis::CMeshWgma1D(gmesh,mode,pOrder,modal_data,
+                                         lambda, scale);
+  }();
+  
   TPZFMatrix<CSTATE> sol_pml = error_mesh->Solution();
   {
     Extract1DSolFrom2DMesh(error_mesh, scatt_mesh_pml, sol_pml);
