@@ -5,6 +5,16 @@
 
 
 namespace wgma::post{
+
+  /** @brief Holds additional data on element level
+      Used for debugging
+   */
+  class WgCouplData : public ElData{
+  public:
+    TPZFNMatrix<1000,CSTATE> m_elmat;
+    int64_t m_elindex{-1};
+  };
+  
   /** @brief Computes the orthogonality between different waveguide solutions.
 
       This class provides a tool for analysing the coupling between
@@ -37,12 +47,19 @@ namespace wgma::post{
     void GetCoupling(TPZFMatrix<CSTATE> &kii) const{
       kii = m_kii;
     }
+    ElData* CreateElData() override {return new WgCouplData;}
     //! Initialises element data and sets material
     void InitData(TPZCompEl *el, ElData &data) override;
+    //! Exports element matrix
+    void PostProcessData(ElData& data) override;
     //! Sets beta values (needed for 2d cross sections)
     void SetBeta(const TPZVec<CSTATE> &beta){m_beta = beta;}
     //! Gets beta values (needed for 2d cross sections)
     void GetBeta(TPZVec<CSTATE> &beta) const {beta = m_beta;}
+    //! Use this for printing element matrices
+    void SetPrintMats(bool print){m_print_mats=print;}
+    //! Prefix for file name for element matrices(normally output directory)
+    void SetFilePrefix(const std::string &name){m_prefix=name;}
   protected:
     //! Computes contribution at an integration point
     void Compute(const ElData &data, REAL weight, int thread) override;
@@ -58,6 +75,10 @@ namespace wgma::post{
     bool m_conj{true};
     //! Whether to weight the inner product by constitutive param
     bool m_use_mu{true};
+    //! Whether to print element matrices (for debugging)
+    bool m_print_mats{false};
+    //! Prefix for element matrices files
+    std::string m_prefix{""};
   };
 };
 

@@ -44,11 +44,31 @@ namespace wgma::post{
   {
     TSPACE::InitData(el,data);
     data.SetMaterial(el->Material());
+    
+    auto wgdata = dynamic_cast<WgCouplData*>(&data);
+    if(!wgdata){DebugStop();}
+    wgdata->m_elindex = el->Index();
+    const auto ncol = el->Mesh()->Solution().Cols();
+    const auto nsol = m_adj ? ncol/2 : ncol;
+    if(m_print_mats){wgdata->m_elmat.Resize(nsol,nsol);}
+  }
+
+
+  template<class TSPACE>
+  void WaveguideCoupling<TSPACE>::PostProcessData(ElData& data)
+  {
+    if(!m_print_mats) return;
+    auto wgdata = dynamic_cast<WgCouplData*>(&data);
+    
+    std::ofstream matfile{m_prefix+"mat_"+std::to_string(wgdata->m_elindex)+".csv"};
+    wgdata->m_elmat.Print("",matfile,ECSV);
   }
   
   template<class TSPACE>
-  void WaveguideCoupling<TSPACE>::Compute(const ElData &eldata, REAL weight, int index)
+  void WaveguideCoupling<TSPACE>::Compute(const ElData &eldataconst, REAL weight, int index)
   {
+    ElData& eldata = (ElData&)eldataconst;
+    auto wgdata = dynamic_cast<WgCouplData*>(&eldata);
     if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
       const TPZMaterialDataT<CSTATE> &data = eldata;
       const auto &sol =  data.sol;
@@ -64,6 +84,7 @@ namespace wgma::post{
         for(auto js = 0; js < nsol; js++){
           const auto jsol = sol[firstj+js][0];
           const CSTATE kval = m_conj ? std::conj(isol) *jsol : isol * jsol;
+          if(m_print_mats){wgdata->m_elmat(is,js)+=kval*cte;}
           this->m_k_scratch[index](is,js) += cte * kval;
         }
       }
