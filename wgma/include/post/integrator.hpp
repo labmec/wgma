@@ -46,10 +46,14 @@ namespace wgma::post{
         @param[in] data needed data for computing the solution at the integration point
 */
     void Integrate(const TPZVec<TPZCompEl*> &elvec);
+    //! Creates instance of element data
+    virtual ElData* CreateElData() {return new ElData;}
     //! Initialises element data
     virtual void InitData(TPZCompEl* el, ElData& data) = 0;
     //! Gets element data at an integration point
     virtual void IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &x) = 0;
+    //! Allows for inspecting element data after integrating
+    virtual void PostProcessData(ElData& data) {}
     //! Override this method with the desired calculation
     virtual void Compute(const ElData &data, REAL weight, int thread) = 0;
     //! Computational mesh

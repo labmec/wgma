@@ -9,6 +9,11 @@ namespace wgma::post{
   class ElData {
   public:
     ElData() = default;
+    virtual ~ElData() = default;
+    ElData(const ElData&) = default;
+    ElData(ElData&&) = default;
+    ElData& operator=(const ElData&) = default;
+    ElData& operator=(ElData&&) = default;
     ElData(TPZMaterialDataT<CSTATE>& ar) : m_data(ar){};
     ElData(TPZVec<TPZMaterialDataT<CSTATE>>& ar) : m_datavec(ar){};
     operator TPZMaterialDataT<CSTATE>&() {return m_data;}

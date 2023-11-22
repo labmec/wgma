@@ -56,17 +56,18 @@ namespace wgma::post{
 
       for(int iel = firstel; iel < lastel; iel++){
         auto el = elvec[iel];
-        ElData data;
-        InitData(el,data);
+        TPZAutoPointer<ElData> data = CreateElData();
+        InitData(el,*data);
         auto &intrule = el->GetIntegrationRule();
         const int npts = intrule.NPoints();
         TPZManVector<REAL,3> pos(el->Dimension(),0);
         REAL weight;
         for(auto ipt = 0; ipt < npts; ipt++){
           intrule.Point(ipt, pos, weight);
-          IntPointData(el,data,pos);
-          Compute(data, weight, index);
+          IntPointData(el,*data,pos);
+          Compute(*data, weight, index);
         }
+        PostProcessData(*data);
       }
     };
 
