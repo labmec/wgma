@@ -47,7 +47,6 @@ namespace wgma::post{
   void WaveguidePortBC<TSPACE>::InitData(TPZCompEl *el, ElData &data)
   {
     TSPACE::InitData(el,data);
-    data.SetMaterial(el->Material());
   }
 
 

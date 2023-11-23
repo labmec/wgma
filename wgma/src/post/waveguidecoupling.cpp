@@ -43,7 +43,6 @@ namespace wgma::post{
   void WaveguideCoupling<TSPACE>::InitData(TPZCompEl *el, ElData &data)
   {
     TSPACE::InitData(el,data);
-    data.SetMaterial(el->Material());
     
     auto wgdata = dynamic_cast<WgCouplData*>(&data);
     if(!wgdata){DebugStop();}

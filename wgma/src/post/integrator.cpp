@@ -98,6 +98,7 @@ namespace wgma::post{
     TPZMaterialDataT<CSTATE> &eldata = data;
     auto intel = dynamic_cast<TPZInterpolationSpace*>(el);
     intel->InitMaterialData(eldata);
+    data.SetMaterial(el->Material());
   }
     
   void SingleSpaceIntegrator::IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &qsi)
@@ -115,6 +116,7 @@ namespace wgma::post{
     TPZVec<TPZMaterialDataT<CSTATE>>& datavec = data;
     datavec.resize(nref);
     mfcel->InitMaterialData(datavec);
+    data.SetMaterial(el->Material());
   }
     
   void MultiphysicsIntegrator::IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &qsi)
