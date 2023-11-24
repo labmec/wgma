@@ -86,12 +86,10 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
                   const int nThreads);
 
 void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
-                        std::string filename,
-                        std::string matname);
+                        std::string filename);
 void ComputeCouplingMatTwoMeshes(wgma::wganalysis::WgmaPlanar &an_orig,
                                  const TPZFMatrix<CSTATE> &sol_conj,
-                                 std::string filename,
-                                 std::string matname);
+                                 std::string filename);
 
 void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
                       std::string filename,
@@ -294,9 +292,9 @@ int main(int argc, char *argv[]) {
   }
   
   if(simdata.couplingmat){
-    ComputeCouplingMat(modal_l_an, simdata.prefix+"_mat_src.txt", "src");
+    ComputeCouplingMat(modal_l_an, simdata.prefix+"_mat_src.csv");
     ComputeCouplingMatTwoMeshes(modal_l_an, sol_l_conj,
-                                simdata.prefix+"_mat_src_conj.txt", "src");
+                                simdata.prefix+"_mat_src_conj.csv");
   }
   if(simdata.exportVtk){
     PostProcessModes(modal_l_an, modal_left_file, simdata.vtkRes);
@@ -358,7 +356,7 @@ int main(int argc, char *argv[]) {
   modal_r_an.Assemble();
   ComputeModes(modal_r_an, sol_r_conj, ortho, simdata.nThreads);
   if(simdata.couplingmat){
-    ComputeCouplingMat(modal_r_an, simdata.prefix+"_mat_match.txt", "match");
+    ComputeCouplingMat(modal_r_an, simdata.prefix+"_mat_match.txt");
   }
   if(simdata.exportVtk){
     std::string modal_left_file{simdata.prefix+"_modal_right"};
@@ -545,8 +543,7 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
 }
 
 void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
-                        std::string filename,
-                        std::string matname)
+                        std::string filename)
 {
   
   using namespace wgma::post;
@@ -559,15 +556,11 @@ void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
                                                       conj,
                                                       nthreads
                                                       );
-  TPZVec<CSTATE> betavec = an.GetEigenvalues();
-  for(auto &b : betavec){b = sqrt(b);}
-  integrator.SetBeta(betavec);
   integrator.ComputeCoupling();
   TPZFMatrix<CSTATE> couplingmat;
   integrator.GetCoupling(couplingmat);
   std::ofstream matfile(filename);
-  std::string name = matname+"=";
-  couplingmat.Print(name.c_str(),matfile,EMathematicaInput);
+  couplingmat.Print("",matfile,ECSV);
 }
 
 #include <Electromagnetics/TPZScalarField.h>
@@ -576,8 +569,7 @@ void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
 
 void ComputeCouplingMatTwoMeshes(wgma::wganalysis::WgmaPlanar &an,
                                  const TPZFMatrix<CSTATE> &sol_conj,
-                                 std::string filename,
-                                 std::string matname)
+                                 std::string filename)
 {
   
   using namespace wgma::post;
@@ -615,8 +607,7 @@ void ComputeCouplingMatTwoMeshes(wgma::wganalysis::WgmaPlanar &an,
   TPZFMatrix<CSTATE> couplingmat;
   integrator.GetCoupling(couplingmat);
   std::ofstream matfile(filename);
-  std::string name = matname+"=";
-  couplingmat.Print(name.c_str(),matfile,EMathematicaInput);
+  couplingmat.Print("",matfile,ECSV);
   //now we resize it again to its original size
   sol_orig.Resize(neq,nsol);
 }
