@@ -69,16 +69,14 @@ namespace wgma::post{
       const CSTATE cte = urval * weight * fabs(data.detjac);
       constexpr bool m_conj = true;
       for(auto is = 0; is < nsol; is++){
-        const auto isol = sol[is][0];
+        const auto isol = m_conj ? std::conj(sol[is][0]) : sol[is][0];
         for(auto js = 0; js < nsol; js++){
           const auto jsol = sol[firstj+js][0];
           const auto beta = m_beta[js];
-          const CSTATE kval =
-            m_conj ?
-            1i*beta*jsol * std::conj(isol) : 1i*beta*isol*jsol;
+          const CSTATE kval = 1i*beta*jsol*isol;
           this->m_k_scratch[index](is,js) += cte * kval;
           if(is_src){
-            const CSTATE fval = 2.*sign*m_coeff[js]*kval;
+            const CSTATE fval = -2.*1i*beta*m_coeff[js]*jsol*isol;
             this->m_f_scratch[index][is] += cte * fval;
           }
         }
