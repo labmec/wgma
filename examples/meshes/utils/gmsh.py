@@ -517,6 +517,29 @@ The same applies for "xm" and "ym"
     return pmlmap
 
 
+def get_neighbours(domain_tags, dim):
+    """
+    Gets all neighbours of the (combined) region formed by entities with tags domain_tags and dim dim
+
+    Parameters
+    ----------
+    domain_tags: list of tags of entities
+    dim: dimension of entities in domain_tags
+
+    """
+    bnd = gmsh.model.get_boundary(
+        [(dim, t) for t in domain_tags],
+        combined=True, oriented=False, recursive=False)
+    neighs = set()
+    for d, b in bnd:
+        neigh, _ = gmsh.model.get_adjacencies(d, b)
+        neigh = set(neigh)
+        print(neigh)
+        neighs = neighs.union(neigh)
+    real_neighs = [t for t in neighs if t not in domain_tags]
+    return real_neighs
+
+
 def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
     """
     Finds among existent PML regions in pmlmap (with dimension pmldim)
