@@ -1285,20 +1285,31 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
   const auto &indep_con = scatt_mesh->ConnectVec()[indep_con_id];
   const auto &block = scatt_mesh->Block();
   const auto seqnum = indep_con.SequenceNumber();
-  const auto pos = block.Position(seqnum);
+  const auto pos_orig = block.Position(seqnum);
   const auto sz = block.Size(seqnum);
   if(sz!=nm){DebugStop();}
-  TPZManVector<int64_t,300> posvec_orig(sz,-1), posvec_filt(sz,-1);
-  for(int i = 0; i < sz; i++){posvec_orig[i] = pos+i;};
-  posvec_filt = posvec_orig;
-  scatt_an.StructMatrix()->EquationFilter().Filter(posvec_orig, posvec_filt);
+
+  int64_t pos_filt{-1};
+  {
+    TPZManVector<int64_t,1> posvec_orig(1,pos_orig), posvec_filt(1,pos_orig);
+    scatt_an.StructMatrix()->EquationFilter().Filter(posvec_orig, posvec_filt);
+    pos_filt = posvec_filt[0];
+    //they are sequential
+  }
+
+  //we add to vec
+  {
+    CSTATE *ptr_f = &fvec.g(pos_orig,0);
+    CSTATE *ptr_wgbc = wgbc_f.begin();
+    for(auto imode = 0; imode < nm; imode++){
+      *ptr_f++ += *ptr_wgbc++;
+    }
+  }
+  //now we add to matrix
   for(auto imode = 0; imode < nm; imode++){
-    const auto pos_f = posvec_orig[imode];
-    const auto fval = fvec.Get(pos_f,0);
-    fvec.Put(pos_f,0, fval+wgbc_f[imode]);
+    const auto ipos = pos_filt+imode;
     for(auto jmode = 0; jmode < nm; jmode++){
-      const auto ipos = posvec_filt[imode];
-      const auto jpos = posvec_filt[jmode];
+      const auto jpos = pos_filt+jmode;
       const auto kval = mat->Get(ipos,jpos);
       mat->Put(ipos,jpos,kval+wgbc_k.Get(imode,jmode));
     }
