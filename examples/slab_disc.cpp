@@ -150,9 +150,9 @@ SimData GetSimData()
   data.mode = wgma::planarwg::mode::TE;
   data.ncore = 1.55;
   data.nclad = 1.00;
-  data.alphaPMLx = {0, 0.75};
-  data.alphaPMLy = {0, 0.75};
-  data.porder = 2;
+  data.alphaPMLx = {0.8, 0.0};
+  data.alphaPMLy = {0.8, 0.0};
+  data.porder = 4;
   data.filterBoundEqs = true;
   data.printGmesh=true;
   data.exportVtk = true;
@@ -181,8 +181,8 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   constexpr bool usingSLEPC {true};
-  constexpr int nEigenpairs_left{549};
-  constexpr int nEigenpairs_right{549};
+  constexpr int nEigenpairs_left{500};
+  constexpr int nEigenpairs_right{500};
   const CSTATE target{simdata.ncore*simdata.ncore};
 
   /*********
@@ -265,7 +265,7 @@ int main(int argc, char *argv[]) {
   constexpr bool ortho{false};
   TPZFMatrix<CSTATE> sol_l_conj;
   modal_l_an.Assemble();
-  constexpr bool export_mats{true};
+  constexpr bool export_mats{false};
   //now we export the matrices
   if(export_mats){
     auto mata = modal_l_an.GetSolver().MatrixA();
@@ -779,7 +779,7 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
   std::ofstream s_cmesh_file{simdata.prefix+"_scatt_mesh_.txt"};
   scatt_mesh->Print(s_cmesh_file);
 
-  constexpr bool export_mats{true};
+  constexpr bool export_mats{false};
   TPZFMatrix<CSTATE> couplingmat;
   {
     using namespace wgma::post;
@@ -1057,13 +1057,13 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   //now we solve varying the number of modes used in the wgbc
   
   //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  TPZVec<int> nmodes = {0,1,2,5,10,15,20,100,300,549};
+  TPZVec<int> nmodes = {0,1,2,5,10,15,20,100,300};
   src_an.LoadAllSolutions();
   match_an.LoadAllSolutions();
 
   //as an initial test, one could just simply project the solution and check
   //the results
-  constexpr bool test_proj{true};
+  constexpr bool test_proj{false};
   if(test_proj){
     ProjectSolIntoRestrictedMesh(src_an, scatt_mesh_pml, simdata, nmodes);
   }
@@ -1086,6 +1086,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     
     
   //here we will store the error between pml approx and wgbc approx
+  /*
   TPZAutoPointer<TPZCompMesh> error_mesh = [gmesh,&gmshmats, &simdata](){
     // setting up cmesh data
     const auto &nclad = simdata.nclad;
@@ -1120,6 +1121,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     return wgma::wganalysis::CMeshWgma1D(gmesh,mode,pOrder,modal_data,
                                          lambda, scale);
   }();
+  */
+  TPZAutoPointer<TPZCompMesh> error_mesh = src_an.GetMesh()->Clone();
   
   TPZFMatrix<CSTATE> sol_pml = error_mesh->Solution();
   {
