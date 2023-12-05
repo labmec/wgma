@@ -34,8 +34,8 @@ d_far = 6*d_src
 el_core = 0.06/1.55
 thickness = 2*max(h1, h2)
 el_clad = 0.1
-d_pmlx = 2
-d_pmly = 2
+d_pmlx = 4
+d_pmly = 8
 nlayerspml = 10
 
 
@@ -269,7 +269,7 @@ pml1d_eval_left = find_pml_region(eval_left_clad_dimtags, pmlmap, pmldim)
 pml1d_src_left = {(direction, tag): neigh for (direction, tag),
                   neigh in pml1d_src_left.items() if "xm" not in direction}
 pml1d_eval_left = {(direction, tag): neigh for (direction, tag),
-                  neigh in pml1d_eval_left.items() if "xm" not in direction}
+                   neigh in pml1d_eval_left.items() if "xm" not in direction}
 pml1d_src_right = {(direction, tag): neigh for (direction, tag),
                    neigh in pml1d_src_right.items() if "xp" not in direction}
 
