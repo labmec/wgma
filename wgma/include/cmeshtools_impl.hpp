@@ -158,6 +158,17 @@ wgma::cmeshtools::AddCylindricalPMLRegion(const wgma::pml::cyl::data data,
   
     if(attr) pmlMat->SetAttR(rMin, data.alphar, rMax-rMin);
     if(attz) pmlMat->SetAttZ(boundPosZ, data.alphaz, dZ);
+
+    // std::cout<<"pml(neigh)";
+    // for(auto i: data.ids){std::cout<<'\t'<<i<<"\t("<<all_neighs[i]<<")";}
+    // std::cout<<"\nname: ";
+    // for(auto i: data.names){std::cout<<'\t'<<i;}
+    
+    // std::cout<<"\ntype "<<wgma::pml::cyl::to_string(data.t)
+    //          <<"\nattr "<<attr<<" dr "<<rMax-rMin<<" br "<<rMin<<" ar "<<data.alphar
+    //          <<"\nattz "<<attz<<" dz "<<dZ<<" bz "<<boundPosZ<<" az "<<data.alphaz
+    //          <<std::endl;
+    
     cmesh->InsertMaterialObject(pmlMat);
   }
   return all_neighs;
