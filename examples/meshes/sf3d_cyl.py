@@ -43,10 +43,11 @@ wl = 4.0  # wavelength (in microns)
 nclad = 1.4378
 ncore = 1.4457
 
-r_core = 8  # core radius
+r_core_left = 8  # core radius
+r_core_right = 8  # core radius
 # distance from center to end of cladding region(inner box)
-r_box = r_core + 3.5 * wl/nclad
-l_domain = 0.25*wl
+r_box = max(r_core_left,r_core_right) + 3.5 * wl/nclad
+l_domain = 0.5*wl
 d_pml = 1.75*wl/nclad  # pml width
 nel_l = 5  # number of elements / wavelength
 # element sizes are different in cladding or core
@@ -89,12 +90,19 @@ clad.tag = [gmsh.model.occ.add_cylinder(
     *clad.xc, *clad.axis, clad.radius)]
 
 
-core = CylinderData()
-core.xc = [0, 0, -l_domain/2]
-core.axis = [0, 0, l_domain]
-core.radius = r_core
-core.tag = [gmsh.model.occ.add_cylinder(
-    *core.xc, *core.axis, core.radius)]
+core_left = CylinderData()
+core_left.xc = [0, 0, -l_domain/2]
+core_left.axis = [0, 0, l_domain/2]
+core_left.radius = r_core_left
+core_left.tag = [gmsh.model.occ.add_cylinder(
+    *core_left.xc, *core_left.axis, core_left.radius)]
+
+core_right = CylinderData()
+core_right.xc = [0, 0, 0]
+core_right.axis = [0, 0, l_domain/2]
+core_right.radius = r_core_right
+core_right.tag = [gmsh.model.occ.add_cylinder(
+    *core_right.xc, *core_right.axis, core_right.radius)]
 
 gmsh.model.occ.synchronize()
 
@@ -111,7 +119,7 @@ objs = [(3, clad.tag[0])] + gmsh.model.getBoundary(
     dimTags=[(3, clad.tag[0])],
     combined=False, oriented=False)
 
-tools = [(3, t) for t in core.tag]
+tools = [(3, t) for t in core_left.tag]+[(3, t) for t in core_right.tag]
 clad_map = apply_boolean_operation(objs, tools, "cut", False, el_clad)
 remap_tags([clad], clad_map)
 gmsh.model.occ.remove_all_duplicates()
@@ -121,7 +129,7 @@ gmsh.model.occ.synchronize()
 probe = CircleData()
 probe.xc = 0
 probe.yc = 0
-probe.zc = 0
+probe.zc = -l_domain/4
 probe.radius = r_box+d_pml
 
 create_circle(probe, el_clad)
@@ -142,7 +150,7 @@ create_rect(horiz_plane, el_clad,'y')
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
-cut_vol_with_plane([pml, clad, core], [probe,horiz_plane], el_clad)
+cut_vol_with_plane([pml, clad, core_left,core_right], [probe,horiz_plane], el_clad)
 
 
 # now we create the PMLs in the z-direction
@@ -210,7 +218,7 @@ clad_res = get_boundary_in_z_dir([(dim, t) for t in clad.tag], '-')
 src_left_clad = clad_res['left_entities']
 probe_clad = clad_res['right_entities']
 
-core_res = get_boundary_in_z_dir([(dim, t) for t in core.tag], '-')
+core_res = get_boundary_in_z_dir([(dim, t) for t in core_left.tag], '-')
 src_left_core = core_res['left_entities']
 probe_core = core_res['right_entities']
 
@@ -221,7 +229,7 @@ probe_pml = pml_res['right_entities']
 clad_res = get_boundary_in_z_dir([(dim, t) for t in clad.tag], '+')
 src_right_clad = clad_res['right_entities']
 
-core_res = get_boundary_in_z_dir([(dim, t) for t in core.tag], '+')
+core_res = get_boundary_in_z_dir([(dim, t) for t in core_right.tag], '+')
 src_right_core = core_res['right_entities']
 
 pml_res = get_boundary_in_z_dir([(dim, t) for t in pml.tag], '+')
@@ -274,20 +282,22 @@ def find_all_cyl_tags(cyltags):
         cyltags = list(cylset.union(new_cyls))
     return cyltags
 
-cyl1 = find_all_cyl_tags(find_common_bounds(core.tag, clad.tag, 3))
-cyl2 = find_all_cyl_tags(find_common_bounds(clad.tag, pml.tag, 3))
-cyl3 = filter_cyl_tags(all_bounds)
+cyl1 = find_all_cyl_tags(find_common_bounds(core_left.tag, clad.tag, 3))
+cyl2 = find_all_cyl_tags(find_common_bounds(core_right.tag, clad.tag, 3))
+cyl3 = find_all_cyl_tags(find_common_bounds(clad.tag, pml.tag, 3))
+cyl4 = filter_cyl_tags(all_bounds)
 
-core.surftag = cyl1
-clad.surftag = cyl2
-pml.surftag = cyl3
+core_left.surftag = cyl1
+core_right.surftag = cyl2
+clad.surftag = cyl3
+pml.surftag = cyl4
 
-all_cyl_data = [core, clad,pml]
+all_cyl_data = [core_left,core_right, clad,pml]
 
 # element sizes
 
 
-small_domains = core.tag
+small_domains = core_left.tag+core_right.tag
 dim = 3
 field_ct = 1
 gmsh.model.mesh.field.add("Constant", field_ct)
@@ -303,25 +313,26 @@ gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
 
 domain_physical_ids_3d = {
-    "core": 1,
-    "cladding": 2
+    "core_left": 1,
+    "core_right": 2,
+    "cladding": 3
 }
 domain_physical_ids_2d = {
-    "src_left_core": 3,
-    "src_left_clad": 4,
-    "pml_src_left_clad_rp": 5,
-    "src_right_core": 6,
-    "src_right_clad": 7,
-    "pml_src_right_clad_rp": 8,
-    "probe_core": 9,
-    "probe_clad": 10,
-    "pml_probe_clad_rp": 11,
-    "scatt_bnd": 12
+    "src_left_core": 4,
+    "src_left_clad": 5,
+    "pml_src_left_clad_rp": 6,
+    "src_right_core": 7,
+    "src_right_clad": 8,
+    "pml_src_right_clad_rp": 9,
+    "probe_core": 10,
+    "probe_clad": 11,
+    "pml_probe_clad_rp": 12,
+    "scatt_bnd": 13
 }
 domain_physical_ids_1d = {
-    "src_left_bnd": 13,
-    "src_right_bnd": 14,
-    "probe_bnd": 15
+    "src_left_bnd": 14,
+    "src_right_bnd": 15,
+    "probe_bnd": 16
 }
 
 domain_physical_ids_0d = {}
@@ -329,7 +340,8 @@ domain_physical_ids_0d = {}
 domain_physical_ids = [domain_physical_ids_0d, domain_physical_ids_1d,
                        domain_physical_ids_2d, domain_physical_ids_3d]
 
-domain_regions = {"core": core.tag,
+domain_regions = {"core_left": core_left.tag,
+                  "core_right": core_right.tag,
                   "cladding": clad.tag,
                   "src_left_core": src_left_core,
                   "src_left_clad": src_left_clad,
