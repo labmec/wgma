@@ -4,6 +4,9 @@
 #include <regex>
 
 namespace wgma::pml::cart{
+  /*TODO: write unit tests for this.
+   it is not hard, just test all possible names and a few false ones
+   must remember: test also with cylindrical pml names*/
   TPZAutoPointer<wgma::pml::data>
   IdentifyAndSetupPML(const std::string &name,
                       const int id,
@@ -15,7 +18,7 @@ namespace wgma::pml::cart{
     TPZVec<std::string> pmlnames;
     //we need to go backwards! otherwise we wont match the exact name
     for (auto t : wgma::pml::cart::typeReverseIterator() ) { //notice the parentheses!
-      pmlnames.push_back(wgma::pml::cart::to_string(t));
+      pmlnames.push_back("_"+wgma::pml::cart::to_string(t));
     }
                 
     for(int ipml = 0; ipml < pmlnames.size(); ipml++){
@@ -24,11 +27,17 @@ namespace wgma::pml::cart{
       const bool test = std::regex_search(name, rx);
       if(test){
         wgma::pml::cart::type type;
+        bool found=false;
         for (auto t : wgma::pml::cart::typeIterator() ) {
-          if(wgma::pml::cart::to_string(t) == pmlname){
+          if("_"+wgma::pml::cart::to_string(t) == pmlname){
             type = t;
+            found=true;
             break;
           }
+        }
+        if(!found){
+          std::cout<<"could not identify pml "<<name<<std::endl;
+          DebugStop();
         }
         auto pmldata = new wgma::pml::cart::data;
         pmldata->ids = {id};

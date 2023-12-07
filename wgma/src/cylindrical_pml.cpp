@@ -3,6 +3,9 @@
 #include <pzvec.h>
 #include <regex>
 namespace wgma::pml::cyl{
+  /*TODO: write unit tests for this.
+   it is not hard, just test all possible names and a few false ones
+   must remember: test also with cartesian pml names*/
   TPZAutoPointer<wgma::pml::data>
   IdentifyAndSetupPML(const std::string &name,
                       const int id,
@@ -14,7 +17,7 @@ namespace wgma::pml::cyl{
     TPZVec<std::string> pmlnames;
     //we need to iterate backwards!
     for (auto t : wgma::pml::cyl::typeReverseIterator() ) { //notice the parentheses!
-      pmlnames.push_back(wgma::pml::cyl::to_string(t));
+      pmlnames.push_back("_"+wgma::pml::cyl::to_string(t));
     }
                 
     for(int ipml = 0; ipml < pmlnames.size(); ipml++){
@@ -23,11 +26,17 @@ namespace wgma::pml::cyl{
       const bool test = std::regex_search(name, rx);
       if(test){
         wgma::pml::cyl::type type;
+        bool found=false;
         for (auto t : wgma::pml::cyl::typeIterator() ) {
-          if(wgma::pml::cyl::to_string(t) == pmlname){
+          if("_"+wgma::pml::cyl::to_string(t) == pmlname){
             type = t;
+            found = true;
             break;
           }
+        }
+        if(!found){
+          std::cout<<"could not identify pml "<<name<<std::endl;
+          DebugStop();
         }
         auto pmldata = new wgma::pml::cyl::data;
         pmldata->ids = {id};
