@@ -48,7 +48,14 @@ add_pz_target(
   SOURCES sf3d.cpp
   FILES meshes/sf3d.msh meshes/sf3d_cyldata.csv
   )
-target_link_libraries(sf3d PUBLIC wgma)  
+  target_link_libraries(sf3d PUBLIC wgma)
+
+add_pz_target(
+  NAME sf3d_cyl
+  SOURCES sf3d_cyl.cpp
+  FILES meshes/sf3d_cyl.msh meshes/sf3d_cyl_cyldata.csv
+  )
+target_link_libraries(sf3d_cyl PUBLIC wgma)  
 
 add_pz_target(
   NAME pcf
