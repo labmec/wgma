@@ -914,14 +914,12 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
 
   const bool attz = wgma::pml::cyl::attz(type);
   
-  REAL zBegin{-1};
-  
   if(attz){
     const int zdir = wgma::pml::cyl::zinfo(type);
     dZ = zMax - zMin;
-    zBegin = zdir > 0 ? zMin : zMax;
+    boundPosZ = zdir > 0 ? zMin : zMax;
   }else{
-    zBegin = (zMax+zMin)/2;
+    boundPosZ = (zMax+zMin)/2;
   }
 }
 
