@@ -37,7 +37,7 @@ def cut_vol_with_plane(vols, surfs, elsize):
     remap_tags(vols+surfs, domain_map)
 
 
-test_old_target=True
+test_old_target=False
 wl = 4.0  # wavelength (in microns)
 
 # refractive indices
