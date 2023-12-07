@@ -534,7 +534,6 @@ def get_neighbours(domain_tags, dim):
     for d, b in bnd:
         neigh, _ = gmsh.model.get_adjacencies(d, b)
         neigh = set(neigh)
-        print(neigh)
         neighs = neighs.union(neigh)
     real_neighs = [t for t in neighs if t not in domain_tags]
     return real_neighs
