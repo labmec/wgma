@@ -37,6 +37,7 @@ def cut_vol_with_plane(vols, surfs, elsize):
     remap_tags(vols+surfs, domain_map)
 
 
+test_old_target=True
 wl = 4.0  # wavelength (in microns)
 
 # refractive indices
@@ -47,7 +48,7 @@ r_core_left = 8  # core radius
 r_core_right = 8  # core radius
 # distance from center to end of cladding region(inner box)
 r_box = max(r_core_left,r_core_right) + 3.5 * wl/nclad
-l_domain = 0.5*wl
+l_domain = 0.25*wl if test_old_target else 0.5*wl 
 d_pml = 1.75*wl/nclad  # pml width
 nel_l = 5  # number of elements / wavelength
 # element sizes are different in cladding or core
@@ -129,7 +130,7 @@ gmsh.model.occ.synchronize()
 probe = CircleData()
 probe.xc = 0
 probe.yc = 0
-probe.zc = -l_domain/4
+probe.zc = 0 if test_old_target else -l_domain/4
 probe.radius = r_box+d_pml
 
 create_circle(probe, el_clad)
@@ -312,51 +313,84 @@ gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
 gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
 
-domain_physical_ids_3d = {
-    "core_left": 1,
-    "core_right": 2,
-    "cladding": 3
-}
-domain_physical_ids_2d = {
-    "src_left_core": 4,
-    "src_left_clad": 5,
-    "pml_src_left_clad_rp": 6,
-    "src_right_core": 7,
-    "src_right_clad": 8,
-    "pml_src_right_clad_rp": 9,
-    "probe_core": 10,
-    "probe_clad": 11,
-    "pml_probe_clad_rp": 12,
-    "scatt_bnd": 13
-}
-domain_physical_ids_1d = {
-    "src_left_bnd": 14,
-    "src_right_bnd": 15,
-    "probe_bnd": 16
-}
 
+
+domain_physical_ids_3d = {}
+domain_physical_ids_2d = {}
+domain_physical_ids_1d = {}
 domain_physical_ids_0d = {}
+domain_regions = {}
+
+if test_old_target:
+    domain_physical_ids_3d = {
+        "core": 1,
+        "cladding": 2
+    }
+    domain_physical_ids_2d = {
+        "src_core": 3,
+        "src_clad": 4,
+        "pml_src_clad_rp": 5,
+        "scatt_bnd": 11
+    }
+    domain_physical_ids_1d = {
+        "modal_bnd": 12
+    }
+    domain_regions = {
+        "core": core_left.tag+core_right.tag,
+        "cladding": clad.tag,
+        "src_core": src_left_core,
+        "src_clad": src_left_clad,
+        "pml_src_clad_rp": src_left_pml,
+        "modal_bnd": src_left_bnd,
+        "scatt_bnd": all_bounds
+    }
+else:
+    domain_physical_ids_3d = {
+        "core_left": 1,
+        "core_right": 2,
+        "cladding": 3
+    }
+    domain_physical_ids_2d = {
+        "src_left_core": 4,
+        "src_left_clad": 5,
+        "pml_src_left_clad_rp": 6,
+        "src_right_core": 7,
+        "src_right_clad": 8,
+        "pml_src_right_clad_rp": 9,
+        "probe_core": 10,
+        "probe_clad": 11,
+        "pml_probe_clad_rp": 12,
+        "scatt_bnd": 13
+    }
+    domain_physical_ids_1d = {
+        "src_left_bnd": 14,
+        "src_right_bnd": 15,
+        "probe_bnd": 16
+    }
+    domain_regions = {
+        "core_left": core_left.tag,
+        "core_right": core_right.tag,
+        "cladding": clad.tag,
+        "src_left_core": src_left_core,
+        "src_left_clad": src_left_clad,
+        "pml_src_left_clad_rp": src_left_pml,
+        "src_right_core": src_right_core,
+        "src_right_clad": src_right_clad,
+        "pml_src_right_clad_rp": src_right_pml,
+        "probe_core": probe_core,
+        "probe_clad": probe_clad,
+        "pml_probe_clad_rp": probe_pml,
+        "src_left_bnd": src_left_bnd,
+        "src_right_bnd": src_right_bnd,
+        "probe_bnd": probe_bnd,
+        "scatt_bnd": all_bounds
+    }
+
 
 domain_physical_ids = [domain_physical_ids_0d, domain_physical_ids_1d,
                        domain_physical_ids_2d, domain_physical_ids_3d]
 
-domain_regions = {"core_left": core_left.tag,
-                  "core_right": core_right.tag,
-                  "cladding": clad.tag,
-                  "src_left_core": src_left_core,
-                  "src_left_clad": src_left_clad,
-                  "pml_src_left_clad_rp": src_left_pml,
-                  "src_right_core": src_right_core,
-                  "src_right_clad": src_right_clad,
-                  "pml_src_right_clad_rp": src_right_pml,
-                  "probe_core": probe_core,
-                  "probe_clad": probe_clad,
-                  "pml_probe_clad_rp": probe_pml,
-                  "src_left_bnd": src_left_bnd,
-                  "src_right_bnd": src_right_bnd,
-                  "probe_bnd": probe_bnd,
-                  "scatt_bnd": all_bounds
-                  }
+
 
 add_cylindrical_regions(all_cyl_data, domain_physical_ids, domain_regions)
 
@@ -373,7 +407,7 @@ if __name__ == "__main__":
     abspath = os.path.abspath(__file__)
     dname = os.path.dirname(abspath)
     os.chdir(dname)
-    filename = "sf3d"
+    filename = "sf3d" if test_old_target else "sf3d_cyl"
     with open(filename+'_cyldata.csv', 'w', encoding='UTF8') as f:
         writer = csv.writer(f)
         header = ["xc(um)", "yc(um)", "zc(um)", "xaxis(um)",
