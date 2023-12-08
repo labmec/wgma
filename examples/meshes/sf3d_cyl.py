@@ -292,6 +292,17 @@ core_left.surftag = cyl1
 core_right.surftag = cyl2
 clad.surftag = cyl3
 pml.surftag = cyl4
+##
+clad_core_bounds = gmsh.model.get_boundary([(3,t) for t in core_left.tag]+
+                                           [(3,t) for t in core_right.tag]+
+                                           [(3,t) for t in clad.tag]+
+                                           [(3,t) for t in pml.tag],
+                                           combined=True,oriented=False)
+clad_core_bounds = [t for _,t in clad_core_bounds]
+#these are the fiber's cross section terminating the domain
+trunc_bound = [x for x in all_bounds if x not in clad_core_bounds]
+mid_bound = [x for x in all_bounds if x in clad_core_bounds]
+      
 
 all_cyl_data = [core_left,core_right, clad,pml]
 
@@ -360,12 +371,13 @@ else:
         "probe_core": 10,
         "probe_clad": 11,
         "pml_probe_clad_rp": 12,
-        "scatt_bnd": 13
+        "scatt_bnd_mid": 13,
+        "scatt_bnd_right_left": 14
     }
     domain_physical_ids_1d = {
-        "src_left_bnd": 14,
-        "src_right_bnd": 15,
-        "probe_bnd": 16
+        "src_left_bnd": 15,
+        "src_right_bnd": 16,
+        "probe_bnd": 17
     }
     domain_regions = {
         "core_left": core_left.tag,
@@ -383,7 +395,8 @@ else:
         "src_left_bnd": src_left_bnd,
         "src_right_bnd": src_right_bnd,
         "probe_bnd": probe_bnd,
-        "scatt_bnd": all_bounds
+        "scatt_bnd_mid": mid_bound,
+        "scatt_bnd_right_left": trunc_bound,
     }
 
 
