@@ -276,6 +276,9 @@ TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const CSTATE target, const int nEigen,
             TPZEigenSort sorting, bool &usingSLEPC);
 
+void ComputeCouplingMat(wgma::wganalysis::Wgma2D &an,
+                        std::string filename);
+
 
 TPZAutoPointer<wgma::wganalysis::Wgma2D>
 ComputeModalAnalysis(
@@ -337,6 +340,10 @@ ComputeModalAnalysis(
     modal_file += "_krylov";
   }
   ComputeModes(*modal_an, simdata.nThreads);
+  if(simdata.couplingmat){
+    std::string couplingfile{simdata.prefix+"_coupling_"+name+".csv"};
+    ComputeCouplingMat(*modal_an,couplingfile);
+  }
   if(simdata.exportVtk){
     PostProcessModes(*modal_an, modal_file, simdata.vtkRes);
   }
@@ -455,6 +462,35 @@ void ComputeModes(wgma::wganalysis::Wgma2D &an,
   an.SetEigenvectors(mesh_sol);
   an.LoadAllSolutions();
 }
+void ComputeCouplingMat(wgma::wganalysis::Wgma2D &an,
+                        std::string filename)
+{
+  
+  using namespace wgma::post;
+
+  std::set<int> matids;
+  constexpr bool conj{false};
+  const int nthreads = std::thread::hardware_concurrency();
+  WaveguideCoupling<MultiphysicsIntegrator> integrator(an.GetMesh(),
+                                                       matids,
+                                                       conj,
+                                                       nthreads
+                                                       );
+  auto &an_beta = an.GetEigenvalues();
+  const int nsol = an_beta.size();
+  TPZVec<CSTATE> betavec(nsol,0);
+  for(int i = 0; i < nsol; i++){
+    betavec[i] = -sqrt(an_beta[i]);
+  }
+  integrator.SetBeta(betavec);
+  
+  integrator.ComputeCoupling();
+  TPZFMatrix<CSTATE> couplingmat;
+  integrator.GetCoupling(couplingmat);
+  std::ofstream matfile(filename);
+  couplingmat.Print("",matfile,ECSV);
+}
+
 void PostProcessModes(wgma::wganalysis::Wgma2D &an,
                       std::string filename,
                       const int vtkres,
