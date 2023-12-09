@@ -8,6 +8,29 @@
 #include <pzaxestools.h>
 using namespace std::complex_literals;
 
+/*
+  According to
+  Operator Theory for Electromagnetics: An Introduction, G.W. Hanson,
+  Theorem 4.30,
+
+  given x_n as the eigenvectors of
+  Ax = lBx
+  and y_m as the eigenvectors of the adjoint problem
+  we have
+  (l_n-l_m)(Bx_n,y_m) = 0
+
+  in case one wants to check this orthogonality,
+  uncomment next line
+
+  p.s. worth mentioning that, according to
+  Quasimodal expansion of electromagnetic fields in open two-dimensional structures
+
+  B. Vial, F. Zolla, A.Nicolet and M. Commandré,
+
+  for homogeneous BCs, y_m = x_m^*
+ */
+// #define CHECK_ORTH
+
 namespace wgma::post{
 
   template<class TSPACE>
@@ -88,43 +111,88 @@ namespace wgma::post{
         }
       }
     }else{
-      //NOT YET TESTED
+      auto Cross = [](const auto mat1, const auto mat2, auto &res){
+        auto &m11 = mat1.Get(0,0);
+        auto &m12 = mat1.Get(1,0);
+        auto &m13 = mat1.Get(2,0);
+        auto &m21 = mat2.Get(0,0);
+        auto &m22 = mat2.Get(1,0);
+        auto &m23 = mat2.Get(2,0);
+        res.Put(0,0,m12*m23-m13*m22);
+        res.Put(1,0,m13*m21-m11*m23);
+        res.Put(2,0,m11*m22-m12*m21);
+      };
       //we expect a TPZWgma material
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
 
       auto mat = dynamic_cast<const TPZWgma*>(eldata.GetMaterial());
-      TPZFNMatrix<9,CSTATE> ur;
+      TPZFNMatrix<9,CSTATE> ur,er;
       mat->GetPermeability(datavec[0].x, ur);
+      mat->GetPermittivity(datavec[0].x, er);
       ur.Decompose(ELU);
-      
-      TPZFNMatrix<3,CSTATE> et_i(3,1,0.), et_j(3,1,0);
-      TPZFNMatrix<1,CSTATE> tmp(3,3,0);
-      
+
       const int solsize = datavec[0].sol.size();
       const auto nsol = m_adj ? solsize/2 : solsize;
       const int firstj = m_adj ? nsol : 0;
       const auto &axes = datavec[0].axes;
       const auto detjac = datavec[0].detjac;
       const CSTATE cte = weight*fabs(detjac);
+
+      TPZFNMatrix<3000,CSTATE> rot_et(3,nsol,0.);
+
+      
+#ifdef CHECK_ORTH
+      TPZFNMatrix<3000,CSTATE> rot_ez(3,nsol,0.);
+#endif
+      TPZFNMatrix<3000,CSTATE> rot_grad_ez(3,nsol,0.);
+      TPZFNMatrix<3000,CSTATE> grad_ez_axes(2,nsol,0.);
+
       for(auto isol = 0; isol < nsol; isol++){
-        auto &et_ref = datavec[ TPZWgma::HCurlIndex() ].sol[isol];
-        CSTATE val = 0;
-        const auto jbeta = 1i*m_beta[isol];
-        for(int ix = 0; ix < 3; ix++) {
-          et_i(ix,0)= et_ref[ix]/ m_beta[isol];
-        }
-        //et_i = ur^-1 et_i
-        ur.Substitution(&et_i);
-        for(auto jsol = 0; jsol < nsol; jsol++){
-          auto &et_ref = datavec[ TPZWgma::HCurlIndex() ].sol[firstj+jsol];
-          CSTATE val = 0;
-          const auto jbeta = 1i*m_beta[jsol];
-          for(int ix = 0; ix < 3; ix++) {
-            et_j(ix,0)= et_ref[ix]/ m_beta[jsol];
-          }
-          this->m_k_scratch[index].AddContribution(isol,jsol,et_i,true,et_j,false,cte);
-        }
+        const auto &et_ref = datavec[ TPZWgma::HCurlIndex() ].sol[isol];
+        rot_et.Put(0,isol,et_ref[1]);
+        rot_et.Put(1,isol,-et_ref[0]);
+#ifdef CHECK_ORTH
+        const auto &ez_ref = datavec[ TPZWgma::H1Index() ].sol[isol];
+        rot_ez.Put(2,isol,ez_ref[0]);
+#endif
+        auto &gradez_ref = datavec[ TPZWgma::H1Index() ].dsol[isol];
+        grad_ez_axes.Put(0,isol,gradez_ref[0]);
+        grad_ez_axes.Put(1,isol,gradez_ref[1]);
       }
+
+      TPZAxesTools<CSTATE>::Axes2XYZ(grad_ez_axes, rot_grad_ez, axes);
+      //rotate grad ez
+      for(auto isol = 0; isol < nsol; isol++){
+        const CSTATE v0 = rot_grad_ez.Get(0,isol);
+        const CSTATE v1 = rot_grad_ez.Get(1,isol);
+        rot_grad_ez.Put(0,isol,v1);
+        rot_grad_ez.Put(1,isol,-v0);
+      }
+
+      TPZFNMatrix<3000,CSTATE> tmp;
+
+      //Btt term
+      tmp = rot_et;
+      ur.Substitution(&tmp);
+      tmp *= cte;
+      this->m_k_scratch[index].AddContribution(0, 0, tmp, true, rot_et, false);
+      //Atz term
+      this->m_k_scratch[index].AddContribution(0,0,tmp,true,rot_grad_ez,false);
+
+
+#ifdef CHECK_ORTH
+      //Azt term
+      tmp = rot_grad_ez;
+      ur.Substitution(&tmp);
+      tmp *= cte;
+      this->m_k_scratch[index].AddContribution(0,0,tmp, true, rot_et, false);
+      //Azz term
+      this->m_k_scratch[index].AddContribution(0,0,tmp,true,rot_grad_ez,false);
+      //Czz term
+      er.Multiply(rot_ez,tmp);
+      tmp *= -cte;
+      this->m_k_scratch[index].AddContribution(0,0,tmp,true,rot_ez,false);
+#endif
     }
   }
 
