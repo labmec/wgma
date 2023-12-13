@@ -25,6 +25,7 @@ set(headers
   include/post/solutionnorm.hpp
   include/post/waveguideportbc.hpp
   include/post/waveguidecoupling.hpp
+  include/post/orthowgsol.hpp
   include/materials/twisted_wgma.hpp
   include/materials/acousticmodesbase.hpp
   include/materials/acousticmodesbeta.hpp
@@ -47,6 +48,7 @@ set(sources
   src/post/solutionnorm.cpp
   src/post/waveguideportbc.cpp
   src/post/waveguidecoupling.cpp
+  src/post/orthowgsol.cpp
   src/materials/twisted_wgma.cpp
   src/materials/acousticmodesbase.cpp
   src/materials/acousticmodesbeta.cpp
