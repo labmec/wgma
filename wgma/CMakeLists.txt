@@ -23,7 +23,6 @@ set(headers
   include/post/eldata.hpp
   include/post/integrator.hpp
   include/post/solutionnorm.hpp
-  include/post/orthosol.hpp
   include/post/waveguideportbc.hpp
   include/post/waveguidecoupling.hpp
   include/materials/twisted_wgma.hpp
@@ -46,7 +45,6 @@ set(sources
   src/util.cpp
   src/post/integrator.cpp
   src/post/solutionnorm.cpp
-  src/post/orthosol.cpp
   src/post/waveguideportbc.cpp
   src/post/waveguidecoupling.cpp
   src/materials/twisted_wgma.cpp

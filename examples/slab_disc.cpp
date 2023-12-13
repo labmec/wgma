@@ -14,7 +14,6 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <scattering.hpp>
 #include <util.hpp>
 #include <slepcepshandler.hpp>
-#include <post/orthosol.hpp>
 #include <post/solutionnorm.hpp>
 #include <post/waveguideportbc.hpp>
 #include <post/waveguidecoupling.hpp>

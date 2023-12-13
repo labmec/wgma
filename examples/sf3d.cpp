@@ -14,7 +14,6 @@ and then the subsequent scattering analysis.
 #include <util.hpp>
 #include <precond.hpp>
 #include <slepcepshandler.hpp>
-#include <post/orthosol.hpp>
 #include <post/solutionnorm.hpp>
 // pz includes
 #include <MMeshType.h>      //for MMeshType
