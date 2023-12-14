@@ -93,23 +93,34 @@ namespace wgma::post{
     auto wgdata = dynamic_cast<WgCouplData*>(&eldata);
     if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
       const TPZMaterialDataT<CSTATE> &data = eldata;
-      const auto &sol =  data.sol;
-      const auto nsol = m_adj ? sol.size()/2 : sol.size();
-      const int firstj = m_adj ? nsol : 0;
+
       auto mat = dynamic_cast<const TPZScalarField*>(eldata.GetMaterial());
       TPZFNMatrix<9,CSTATE> ur;
       mat->GetPermeability(data.x, ur);
-      const CSTATE urval = m_use_mu ? 1./ur.Get(1,1) : 1.;
-      const CSTATE cte = urval * weight * fabs(data.detjac);
-      for(auto is = 0; is < nsol; is++){
-        const auto isol = sol[is][0];
-        for(auto js = 0; js < nsol; js++){
-          const auto jsol = sol[firstj+js][0];
-          const CSTATE kval = m_conj ? std::conj(isol) *jsol : isol * jsol;
-          if(m_print_mats){wgdata->m_elmat(is,js)+=kval*cte;}
-          this->m_k_scratch[index](is,js) += cte * kval;
+      ur.Decompose(ELU);
+
+      const int solsize = data.sol.size();
+      const auto nsol = m_adj ? solsize/2 : solsize;
+      const auto detjac = data.detjac;
+      const CSTATE cte = weight*fabs(detjac);
+
+      TPZFNMatrix<3000,CSTATE> et(3,nsol,0.);
+
+      for(auto isol = 0; isol < nsol; isol++){
+        const auto &et_ref = data.sol[isol];
+        et.Put(1,isol,et_ref[0]);
+      }
+      TPZFNMatrix<3000,CSTATE> tmp;
+      tmp = et;
+      ur.Substitution(&tmp);
+      if(m_adj){
+        for(auto isol = 0; isol < nsol; isol++){
+          const auto &et_ref = data.sol[nsol+isol];
+          et.Put(1,isol,std::conj(et_ref[0]));
         }
       }
+      tmp *= cte;
+      this->m_k_scratch[index].AddContribution(0, 0, et, true, tmp, false);
     }else{
       auto Cross = [](const auto mat1, const auto mat2, auto &res){
         auto &m11 = mat1.Get(0,0);
