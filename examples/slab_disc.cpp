@@ -456,66 +456,73 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   
   TPZSimpleTimer analysis("Modal analysis");
   static constexpr bool computeVectors{true};
-  /*we also need the solutions of the adjoint problem*/
+  
 
-  //our solver can either be a EPSHandler or KrylovEigenSolver
-  TPZAutoPointer<TPZLinearEigenSolver<CSTATE>> solver_conj = [&an]()
-    -> TPZLinearEigenSolver<CSTATE>*
-  {
-    auto clone = an.GetSolver().Clone();
-    auto krylov = dynamic_cast<TPZKrylovEigenSolver<CSTATE>*>(clone);
-    if(krylov){return krylov;}
-    else{
-      auto eps = dynamic_cast<wgma::slepc::EPSHandler<CSTATE>*>(clone);
-      if(eps){return eps;}
-    }
-    DebugStop();
-    return nullptr;
-  }();
-
-  //copying the matrix before solving
-  solver_conj->MatrixA() = solver_conj->MatrixA()->Clone();
-  solver_conj->MatrixB() = solver_conj->MatrixB()->Clone();
   an.Solve(computeVectors);
-  /*
-    modify matrices to represent adjoint problem
-   */
-  auto ConjMatrix = [](TPZAutoPointer<TPZMatrix<CSTATE>> mat){
-    auto sparse_mat =
-      TPZAutoPointerDynamicCast<TPZFYsmpMatrix<CSTATE>>(mat);
-    if(!sparse_mat){
-      DebugStop();
-    }
-    int64_t *ia{nullptr}, *ja{nullptr};
-    CSTATE *avec{nullptr};
-    sparse_mat->GetData(ia,ja,avec);
-    const int nrows = sparse_mat->Rows();
-    //number of non-zero entries in the sparse matrix
-    const int last_pos=ia[nrows];
-    for(int i = 0; i < last_pos; i++){
-      *avec++ = std::conj(*avec);
-    }
-  };
+  constexpr bool really_compute_adj{false};
+  //currently we cannot orthogonalise solutions from adj problem
+  if(really_compute_adj){
+    /*we also need the solutions of the adjoint problem*/
 
-  ConjMatrix(solver_conj->MatrixA());
-  ConjMatrix(solver_conj->MatrixB());
-  /*
-    now we need to know:
-    n reduced equations (eq filter)
-    n equations
-    n eigenvalues
-   */
-  const auto nev = solver_conj->NEigenpairs();
-  auto &eqfilt = an.StructMatrix()->EquationFilter();
-  const auto neq = eqfilt.NEqExpand();
-  const auto neqreduced = eqfilt.NActiveEquations();
+    //our solver can either be a EPSHandler or KrylovEigenSolver
+    TPZAutoPointer<TPZLinearEigenSolver<CSTATE>> solver_conj = [&an]()
+      -> TPZLinearEigenSolver<CSTATE>*
+      {
+        auto clone = an.GetSolver().Clone();
+        auto krylov = dynamic_cast<TPZKrylovEigenSolver<CSTATE>*>(clone);
+        if(krylov){return krylov;}
+        else{
+          auto eps = dynamic_cast<wgma::slepc::EPSHandler<CSTATE>*>(clone);
+          if(eps){return eps;}
+        }
+        DebugStop();
+        return nullptr;
+      }();
 
-  sol_conj.Redim(neq,nev);
-  TPZVec<CSTATE> w_conj(nev, 0.);
-  TPZFMatrix<CSTATE> sol_conj_gather(neqreduced,nev);
-  solver_conj->Solve(w_conj, sol_conj_gather);
-  //this is the solution that should be loaded in the computational mesh
-  eqfilt.Scatter(sol_conj_gather,sol_conj);
+    /*
+      modify matrices to represent adjoint problem
+    */
+    auto ConjMatrix = [](TPZAutoPointer<TPZMatrix<CSTATE>> mat){
+      auto sparse_mat =
+        TPZAutoPointerDynamicCast<TPZFYsmpMatrix<CSTATE>>(mat);
+      if(!sparse_mat){
+        DebugStop();
+      }
+      int64_t *ia{nullptr}, *ja{nullptr};
+      CSTATE *avec{nullptr};
+      sparse_mat->GetData(ia,ja,avec);
+      const int nrows = sparse_mat->Rows();
+      //number of non-zero entries in the sparse matrix
+      const int last_pos=ia[nrows];
+      for(int i = 0; i < last_pos; i++){
+        *avec++ = std::conj(*avec);
+      }
+    };
+    //copying the matrices
+    solver_conj->SetMatrixA(solver_conj->MatrixA()->Clone());
+    solver_conj->SetMatrixB(solver_conj->MatrixB()->Clone());
+
+    ConjMatrix(solver_conj->MatrixA());
+    ConjMatrix(solver_conj->MatrixB());
+    /*
+      now we need to know:
+      n reduced equations (eq filter)
+      n equations
+      n eigenvalues
+    */
+    const auto nev = solver_conj->NEigenpairs();
+    auto &eqfilt = an.StructMatrix()->EquationFilter();
+    const auto neq = eqfilt.NEqExpand();
+    const auto neqreduced = eqfilt.NActiveEquations();
+
+    sol_conj.Redim(neq,nev);
+    TPZVec<CSTATE> w_conj(nev, 0.);
+    TPZFMatrix<CSTATE> sol_conj_gather(neqreduced,nev);
+    solver_conj->Solve(w_conj, sol_conj_gather);
+    //this is the solution that should be loaded in the computational mesh
+    eqfilt.Scatter(sol_conj_gather,sol_conj);
+  }
+  
   //load all obtained modes into the mesh
   an.LoadAllSolutions();
 
@@ -536,6 +543,17 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
     TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
     //we update analysis object
     an.SetEigenvectors(mesh_sol);
+  }
+
+  if(!really_compute_adj){
+    sol_conj = an.GetEigenvectors();
+    const int nr = sol_conj.Rows();
+    const int nc = sol_conj.Cols();
+    CSTATE *ptr = sol_conj.Elem();
+    const auto sz = nr*nc;
+    for(int i = 0; i < sz; i++, ptr++){
+      *ptr = std::conj(*ptr);
+    }
   }
     
 }
