@@ -200,6 +200,9 @@ namespace wgma::wganalysis{
 
     [[nodiscard]] const TPZAutoPointer<TPZCompMesh> GetMesh() override{return m_cmesh_mf;}
 
+    [[nodiscard]] const TPZAutoPointer<TPZCompMesh> GetHCurlMesh(){return m_cmesh_hcurl;}
+    [[nodiscard]] const TPZAutoPointer<TPZCompMesh> GetH1Mesh(){return m_cmesh_h1;}
+    
     TPZLinearEigenSolver<CSTATE> & GetSolver(){
       return TPZEigenAnalysis::EigenSolver<CSTATE>();
     }
