@@ -13,6 +13,8 @@ template<class T>
 class TPZVec;
 template<class T>
 class TPZAutoPointer;
+template<class T>
+class TPZFMatrix;
 
 class TPZCompMesh;
 class TPZGeoMesh;
@@ -148,6 +150,21 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
      order to avoid run-time errors.
    */
   void RemovePeriodicity(TPZAutoPointer<TPZCompMesh> cmesh);
+
+  /**
+     @brief Extract solution from the intersection between two meshes
+     The function will iterate over the elements from mesh_orig, find
+     the correspondent elements in mesh_dest and copy the relevant dofs
+     @note The common elements between meshes must have same polynomial order!
+
+
+     @param [in] mesh_dest Mesh for which the solution is being extracted
+     @param [in] mesh_orig Mesh from which the solution is being extracted
+     @param [out] sol_dest Solution vector
+   */
+  void ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh> mesh_dest,
+                          TPZAutoPointer<TPZCompMesh> mesh_orig,
+                          TPZFMatrix<CSTATE> &sol_dest);
 };
 
 #endif /* _CMESHTOOLS_HPP_ */

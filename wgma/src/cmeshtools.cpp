@@ -8,7 +8,7 @@
 #include <TPZBndCond.h>
 #include <pzvec_extras.h>
 #include <TPZSimpleTimer.h>
-
+#include <TPZParallelUtils.h>
 
 
 #include <regex>//for string search
@@ -213,4 +213,47 @@ void cmeshtools::RemovePeriodicity(TPZAutoPointer<TPZCompMesh> cmesh)
   for(auto &con : cmesh->ConnectVec()){
     con.RemoveDepend();
   }
+}
+
+void cmeshtools::ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh> mesh_dest,
+                                    TPZAutoPointer<TPZCompMesh> mesh_orig,
+                                    TPZFMatrix<CSTATE> &sol_dest)
+{
+  sol_dest.Zero();
+  mesh_orig->LoadReferences();
+  const TPZFMatrix<CSTATE> &sol_orig = mesh_orig->Solution();
+  const auto &block_dest = mesh_dest->Block();
+  const auto &block_orig = mesh_orig->Block();
+  const int nel = mesh_dest->NElements();
+  pzutils::ParallelFor(0,nel,[mesh_dest,&block_dest,&block_orig,
+                              &sol_dest,&sol_orig](int iel){
+    auto el_dest = mesh_dest->Element(iel);
+    if(el_dest->Dimension() < mesh_dest->Dimension()){return;}
+    //geometric mesh has orig mesh as reference
+    auto el_orig = el_dest->Reference()->Reference();
+    if(!el_orig){DebugStop();}
+    const auto ncon = el_orig->NConnects();
+    if(ncon != el_dest->NConnects()){
+      DebugStop();
+    }
+    for(auto icon = 0; icon < ncon; icon++){
+      auto &con_orig = el_orig->Connect(icon);
+      auto &con_dest = el_dest->Connect(icon);
+        
+      const int64_t dfseq_dest = con_dest.SequenceNumber();
+      const int64_t pos_dest = block_dest.Position(dfseq_dest);
+
+      const int64_t dfseq_orig = con_orig.SequenceNumber();
+      const int64_t pos_orig = block_orig.Position(dfseq_orig);
+        
+      const int nshape = block_dest.Size(dfseq_dest);
+      if(nshape!= block_orig.Size(dfseq_orig)){
+        DebugStop();
+      }
+      for(int is = 0; is < nshape; is++){
+        sol_dest.Put(pos_dest+is,0,sol_orig.Get(pos_orig+is,0));
+      }
+        
+    }
+  });
 }
