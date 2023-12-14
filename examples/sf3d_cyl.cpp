@@ -353,16 +353,23 @@ ComputeModalAnalysis(
 
 
 #include <TPZKrylovEigenSolver.h>
+#include <TPZMaterialT.h>
 #include <TPZBndCond.h>
 #include <pzstepsolver.h>
 #include <slepcepshandler.hpp>
 #include <precond.hpp>
+#include <materials/solutionprojection.hpp>
 
 void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
                   wgma::wganalysis::Wgma2D& src_an,
                   const TPZVec<CSTATE> &src_coeffs,
                   const SimData &simdata);
 void SetupPrecond(wgma::scattering::Analysis &scatt_an);
+
+void ProjectSolIntoRestrictedMesh(wgma::wganalysis::Wgma2D &src_an,
+                                  TPZAutoPointer<TPZCompMesh> scatt_mesh,
+                                  const SimData &simdata,
+                                  const TPZVec<int> &nmodes);
 
 //utility functions
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
@@ -702,9 +709,22 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
     vtk.Do();
   }
+  
+  //now we solve varying the number of modes used in the wgbc
+  
+  //index of the number of modes to be used to restrict the dofs on waveguide bcs
+  TPZVec<int> nmodes = {0,1,2,5,10,15,20};
+  src_an->LoadAllSolutions();
+  match_an->LoadAllSolutions();
+
+  //as an initial test, one could just simply project the solution and check
+  //the results
+  constexpr bool test_proj{true};
+  if(test_proj){
+    ProjectSolIntoRestrictedMesh(src_an, scatt_mesh_pml, simdata, nmodes);
+  }
 
   //let us just test the creation of the other mesh
-
   auto scatt_mesh_wgbc = CreateScattMesh(false);
   //solve using PML as a reference solution
   {
@@ -713,25 +733,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     auto vtk = TPZVTKGenerator(scatt_mesh_wgbc, fvars, scatt_file, simdata.vtkRes);
     vtk.Do();
   }
-  
-  // //now we solve varying the number of modes used in the wgbc
-  
-  // //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  // TPZVec<int> nmodes = {0,1,2,5,10,15,20,100,300};
-  // src_an.LoadAllSolutions();
-  // match_an.LoadAllSolutions();
-
-  // //as an initial test, one could just simply project the solution and check
-  // //the results
-  // constexpr bool test_proj{false};
-  // if(test_proj){
-  //   ProjectSolIntoRestrictedMesh(src_an, scatt_mesh_pml, simdata, nmodes);
-  // }
-  
-  // auto scatt_mesh_wgbc = CreateScattMesh(false);
-  // const std::string suffix = "wgbc";
-  // const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
-  // auto vtk = TPZVTKGenerator(scatt_mesh_wgbc, fvars, scatt_file, simdata.vtkRes);
 
   // //compute wgbc coefficients
   // WgbcData src_data;
@@ -912,4 +913,143 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
     TPZFMatrix<CSTATE> &curr_sol = scatt_an.Solution();
     sol+=curr_sol;
   }
+}
+
+void ProjectSolIntoRestrictedMesh(wgma::wganalysis::Wgma2D &src_an,
+                                  TPZAutoPointer<TPZCompMesh> scatt_mesh,
+                                  const SimData &simdata,
+                                  const TPZVec<int> &nmodes)
+{
+  std::map<int,STATE> error_proj;
+  //load all solutions
+  src_an.LoadAllSolutions();
+  //2d hcurl mesh
+  auto src_mesh = src_an.GetHCurlMesh();
+  
+  /*
+   */
+  TPZAutoPointer<TPZCompMesh> proj_mesh = src_mesh->Clone();
+  //replace all materials for L2 projection
+  TPZMaterialT<CSTATE> *last_mat{nullptr};
+  for(auto [id,mat] : proj_mesh->MaterialVec()){
+    auto bnd = dynamic_cast<TPZBndCond*>(mat);
+    if(!bnd){
+      auto newmat = new wgma::materials::SolutionProjection<CSTATE>(id,2);
+      delete mat;
+      proj_mesh->MaterialVec()[id]=newmat;
+      last_mat = newmat;
+    }
+  }
+  for(auto [id,mat] : proj_mesh->MaterialVec()){
+    auto bnd = dynamic_cast<TPZBndCond*>(mat);
+    if(bnd){
+      TPZFMatrix<CSTATE> v1;
+      TPZVec<CSTATE> v2;
+      auto newmat = last_mat->CreateBC(last_mat,id,0,v1,v2);
+      delete bnd;
+      proj_mesh->MaterialVec()[id]=dynamic_cast<TPZMaterial*>(newmat);
+    }
+  }
+  TPZAutoPointer<TPZCompMesh> error_mesh = proj_mesh->Clone();
+
+  //setup vtk objects
+  const std::string proj_file = simdata.prefix+"_proj";
+  auto vtk =
+    TPZVTKGenerator(proj_mesh, {"Solution"}, proj_file, simdata.vtkRes);
+  const std::string error_file = simdata.prefix+"_proj_error";
+  auto vtk_error =
+    TPZVTKGenerator(error_mesh, {"Solution"}, error_file, simdata.vtkRes);
+
+  //now we get reference sol
+  TPZFMatrix<CSTATE> sol_pml = proj_mesh->Solution();
+  sol_pml.Redim(sol_pml.Rows(),1);
+  std::cout<<"neqs without restriction: "<<sol_pml.Rows()<<std::endl;
+  wgma::cmeshtools::ExtractSolFromMesh(proj_mesh, scatt_mesh, sol_pml);
+  //just to set size
+  auto sol_proj = sol_pml;
+
+
+  constexpr bool export_mats{false};
+  if(export_mats){
+    auto eqfilt = src_an.StructMatrix()->EquationFilter();
+    auto neqcondense = eqfilt.NActiveEquations();
+    std::string sol2dfilename = simdata.prefix+"_sol.csv";
+    std::ofstream sol2dfile(sol2dfilename);
+    TPZFMatrix<CSTATE> sol2d(neqcondense,1);
+    eqfilt.Gather(sol_proj, sol2d);
+    std::cout<<"sol2d dimensions: "<<sol2d.Rows()<<","<<sol2d.Cols()<<std::endl;
+    sol2d.Print("",sol2dfile,ECSV);
+  }
+  
+  /*
+    dirichlet boundary connects should not be restricted, otherwise
+    this will result in all the equations on the same dependency
+    being removed as well
+   */
+  std::set<int64_t> bound_connects;
+  wgma::cmeshtools::FindDirichletConnects(proj_mesh, bound_connects);
+
+  auto error_an = wgma::scattering::Analysis(error_mesh, simdata.nThreads,
+                                             false,
+                                             simdata.filterBoundEqs,false);
+
+  for(int im = 0; im < nmodes.size(); im++){
+    const int nm = nmodes[im];
+    //restrict dofs in proj mesh
+    if(nm){
+      wgma::cmeshtools::RestrictDofs(proj_mesh, src_mesh, nm, bound_connects);
+      TPZFMatrix<CSTATE> &sol = proj_mesh->Solution();
+      std::cout<<"neqs after restriction: "<<sol.Rows()<<std::endl;
+    }
+    /*The TPZLinearAnalysis class manages the creation of the algebric
+     * problem and the matrix inversion*/
+    auto proj_an = wgma::scattering::Analysis(proj_mesh, simdata.nThreads,
+                                              false,
+                                              simdata.filterBoundEqs,false);
+    std::ofstream cmesh_file{simdata.prefix+"_proj_mesh_"+std::to_string(nm)+".txt"};
+    proj_mesh->Print(cmesh_file);
+    //now we load desired solution into proj_mesh so we can project it
+    {
+      TPZFMatrix<CSTATE> &sol_reference = proj_mesh->Solution();
+      wgma::cmeshtools::ExtractSolFromMesh(proj_mesh, scatt_mesh, sol_reference);
+    }
+        
+    proj_an.Assemble();    
+    if(export_mats){
+      std::ofstream projfile{simdata.prefix+"_proj_mat_"+std::to_string(nm)+".csv"};
+      auto mat = proj_an.GetSolver().Matrix();
+      mat->Print("",projfile,ECSV);
+      projfile.close();
+    }
+    
+    proj_an.Solve();
+
+    
+    //plot
+    vtk.Do();
+    //now we compute the error
+    wgma::cmeshtools::ExtractSolFromMesh(error_mesh, proj_mesh, sol_proj);
+    
+    sol_proj -= sol_pml;
+
+    error_mesh->LoadSolution(sol_proj);
+    vtk_error.Do();
+    auto normsol =
+      wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
+    normsol.SetNThreads(std::thread::hardware_concurrency());
+    const auto norm = std::real(normsol.ComputeNorm()[0]);
+    std::cout<<"nmodes "<<nm<<" error "<<norm<<std::endl;
+    error_proj.insert({nm,norm});
+    if(nm){
+      wgma::cmeshtools::RemovePeriodicity(proj_mesh);
+      proj_mesh->InitializeBlock();
+    }
+  }
+
+  std::cout<<"**********PROJECTION**********"<<std::endl;
+  std::cout<<"nmodes  norm error: "<<std::endl;
+  for(auto [nm,error] : error_proj){
+    std::cout<<nm<<","<<error<<std::endl;
+  }
+  std::cout<<"******************************"<<std::endl;
 }
