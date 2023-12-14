@@ -165,6 +165,24 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
   void ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh> mesh_dest,
                           TPZAutoPointer<TPZCompMesh> mesh_orig,
                           TPZFMatrix<CSTATE> &sol_dest);
+
+  /**
+     @brief Restrict dofs on the boundary of a given mesh as to represent the solutions of another mesh.
+     Typically used in the context of modal expansion techniques, this function can be useful
+     to restrain the dofs in a given boundary to represent the modal analysis result previously
+     performed on this boundary
+     @param [in] scatt_mesh Mesh to be restricted
+     @param [in] modal_mesh Mesh from which the solutions are taken
+     @param [in] nm Number of modes (solutions) taken from modal_mesh
+     @param [in] dirichlet_connects list of dirichlet connects of scatt_mesh
+     @return con_id Index of recently created connect representing the restriction
+     @note Since dirichlet connects cannot be restricted, it is crucial to call
+     FindDirichletConnects before this function
+   */
+  int64_t RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
+                       TPZAutoPointer<TPZCompMesh> modal_mesh,
+                       const int nm,
+                       const std::set<int64_t> &dirichlet_connects);
 };
 
 #endif /* _CMESHTOOLS_HPP_ */

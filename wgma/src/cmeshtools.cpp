@@ -257,3 +257,59 @@ void cmeshtools::ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh> mesh_dest,
     }
   });
 }
+
+int64_t
+cmeshtools::RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
+                         TPZAutoPointer<TPZCompMesh> modal_mesh,
+                         const int nm,
+                         const std::set<int64_t> &dirichlet_connects)
+{
+  //so we can access the dofs
+  TPZFMatrix<CSTATE> &modal_sol = modal_mesh->Solution();
+
+  const int nmodes_total = modal_sol.Cols();
+  if(nm > nmodes_total){
+    std::cout<<"nm "<<nm<<" bigger than n of computed modes: "
+             <<nmodes_total<<std::endl;
+    DebugStop();
+  }
+  
+  std::set<int64_t> dependent_connects;
+  //this "dummy" connect will impose the restriction over the modal domain
+
+  //TPZCompMesh::AllocateNewConnect(int nshape, int nstate, int order)
+  const auto indep_con_id = scatt_mesh->AllocateNewConnect(nm,1,1);
+  auto &indep_con = scatt_mesh->ConnectVec()[indep_con_id];
+  //the geometric mesh will point to the scattering mesh
+  scatt_mesh->LoadReferences();
+
+      
+  const auto &modal_block = modal_mesh->Block();
+  for(auto modal_el : modal_mesh->ElementVec()){
+    //select only volumetric elements, skip boundary els
+    if(modal_el->Dimension() < modal_mesh->Dimension()){continue;}
+    auto scatt_el = modal_el->Reference()->Reference();
+    if(!scatt_el){DebugStop();}
+    const auto ncon = scatt_el->NConnects();
+    if(ncon != modal_el->NConnects()){
+      DebugStop();
+    }
+    for(auto icon = 0; icon < ncon; icon++){
+      auto &scatt_con = scatt_el->Connect(icon);
+      auto &modal_con = modal_el->Connect(icon);
+        
+      const int64_t modal_dfseq = modal_con.SequenceNumber();
+      const int64_t modal_pos = modal_block.Position(modal_dfseq);
+      const int nshape = modal_block.Size(modal_dfseq);
+      const auto dep_con_id = scatt_el->ConnectIndex(icon);
+      if(dependent_connects.count(dep_con_id) == 0 &&
+         dirichlet_connects.count(dep_con_id) == 0 ){
+        dependent_connects.insert(dep_con_id);
+        scatt_con.AddDependency(dep_con_id, indep_con_id, modal_sol, modal_pos, 0, nshape, nm);
+      }
+    }
+  }
+
+  scatt_mesh->InitializeBlock();
+  return indep_con_id;
+}
