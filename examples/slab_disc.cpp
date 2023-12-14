@@ -107,11 +107,6 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
                   const TPZVec<CSTATE> &src_coeffs,
                   const SimData &simdata);
 
-int64_t RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
-                     TPZAutoPointer<TPZCompMesh> match_mesh,
-                     const int nm,
-                     const std::set<int64_t> bound_connects);
-
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WgbcData& src_data,
                           WgbcData& match_data,
@@ -657,53 +652,6 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
 }
 
 
-
-
-#include <TPZParallelUtils.h>
-
-void Extract1DSolFrom2DMesh(TPZAutoPointer<TPZCompMesh> mesh_1d,
-                            TPZAutoPointer<TPZCompMesh> mesh_2d,
-                            TPZFMatrix<CSTATE> &sol_1d)
-{
-  sol_1d.Zero();
-  mesh_2d->LoadReferences();
-  const TPZFMatrix<CSTATE> &sol_2d = mesh_2d->Solution();
-  const auto &block_1d = mesh_1d->Block();
-  const auto &block_2d = mesh_2d->Block();
-  const int nel = mesh_1d->NElements();
-  pzutils::ParallelFor(0,nel,[mesh_1d,&block_1d,&block_2d,
-                              &sol_1d,&sol_2d](int iel){
-    auto el_1d = mesh_1d->Element(iel);
-    if(el_1d->Dimension() < mesh_1d->Dimension()){return;}
-    //geometric mesh has 2d mesh as reference
-    auto el_2d = el_1d->Reference()->Reference();
-    if(!el_2d){DebugStop();}
-    const auto ncon = el_2d->NConnects();
-    if(ncon != el_1d->NConnects()){
-      DebugStop();
-    }
-    for(auto icon = 0; icon < ncon; icon++){
-      auto &con_2d = el_2d->Connect(icon);
-      auto &con_1d = el_1d->Connect(icon);
-        
-      const int64_t dfseq_1d = con_1d.SequenceNumber();
-      const int64_t pos_1d = block_1d.Position(dfseq_1d);
-
-      const int64_t dfseq_2d = con_2d.SequenceNumber();
-      const int64_t pos_2d = block_2d.Position(dfseq_2d);
-        
-      const int nshape = block_1d.Size(dfseq_1d);
-      if(nshape!= block_2d.Size(dfseq_2d)){
-        DebugStop();
-      }
-      for(int is = 0; is < nshape; is++){
-        sol_1d.Put(pos_1d+is,0,sol_2d.Get(pos_2d+is,0));
-      }
-        
-    }
-  });
-}
-
 #include <materials/solutionprojection.hpp>
 #include <TPZNullMaterial.h>
 
@@ -754,7 +702,7 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
   TPZFMatrix<CSTATE> sol_pml = proj_mesh->Solution();
   sol_pml.Redim(sol_pml.Rows(),1);
   std::cout<<"neqs without restriction: "<<sol_pml.Rows()<<std::endl;
-  Extract1DSolFrom2DMesh(proj_mesh, scatt_mesh, sol_pml);
+  wgma::cmeshtools::ExtractSolFromMesh(proj_mesh, scatt_mesh, sol_pml);
   //just to set size
   auto sol_proj = sol_pml;
 
@@ -825,7 +773,7 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
     const int nm = nmodes[im];
     //restrict dofs in proj mesh
     if(nm){
-      RestrictDofs(proj_mesh, src_mesh, nm, bound_connects);
+      wgma::cmeshtools::RestrictDofs(proj_mesh, src_mesh, nm, bound_connects);
       TPZFMatrix<CSTATE> &sol = proj_mesh->Solution();
       std::cout<<"neqs after restriction: "<<sol.Rows()<<std::endl;
     }
@@ -839,7 +787,7 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
     //now we load desired solution into proj_mesh so we can project it
     {
       TPZFMatrix<CSTATE> &sol_reference = proj_mesh->Solution();
-      Extract1DSolFrom2DMesh(proj_mesh, scatt_mesh, sol_reference);
+      wgma::cmeshtools::ExtractSolFromMesh(proj_mesh, scatt_mesh, sol_reference);
     }
         
     proj_an.Assemble();    
@@ -867,7 +815,7 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
     //plot
     vtk.Do();
     //now we compute the error
-    Extract1DSolFrom2DMesh(error_mesh, proj_mesh, sol_proj);
+    wgma::cmeshtools::ExtractSolFromMesh(error_mesh, proj_mesh, sol_proj);
     
     sol_proj -= sol_pml;
 
@@ -1142,7 +1090,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   
   TPZFMatrix<CSTATE> sol_pml = error_mesh->Solution();
   {
-    Extract1DSolFrom2DMesh(error_mesh, scatt_mesh_pml, sol_pml);
+    wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh_pml, sol_pml);
   }
   //just to get the same size, we will zero it later
   auto sol_wgbc = sol_pml;
@@ -1157,7 +1105,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     //plot
     vtk.Do();
     //now we compute the error
-    Extract1DSolFrom2DMesh(error_mesh, scatt_mesh_wgbc, sol_wgbc);
+    wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh_wgbc, sol_wgbc);
     sol_wgbc -= sol_pml;
     error_mesh->LoadSolution(sol_wgbc);
     vtk_error.Do();
@@ -1225,71 +1173,6 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
   }
 }
 
-// #include <pzintel.h>
-int64_t RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
-                     TPZAutoPointer<TPZCompMesh> match_mesh,
-                     const int nm,
-                     const std::set<int64_t> bound_connects)
-{
-  //so we can access the dofs
-  TPZFMatrix<CSTATE> &modal_sol = match_mesh->Solution();
-
-  const int nmodes_total = modal_sol.Cols();
-  if(nm > nmodes_total){
-    std::cout<<"nm "<<nm<<" bigger than n of computed modes: "
-             <<nmodes_total<<std::endl;
-    DebugStop();
-  }
-  
-  std::set<int64_t> dependent_connects;
-  //this "dummy" connect will impose the restriction over the 1D line
-
-  //TPZCompMesh::AllocateNewConnect(int nshape, int nstate, int order)
-  const auto indep_con_id = scatt_mesh->AllocateNewConnect(nm,1,1);
-  auto &indep_con = scatt_mesh->ConnectVec()[indep_con_id];
-  //the geometric mesh will point to the scattering mesh
-  scatt_mesh->LoadReferences();
-
-      
-  const auto &modal_block = match_mesh->Block();
-  for(auto modal_el : match_mesh->ElementVec()){
-    //select only 1d elements, skip boundary els
-    if(modal_el->Dimension() < match_mesh->Dimension()){continue;}
-    auto scatt_el = modal_el->Reference()->Reference();
-    if(!scatt_el){DebugStop();}
-    const auto ncon = scatt_el->NConnects();
-    if(ncon != modal_el->NConnects()){
-      DebugStop();
-    }
-    for(auto icon = 0; icon < ncon; icon++){
-      auto &scatt_con = scatt_el->Connect(icon);
-      auto &modal_con = modal_el->Connect(icon);
-        
-      const int64_t modal_dfseq = modal_con.SequenceNumber();
-      const int64_t modal_pos = modal_block.Position(modal_dfseq);
-      const int nshape = modal_block.Size(modal_dfseq);
-      const auto dep_con_id = scatt_el->ConnectIndex(icon);
-      if(dependent_connects.count(dep_con_id) == 0 &&
-         bound_connects.count(dep_con_id) == 0 ){
-        dependent_connects.insert(dep_con_id);
-        //TPZDepend<TVar> *AddDependency(int64_t myindex, int64_t dependindex,TPZFMatrix<TVar> &depmat,int64_t ipos,int64_t jpos, int isize, int jsize);
-        scatt_con.AddDependency(dep_con_id, indep_con_id, modal_sol, modal_pos, 0, nshape, nm);
-      }
-    }
-  }
-
-  scatt_mesh->InitializeBlock();
-  // for(auto modal_el : match_mesh->ElementVec()){
-  //   //select only 1d elements, skip boundary els
-  //   if(modal_el->Dimension() < match_mesh->Dimension()){continue;}
-  //   auto scatt_el =
-  //     dynamic_cast<TPZInterpolatedElement*>(
-  //       modal_el->Reference()->Reference());
-  //   if(!scatt_el){DebugStop();}
-  //   scatt_el->CheckConstraintConsistency();
-  // }
-  return indep_con_id;
-}
 
 
 void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an, 
@@ -1399,9 +1282,9 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
 
   const int64_t indep_con_id_match =
-    RestrictDofs(scatt_mesh, match_mesh, nmodes, boundConnects);
+    wgma::cmeshtools::RestrictDofs(scatt_mesh, match_mesh, nmodes, boundConnects);
   const int64_t indep_con_id_src =
-    RestrictDofs(scatt_mesh, src_mesh, nmodes, boundConnects);
+    wgma::cmeshtools::RestrictDofs(scatt_mesh, src_mesh, nmodes, boundConnects);
 
   constexpr bool sym{false};
   auto scatt_an = wgma::scattering::Analysis(scatt_mesh, simdata.nThreads,
