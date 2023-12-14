@@ -261,7 +261,7 @@ int main(int argc, char *argv[]) {
 
   std::string modal_left_file{simdata.prefix+"_modal_left"};
   //no need to orthogonalise modes
-  constexpr bool ortho{false};
+  constexpr bool ortho{true};
   TPZFMatrix<CSTATE> sol_l_conj;
   modal_l_an.Assemble();
   constexpr bool export_mats{false};
@@ -447,7 +447,7 @@ SetupSolver(const CSTATE target,const int neigenpairs,
 }
 
 #include <TPZYSMPMatrix.h>
-
+#include <post/orthowgsol.hpp>
 void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
                   TPZFMatrix<CSTATE> &sol_conj,
                   const bool orthogonalise,
@@ -519,26 +519,25 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   //load all obtained modes into the mesh
   an.LoadAllSolutions();
 
-  auto cmesh = an.GetMesh();
-  constexpr bool conj{false};
-  //leave empty for all valid matids
-  std::set<int> matids {};
-  wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,conj,nThreads).Normalise();
-  
-  TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
-  //we update analysis object
-  an.SetEigenvectors(mesh_sol);
   if(orthogonalise){
-    auto ortho = wgma::post::OrthoSol<wgma::post::SingleSpaceIntegrator>(cmesh, matids, conj,nThreads);
-    //orthogonalise the modes
-    auto normsol = ortho.Orthogonalise();
-    //let us set the orthogonalised modes
-    an.SetEigenvectors(normsol);
-    an.LoadAllSolutions();
-  }else{
-    an.LoadAllSolutions();
+    TPZSimpleTimer timer("Ortho",true);
+    constexpr STATE tol{1e-8};
+    const int n_ortho = wgma::post::OrthoWgSol(an,tol);
+    std::cout<<"orthogonalised  "<<n_ortho<<" eigenvectors"<<std::endl;
   }
+  else{
+    //we just normalise
+    auto cmesh = an.GetMesh();
+    constexpr bool conj{false};
+    //leave empty for all valid matids
+    std::set<int> matids {};
+    wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,conj,nThreads).Normalise();
   
+    TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
+    //we update analysis object
+    an.SetEigenvectors(mesh_sol);
+  }
+    
 }
 
 void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,

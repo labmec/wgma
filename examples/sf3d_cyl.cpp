@@ -16,6 +16,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <post/solutionnorm.hpp>
 #include <post/waveguideportbc.hpp>
 #include <post/waveguidecoupling.hpp>
+#include <post/orthowgsol.hpp>
 // pz includes
 #include <MMeshType.h>      //for MMeshType
 #include <TPZSimpleTimer.h> //for TPZSimpleTimer
@@ -450,17 +451,25 @@ void ComputeModes(wgma::wganalysis::Wgma2D &an,
   an.Run(computeVectors);
 
   an.LoadAllSolutions();
-  auto cmesh = an.GetMesh();
-  constexpr bool conj{false};
-  //leave empty for all valid matids
-  std::set<int> matids {};
-  wgma::post::SolutionNorm<wgma::post::MultiphysicsIntegrator>(cmesh,matids,conj,nThreads).Normalise();
+  constexpr bool ortho{true};
+  if(ortho){
+    TPZSimpleTimer timer("Ortho",true);
+    constexpr STATE tol{1e-6};
+    const int n_ortho = wgma::post::OrthoWgSol(an,tol);
+    std::cout<<"orthogonalised  "<<n_ortho<<" eigenvectors"<<std::endl;
+  }else{
+    auto cmesh = an.GetMesh();
+    constexpr bool conj{false};
+    //leave empty for all valid matids
+    std::set<int> matids {};
+    wgma::post::SolutionNorm<wgma::post::MultiphysicsIntegrator>(cmesh,matids,conj,nThreads).Normalise();
 
   
-  TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
-  //we update analysis object
-  an.SetEigenvectors(mesh_sol);
-  an.LoadAllSolutions();
+    TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
+    //we update analysis object
+    an.SetEigenvectors(mesh_sol);
+    an.LoadAllSolutions();
+  }
 }
 void ComputeCouplingMat(wgma::wganalysis::Wgma2D &an,
                         std::string filename)
