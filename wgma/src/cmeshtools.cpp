@@ -302,6 +302,10 @@ cmeshtools::RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
       const int64_t modal_pos = modal_block.Position(modal_dfseq);
       const int nshape = modal_block.Size(modal_dfseq);
       const auto dep_con_id = scatt_el->ConnectIndex(icon);
+      //for lower order els we might not have shape functions
+      //associated with a given connect
+      if(nshape == 0){continue;}
+      
       if(dependent_connects.count(dep_con_id) == 0 &&
          dirichlet_connects.count(dep_con_id) == 0 ){
         dependent_connects.insert(dep_con_id);
