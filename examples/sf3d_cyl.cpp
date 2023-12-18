@@ -934,7 +934,9 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::Wgma2D &src_an,
   for(auto [id,mat] : proj_mesh->MaterialVec()){
     auto bnd = dynamic_cast<TPZBndCond*>(mat);
     if(!bnd){
-      auto newmat = new wgma::materials::SolutionProjection<CSTATE>(id,2);
+      constexpr int dim{2};
+      constexpr int soldim{3};
+      auto newmat = new wgma::materials::SolutionProjection<CSTATE>(id,dim,soldim);
       delete mat;
       proj_mesh->MaterialVec()[id]=newmat;
       last_mat = newmat;
