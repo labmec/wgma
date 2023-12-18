@@ -6,9 +6,9 @@
 using namespace wgma::materials;
 
 template<class TVar>
-SolutionProjection<TVar>::SolutionProjection(int id, int dim) :
+SolutionProjection<TVar>::SolutionProjection(int id, int dim, int soldim) :
   TPZRegisterClassId(&SolutionProjection::ClassId),
-  TBase(id), fDim(dim)
+  TBase(id), fDim(dim), fSolDim(soldim)
 {
 }
 
@@ -47,7 +47,10 @@ void SolutionProjection<TVar>::Contribute(const TPZMaterialDataT<TVar> &data,
   }();
 
   const int sz = data.sol[0].size();
-  if(sz!=nc){
+  if(sz!=nc || sz != fSolDim){
+    PZError<<__PRETTY_FUNCTION__
+           <<"Incompatible dimensions!\n"
+           <<"sz:"<<sz<<" nc: "<<nc<<" sol dim: "<<fSolDim<<std::endl;
     DebugStop();
   }
   TPZFNMatrix<3,TVar> sol(sz,1,0);
@@ -70,8 +73,12 @@ void SolutionProjection<TVar>::GetSolDimensions(uint64_t &u_len,
                                                 uint64_t &du_row,
                                                 uint64_t &du_col) const
 {
-  u_len=1;
-  du_row=3;
+  u_len=fSolDim;
+  if(fSolDim==1){//scalar field
+    du_row=3;
+  }else{//hcurl field
+    du_row = fDim == 1 ? 1 : 2*fDim - 3;
+  }
   du_col=1;
 }
 
@@ -85,9 +92,10 @@ int SolutionProjection<TVar>::VariableIndex(const std::string &name) const{
 
 template<class TVar>
 int SolutionProjection<TVar>::NSolutionVariables(int var) const{
-	if(var == ESolution) return 1;
+	if(var == ESolution) return fSolDim;
   if (var == EDerivative) {
-    return fDim;
+    if(fSolDim==1) return fDim;
+    return fDim == 1 ? 1: 2*fDim - 3;
   }
 	
   return TPZMaterial::NSolutionVariables(var);
@@ -98,7 +106,6 @@ void SolutionProjection<TVar>::Solution(const TPZMaterialDataT<TVar> &data,
                                         int var, TPZVec<TVar> &solOut)
 {
   const auto &sol = data.sol[0];
-  const auto &dsol = data.dsol[0];
 	if (var == ESolution){
     solOut.Resize(sol.size());
     for (int i=0; i<sol.size(); i++) {
@@ -106,10 +113,20 @@ void SolutionProjection<TVar>::Solution(const TPZMaterialDataT<TVar> &data,
     }
 		return;
 	}
-  if (var == EDerivative) {
+  if (var == EDerivative && fSolDim==1) {
+    const auto &dsol = data.dsol[0];
     solOut.Resize(fDim);
     for (int i=0; i<fDim; i++) {
       solOut[i] = dsol.GetVal(i,0)/fScale;
+    }
+    return;
+  }
+  else if (var == EDerivative && fSolDim==3) {
+    const int curldim = fDim == 1 ? 1: 2*fDim - 3;
+    const auto &curlsol = data.curlsol[0];
+    solOut.Resize(curldim);
+    for (int i=0; i<curldim; i++) {
+      solOut[i] = curlsol[i]/fScale;
     }
     return;
   }

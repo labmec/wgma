@@ -24,8 +24,9 @@ namespace wgma::materials{
      * @brief Class constructor 
      * @param id material id
      * @param dim problem dimension
+     * @param soldim dimension of solution (1 for h1, 3 for hcurl)
      */
-    SolutionProjection(int id, int dim);
+    SolutionProjection(int id, int dim, int soldim);
 
     /** 
 	 * \brief Fill the TPZMaterialData parameter.
@@ -49,6 +50,15 @@ namespace wgma::materials{
     {fScale = scale;}
     
     [[nodiscard]] REAL ScaleFactor() const
+    {return fScale;}
+
+    /**
+     * @brief Sets dimension of solution (1 for scalar, 3 for vector)
+     */
+    void SetSolDimension(REAL scale)
+    {fScale = scale;}
+    
+    [[nodiscard]] REAL SolDimension() const
     {return fScale;}
 
     int Dimension() const  override { return this->fDim; }
@@ -86,6 +96,8 @@ namespace wgma::materials{
     int fDim;
     /** @brief Scale factor applied to the stiffness matrix and right hand side */
     REAL fScale{1};
+    /** @brief Dimension of solution*/
+    int fSolDim{-1};
   };
 
 
