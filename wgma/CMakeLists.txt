@@ -1,6 +1,7 @@
 add_library(wgma SHARED "")
 target_compile_features(wgma PUBLIC cxx_std_17)
 
+target_compile_definitions(wgma PUBLIC "$<$<CONFIG:DEBUG>:WGMADEBUG>")
 
 target_include_directories(wgma PUBLIC 
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

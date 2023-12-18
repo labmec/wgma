@@ -97,6 +97,11 @@ namespace wgma::post{
   {
     TPZMaterialDataT<CSTATE> &eldata = data;
     auto intel = dynamic_cast<TPZInterpolationSpace*>(el);
+#ifdef WGMADEBUG
+    if(!intel){
+      DebugStop();
+    }
+#endif
     intel->InitMaterialData(eldata);
     data.SetMaterial(el->Material());
   }
@@ -112,6 +117,11 @@ namespace wgma::post{
   void MultiphysicsIntegrator::InitData(TPZCompEl* el, ElData& data)
   {
     auto mfcel = dynamic_cast<TPZMultiphysicsElement*>(el);
+#ifdef WGMADEBUG
+    if(!mfcel){
+      DebugStop();
+    }
+#endif    
     const int64_t nref = mfcel->NMeshes();
     TPZVec<TPZMaterialDataT<CSTATE>>& datavec = data;
     datavec.resize(nref);
