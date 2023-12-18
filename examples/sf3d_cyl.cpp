@@ -521,6 +521,8 @@ void PostProcessModes(wgma::wganalysis::Wgma2D &an,
       "Et_abs"};
   auto cmesh = an.GetMesh();
   auto vtk = TPZVTKGenerator(cmesh, fvars, file, vtkres);
+  const int nthreads = an.StructMatrix()->GetNumThreads();
+  vtk.SetNThreads(nthreads);
 
   if(sols.size() == 0){
     const auto nsol = an.GetEigenvectors().Cols();
@@ -706,6 +708,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     const std::string suffix = "pml";
     const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
     auto vtk = TPZVTKGenerator(scatt_mesh_pml, fvars, scatt_file, simdata.vtkRes);
+    vtk.SetNThreads(simdata.nThreads);
     SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
     vtk.Do();
   }
@@ -731,6 +734,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     const std::string suffix = "wgbc";
     const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
     auto vtk = TPZVTKGenerator(scatt_mesh_wgbc, fvars, scatt_file, simdata.vtkRes);
+    vtk.SetNThreads(simdata.nThreads);
     vtk.Do();
   }
 
@@ -958,10 +962,11 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::Wgma2D &src_an,
   const std::string proj_file = simdata.prefix+"_proj";
   auto vtk =
     TPZVTKGenerator(proj_mesh, {"Solution"}, proj_file, simdata.vtkRes);
+  vtk.SetNThreads(simdata.nThreads);
   const std::string error_file = simdata.prefix+"_proj_error";
   auto vtk_error =
     TPZVTKGenerator(error_mesh, {"Solution"}, error_file, simdata.vtkRes);
-
+  vtk_error.SetNThreads(simdata.nThreads);
   //now we get reference sol
   TPZFMatrix<CSTATE> sol_pml = proj_mesh->Solution();
   sol_pml.Redim(sol_pml.Rows(),1);
