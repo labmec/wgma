@@ -525,7 +525,7 @@ void PostProcessModes(wgma::wganalysis::Wgma2D &an,
   vtk.SetNThreads(nthreads);
 
   if(sols.size() == 0){
-    const auto nsol = an.GetEigenvectors().Cols();
+    const auto nsol = std::min((int64_t)20,an.GetEigenvectors().Cols());
     for(auto is = 0; is < nsol; is++){
       sols.insert(is);
     }
