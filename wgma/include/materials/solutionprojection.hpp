@@ -40,7 +40,8 @@ namespace wgma::materials{
     std::string Name() const override { return "SolutionProjection"; }
 	
     /** @brief Solution indices of post-processing */
-    enum ESolutionVars { ENone = 0, ESolution = 1 , EDerivative = 2};
+    enum ESolutionVars { ENone = 0, ESolReal = 1 , ESolImag = 2, ESolAbs = 3,
+                         EDerivative = 3};
 	
     /**
      * @brief Set a scale factor for the stiffness matrix and right hand side

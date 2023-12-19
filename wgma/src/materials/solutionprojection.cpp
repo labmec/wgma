@@ -85,14 +85,18 @@ void SolutionProjection<TVar>::GetSolDimensions(uint64_t &u_len,
 
 template<class TVar>
 int SolutionProjection<TVar>::VariableIndex(const std::string &name) const{
-	if(!strcmp("Solution",name.c_str())) return ESolution;
+	if(!strcmp("Solution",name.c_str()) || !strcmp("Solution_real",name.c_str())){
+    return ESolReal;
+  }
+  if(!strcmp("Solution_imag",name.c_str())) {return ESolImag;}
+  if(!strcmp("Solution_abs",name.c_str())) {return ESolAbs;}
   if(!strcmp("Derivative",name.c_str())) return EDerivative;
 	return TPZMaterial::VariableIndex(name);
 }
 
 template<class TVar>
 int SolutionProjection<TVar>::NSolutionVariables(int var) const{
-	if(var == ESolution) return fSolDim;
+	if(var == ESolReal || var == ESolAbs || var == ESolImag) {return fSolDim;}
   if (var == EDerivative) {
     if(fSolDim==1) return fDim;
     return fDim == 1 ? 1: 2*fDim - 3;
@@ -106,10 +110,20 @@ void SolutionProjection<TVar>::Solution(const TPZMaterialDataT<TVar> &data,
                                         int var, TPZVec<TVar> &solOut)
 {
   const auto &sol = data.sol[0];
-	if (var == ESolution){
+	if(var == ESolReal || var == ESolAbs || var == ESolImag){
     solOut.Resize(sol.size());
-    for (int i=0; i<sol.size(); i++) {
-      solOut[i] = sol[i]/fScale;
+    if(var == ESolReal){
+      for (int i=0; i<sol.size(); i++) {
+        solOut[i] = std::real(sol[i])/fScale;
+      }
+    }else if (var == ESolAbs){
+      for (int i=0; i<sol.size(); i++) {
+        solOut[i] = std::abs(sol[i])/fScale;
+      }
+    }else{
+      for (int i=0; i<sol.size(); i++) {
+        solOut[i] = std::imag(sol[i])/fScale;
+      }
     }
 		return;
 	}
@@ -117,7 +131,7 @@ void SolutionProjection<TVar>::Solution(const TPZMaterialDataT<TVar> &data,
     const auto &dsol = data.dsol[0];
     solOut.Resize(fDim);
     for (int i=0; i<fDim; i++) {
-      solOut[i] = dsol.GetVal(i,0)/fScale;
+      solOut[i] = std::real(dsol.GetVal(i,0))/fScale;
     }
     return;
   }
@@ -126,7 +140,7 @@ void SolutionProjection<TVar>::Solution(const TPZMaterialDataT<TVar> &data,
     const auto &curlsol = data.curlsol[0];
     solOut.Resize(curldim);
     for (int i=0; i<curldim; i++) {
-      solOut[i] = curlsol[i]/fScale;
+      solOut[i] = std::real(curlsol[i])/fScale;
     }
     return;
   }
