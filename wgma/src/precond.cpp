@@ -51,10 +51,10 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
     TPZVec<int64_t> allcons(nindep,0);
     
     std::set<std::pair<int64_t,int64_t>> edgeset;
-    for(auto el : gmesh->ElementVec()){
+    for(auto cel : cmesh->ElementVec()){
+      if(!cel){continue;}
+      TPZGeoEl* el = cel->Reference();
       if(el && el->Dimension() == dim){
-        TPZCompEl* cel = el->Reference();
-        if(!cel){continue;}
         //first edge
         const auto fe = el->FirstSide(1);
         //number of edges
@@ -74,11 +74,12 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
             neigh++;
           }
           if(bcedge){ continue;}
-          const auto edgecon = el->Reference()->Connect(ie);
-          if(edgecon.IsCondensed() || edgecon.LagrangeMultiplier()){continue;}
+          const auto &edgecon = el->Reference()->Connect(ie);
+          if( edgecon.IsCondensed() || edgecon.LagrangeMultiplier()){continue;}
           const auto seqnum = edgecon.SequenceNumber();
 #ifdef PZDEBUG
-          if(seqnum<0){
+          if(seqnum<0 || seqnum >= allcons.size()){
+            cel->Print(PZError);
             DebugStop();
           }
 #endif
@@ -107,9 +108,12 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
     const auto nindep = cmesh->NIndependentConnects();
     //we will set to 1 all face connects
     TPZVec<int64_t> allcons(nindep,0);
-    pzutils::ParallelFor(0, nel, [&](int iel){
-      const auto el = gmesh->Element(iel);
-      if(el && el->Reference() && el->Dimension() == dim){
+    const int ncel = cmesh->ElementVec().NElements();
+    pzutils::ParallelFor(0, ncel, [&](int iel){
+      TPZCompEl* cel = cmesh->Element(iel);
+      if(!cel){return;}
+      TPZGeoEl* el = cel->Reference();
+      if(el && el->Dimension() == dim){
         const int ne = el->NSides(1);
         const int nf = el->NSides(2);
         const int ff = el->FirstSide(2);
