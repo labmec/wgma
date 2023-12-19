@@ -11,7 +11,7 @@
 #include <Electromagnetics/TPZAnisoWgma.h>
 #include <Electromagnetics/TPZPeriodicWgma.h>
 #include <Electromagnetics/TPZPlanarWgma.h>
-#include <TPZNullMaterial.h>
+#include <materials/solutionprojection.hpp>
 #include <TPZNullMaterialCS.h>
 #include <TPZSimpleTimer.h>
 #include <pzbuildmultiphysicsmesh.h>
@@ -572,24 +572,26 @@ namespace wgma::wganalysis{
     cmesh->SetDefaultOrder(pOrder);
     cmesh->SetDimModel(dim);
     //number of state variables in the problem
-    constexpr int nState = 1;
+    const int soldim = isH1 ? 1 : 3;
 
 
     TPZMaterialT<CSTATE> * dummyVolMat = nullptr;
     for(auto matid : volmats){
-      auto *dummyMat = new TPZNullMaterial<CSTATE>(matid,dim,nState);
+      auto *dummyMat =
+        new wgma::materials::SolutionProjection<CSTATE>(matid,dim,soldim);
       cmesh->InsertMaterialObject(dummyMat);
       dummyVolMat = dummyMat;
     }
   
     for(auto id : pmlmats){
-      auto *dummyMat = new TPZNullMaterial<CSTATE>(id,dim,nState);
+      auto *dummyMat =
+        new wgma::materials::SolutionProjection<CSTATE>(id,dim,soldim);
         cmesh->InsertMaterialObject(dummyMat);
     }
 
     for(auto [id,matdim] : probevec){
-      static constexpr int nstate{1};
-      auto *mat = new TPZNullMaterial<CSTATE>(id,dim,nstate);
+      auto *mat =
+        new wgma::materials::SolutionProjection<CSTATE>(id,dim,soldim);
       cmesh->InsertMaterialObject(mat);
     }
 
@@ -1211,8 +1213,8 @@ namespace wgma::wganalysis{
     
 
     for(auto [id,matdim] : data.probevec){
-      static constexpr int nstate{1};
-      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      static constexpr int soldim{1};
+      auto *mat = new wgma::materials::SolutionProjection<CSTATE>(id,matdim,soldim);
       cmeshH1->InsertMaterialObject(mat);
       allmats.insert(id);
     }
@@ -1318,8 +1320,9 @@ namespace wgma::wganalysis{
     }
 
     for(auto [id,matdim] : data.probevec){
-      static constexpr int nstate{1};
-      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      static constexpr int soldim{1};
+      auto *mat =
+        new wgma::materials::SolutionProjection<CSTATE>(id,matdim,soldim);
       cmeshH1->InsertMaterialObject(mat);
       allmats.insert(id);
     }
