@@ -86,30 +86,24 @@ namespace wgma::post{
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
 
       auto mat = dynamic_cast<const TPZWgma*>(eldata.GetMaterial());
-      TPZFNMatrix<9,CSTATE> ur,er;
+      TPZFNMatrix<9,CSTATE> ur;
       mat->GetPermeability(datavec[0].x, ur);
-      mat->GetPermittivity(datavec[0].x, er);
       ur.Decompose(ELU);
 
-      const int solsize = datavec[0].sol.size();
-      const auto nsol = m_adj ? solsize/2 : solsize;
-      const int firstj = m_adj ? nsol : 0;
+      const auto nsol = datavec[0].sol.size();
       const auto &axes = datavec[0].axes;
       const auto detjac = datavec[0].detjac;
       const CSTATE cte = weight*fabs(detjac);
 
       TPZFNMatrix<3000,CSTATE> rot_et(3,nsol,0.);
-      TPZFNMatrix<3000,CSTATE> test_func(3,nsol,0.);
 
       TPZFNMatrix<3000,CSTATE> rot_grad_ez(3,nsol,0.);
-      TPZFNMatrix<3000,CSTATE> grad_ez_axes(2,nsol,0.);
+      TPZFNMatrix<2000,CSTATE> grad_ez_axes(2,nsol,0.);
 
       for(auto isol = 0; isol < nsol; isol++){
         const auto &et_ref = datavec[ TPZWgma::HCurlIndex() ].sol[isol];
         rot_et.Put(0,isol,et_ref[1]);
         rot_et.Put(1,isol,-et_ref[0]);
-        test_func.Put(0,isol,std::conj(et_ref[0]));
-        test_func.Put(1,isol,std::conj(et_ref[1]));
         auto &gradez_ref = datavec[ TPZWgma::H1Index() ].dsol[isol];
         grad_ez_axes.Put(0,isol,gradez_ref[0]);
         grad_ez_axes.Put(1,isol,gradez_ref[1]);
@@ -126,44 +120,39 @@ namespace wgma::post{
 
       TPZFNMatrix<3000,CSTATE> tmp;
 
+      TPZFNMatrix<3000,CSTATE> test_func(3,nsol,0.);
+      
       
       {
-        CSTATE *ptr = rot_et.Elem();
+        const CSTATE *ptr_rot_et = rot_et.Elem();
+        CSTATE *ptr_test_func = test_func.Elem();
         for(int j = 0; j < nsol; j++){
-          const auto jbeta = 1i*m_beta[j];
           for(int i = 0; i < 3; i++){
-            *ptr++ *= jbeta;
+            *ptr_test_func++ = std::conj(*ptr_rot_et++);
           }
         }
       }
-      //Btt term
-      tmp = rot_et;
+      
+      tmp = rot_grad_ez;
+      tmp *= sign;
+      tmp += rot_et;
       ur.Substitution(&tmp);
       this->m_k_scratch[index].AddContribution(0, 0, test_func, true, tmp, false,cte);
-      //Atz term
-      tmp = rot_grad_ez;
-      ur.Substitution(&tmp);
-      this->m_k_scratch[index].AddContribution(0,0,test_func,true,tmp,false,cte);
       //src term
       if(is_src){
-        //we multiply rot_et by -2i
-        {
-          CSTATE *ptr = rot_et.Elem();
-          for(int j = 0; j < nsol; j++){
-            for(int i = 0; i < 3; i++){
-              *ptr++ *= -2i;
-            }
-          }
-        }
         //compute solution
         TPZFNMatrix<3,CSTATE> sol_mat(3,1,0.);
         for(auto is = 0; is < nsol; is++){
           const auto coeff = m_coeff[is];
+          //only ZERO
+          if(coeff == 0.){continue;}
           for(auto x = 0; x < 3; x++){
-            sol_mat.Put(x,0,rot_et.Get(x,is)*coeff);
+            const auto val = sol_mat.Get(x,0);
+            sol_mat.Put(x,0,val + rot_et.Get(x,is)*coeff);
           }
+          ur.Substitution(&sol_mat);
           TPZFMatrix<CSTATE> fmat(nsol,1,this->m_f_scratch[index].begin(),nsol);
-          fmat.AddContribution(0, 0, test_func, true, sol_mat, false, cte);
+          fmat.AddContribution(0, 0, test_func, true, sol_mat, false, cte*2.0);
         }
       }
     }
