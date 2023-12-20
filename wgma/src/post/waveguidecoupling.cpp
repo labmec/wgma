@@ -153,7 +153,7 @@ namespace wgma::post{
 
       
 #ifdef CHECK_ORTH
-      TPZFNMatrix<3000,CSTATE> rot_ez(3,nsol,0.);
+      TPZFNMatrix<3000,CSTATE> ez(3,nsol,0.);
 #endif
       TPZFNMatrix<3000,CSTATE> rot_grad_ez(3,nsol,0.);
       TPZFNMatrix<3000,CSTATE> grad_ez_axes(2,nsol,0.);
@@ -164,7 +164,7 @@ namespace wgma::post{
         rot_et.Put(1,isol,-et_ref[0]);
 #ifdef CHECK_ORTH
         const auto &ez_ref = datavec[ TPZWgma::H1Index() ].sol[isol];
-        rot_ez.Put(2,isol,ez_ref[0]);
+        ez.Put(2,isol,ez_ref[0]);
 #endif
         auto &gradez_ref = datavec[ TPZWgma::H1Index() ].dsol[isol];
         grad_ez_axes.Put(0,isol,gradez_ref[0]);
@@ -186,9 +186,12 @@ namespace wgma::post{
       tmp = rot_et;
       ur.Substitution(&tmp);
       tmp *= cte;
-      this->m_k_scratch[index].AddContribution(0, 0, tmp, true, rot_et, false);
+      this->m_k_scratch[index].AddContribution(0, 0, rot_et, true, tmp, false);
       //Atz term
-      this->m_k_scratch[index].AddContribution(0,0,tmp,true,rot_grad_ez,false);
+      tmp = rot_grad_ez;
+      ur.Substitution(&tmp);
+      tmp *= cte;
+      this->m_k_scratch[index].AddContribution(0, 0, rot_et, true, tmp, false);
 
 
 #ifdef CHECK_ORTH
