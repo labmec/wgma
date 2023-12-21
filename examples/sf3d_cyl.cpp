@@ -478,7 +478,7 @@ void ComputeModes(wgma::wganalysis::Wgma2D &an,
   constexpr bool ortho{true};
   if(ortho){
     TPZSimpleTimer timer("Ortho",true);
-    constexpr STATE tol{1e-6};
+    constexpr STATE tol{1e-9};
     const int n_ortho = wgma::post::OrthoWgSol(an,tol);
     std::cout<<"orthogonalised  "<<n_ortho<<" eigenvectors"<<std::endl;
   }else{
