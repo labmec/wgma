@@ -759,8 +759,16 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   WgbcData match_data;
   match_data.cmesh = match_an->GetHCurlMesh();
   ComputeWgbcCoeffs(*match_an, match_data.wgbc_k, match_data.wgbc_f,true, {});
-    
-    
+
+  constexpr bool print_wgbc_mats{false};
+  if(print_wgbc_mats){
+    std::ofstream matfile{simdata.prefix+"_wgbc_k.csv"};
+    src_data.wgbc_k.Print("",matfile,ECSV);
+    const int nsol = src_data.wgbc_f.size();
+    TPZFMatrix<CSTATE> wgbc_f(nsol,1,src_data.wgbc_f.begin(),nsol);
+    std::ofstream vecfile{simdata.prefix+"_wgbc_f.csv"};
+    wgbc_f.Print("",vecfile,ECSV);
+  }
   //here we will store the error between pml approx and wgbc approx
   /*
   TPZAutoPointer<TPZCompMesh> error_mesh = [gmesh,&gmshmats, &simdata](){
