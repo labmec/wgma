@@ -149,8 +149,8 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   bool usingSLEPC {true};
-  constexpr int nEigenpairs_left{50};
-  constexpr int nEigenpairs_right{50};
+  constexpr int nEigenpairs_left{10};//0};
+  constexpr int nEigenpairs_right{10};//0};
   //if we put the exact target PETSc will complain about zero pivot in LU factor
   const CSTATE target{-1.0000001*simdata.ncore*simdata.ncore};
 
@@ -733,7 +733,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   //now we solve varying the number of modes used in the wgbc
   
   //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  TPZVec<int> nmodes = {0,1,2,5,10,15,20};
+  TPZVec<int> nmodes = {0,1,2,5};//,10,15,20};
   src_an->LoadAllSolutions();
   match_an->LoadAllSolutions();
 
@@ -846,7 +846,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
 
 void SetupPrecond(wgma::scattering::Analysis &scatt_an) {
   TPZSimpleTimer solve("SetupPrecond", true);
-  constexpr REAL tol = 5e-8;
+  constexpr REAL tol = 5e-3;
       
   auto &solver = dynamic_cast<TPZStepSolver<CSTATE>&>(scatt_an.GetSolver());
 
@@ -922,7 +922,10 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
     wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
     if(first_assemble){
       first_assemble = false;
-      scatt_an.Assemble();
+      {
+        TPZSimpleTimer timer("Assemble",true);
+        scatt_an.Assemble();
+      }
       SetupPrecond(scatt_an);
     }else{
       scatt_an.AssembleRhs(src.id);
