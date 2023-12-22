@@ -27,7 +27,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <regex>//for string search
 #include <thread>
 
-
+#define ONLY_WGBC
 //!minimum shared sim data
 struct SimData{
   //!.msh mesh
@@ -717,8 +717,12 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     "Field_real",
     "Field_imag",
     "Field_abs"};
-
-  
+//index of the number of modes to be used to restrict the dofs on waveguide bcs
+  TPZVec<int> nmodes = {0,1,2,5};//,10,15,20};
+  //now we solve varying the number of modes used in the wgbc
+  src_an->LoadAllSolutions();
+  match_an->LoadAllSolutions();
+#ifndef ONLY_WGBC  
   auto scatt_mesh_pml = CreateScattMesh(true);
   //solve using PML as a reference solution
   {
@@ -729,13 +733,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
     vtk.Do();
   }
-  
-  //now we solve varying the number of modes used in the wgbc
-  
-  //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  TPZVec<int> nmodes = {0,1,2,5};//,10,15,20};
-  src_an->LoadAllSolutions();
-  match_an->LoadAllSolutions();
 
   //as an initial test, one could just simply project the solution and check
   //the results
@@ -743,7 +740,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   if(test_proj){
     ProjectSolIntoRestrictedMesh(src_an, scatt_mesh_pml, simdata, nmodes);
   }
-
+#endif
   //let us just test the creation of the other mesh
   auto scatt_mesh_wgbc = CreateScattMesh(false);
   const std::string suffix = "wgbc";
@@ -807,7 +804,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   }();
   */
   TPZAutoPointer<TPZCompMesh> error_mesh = src_an->GetHCurlMesh();
-  
+
+#ifndef ONLY_WGBC
   TPZFMatrix<CSTATE> sol_pml = error_mesh->Solution();
   {
     wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh_pml, sol_pml);
@@ -821,6 +819,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     "Solution_imag"};
   auto vtk_error = TPZVTKGenerator(error_mesh, fvars_2d, error_file, simdata.vtkRes);
   std::map<int,STATE> error_res;
+#endif
   for(int im = 0; im < nmodes.size(); im++){
     const int nm = nmodes[im];
     if(!nm){continue;}
@@ -828,6 +827,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
                          src_coeffs, nm, simdata);
     //plot
     vtk.Do();
+#ifndef ONLY_WGBC
     //now we compute the error
     wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh_wgbc, sol_wgbc);
     sol_wgbc -= sol_pml;
@@ -839,17 +839,19 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     const auto norm = std::real(normsol.ComputeNorm()[0]);
     std::cout<<"nmodes "<<nm<<" error "<<norm<<std::endl;
     error_res.insert({nm,norm});
-      
+#endif
     //removing restrictions
     wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wgbc);
     scatt_mesh_wgbc->ComputeNodElCon();
     scatt_mesh_wgbc->CleanUpUnconnectedNodes();
   }
+#ifndef ONLY_WGBC
   std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
   for(auto [nm,error] : error_res){
     std::cout<<"nmodes "<<nm<<" norm error: "<<error<<std::endl;
   }
   std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
+#endif
 }
 
 void SetupPrecond(wgma::scattering::Analysis &scatt_an) {
