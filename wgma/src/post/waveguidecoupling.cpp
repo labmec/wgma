@@ -122,25 +122,17 @@ namespace wgma::post{
       tmp *= cte;
       this->m_k_scratch[index].AddContribution(0, 0, et, true, tmp, false);
     }else{
-      auto Cross = [](const auto mat1, const auto mat2, auto &res){
-        auto &m11 = mat1.Get(0,0);
-        auto &m12 = mat1.Get(1,0);
-        auto &m13 = mat1.Get(2,0);
-        auto &m21 = mat2.Get(0,0);
-        auto &m22 = mat2.Get(1,0);
-        auto &m23 = mat2.Get(2,0);
-        res.Put(0,0,m12*m23-m13*m22);
-        res.Put(1,0,m13*m21-m11*m23);
-        res.Put(2,0,m11*m22-m12*m21);
-      };
       //we expect a TPZWgma material
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
 
       auto mat = dynamic_cast<const TPZWgma*>(eldata.GetMaterial());
-      TPZFNMatrix<9,CSTATE> ur,er;
+      TPZFNMatrix<9,CSTATE> ur;
       mat->GetPermeability(datavec[0].x, ur);
-      mat->GetPermittivity(datavec[0].x, er);
       ur.Decompose(ELU);
+#ifdef CHECK_ORTH
+      TPZFNMatrix<9,CSTATE> er;
+      mat->GetPermittivity(datavec[0].x, er);
+#endif
 
       const int solsize = datavec[0].sol.size();
       const auto nsol = m_adj ? solsize/2 : solsize;
@@ -184,11 +176,7 @@ namespace wgma::post{
 
       //Btt term
       tmp = rot_et;
-      ur.Substitution(&tmp);
-      tmp *= cte;
-      this->m_k_scratch[index].AddContribution(0, 0, rot_et, true, tmp, false);
-      //Atz term
-      tmp = rot_grad_ez;
+      tmp += rot_grad_ez;
       ur.Substitution(&tmp);
       tmp *= cte;
       this->m_k_scratch[index].AddContribution(0, 0, rot_et, true, tmp, false);
@@ -203,9 +191,12 @@ namespace wgma::post{
       //Azz term
       this->m_k_scratch[index].AddContribution(0,0,tmp,true,rot_grad_ez,false);
       //Czz term
-      er.Multiply(rot_ez,tmp);
-      tmp *= -cte;
-      this->m_k_scratch[index].AddContribution(0,0,tmp,true,rot_ez,false);
+      er.Multiply(ez,tmp);
+      const auto wl = mat->GetWavelength();
+      const auto sc = mat->GetScaleFactor();
+      const auto k0 = sc*2*M_PI/wl;
+      tmp *= -k0*k0*cte;
+      this->m_k_scratch[index].AddContribution(0,0,tmp,true,ez,false);
 #endif
     }
   }
