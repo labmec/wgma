@@ -712,7 +712,8 @@ namespace wgma::scattering{
                     int pOrder,
                     wgma::cmeshtools::PhysicalData &data,
                     const std::set<int> src_id_set,
-                    const STATE lambda, const REAL scale)
+                    const STATE lambda, const REAL scale,
+                    bool verbose)
   {
     static constexpr bool isComplex{true};
     static constexpr int dim{3};
@@ -735,9 +736,13 @@ namespace wgma::scattering{
 
     {
       TPZSimpleTimer t("Matdata");
+      if(verbose){std::cout<<"materials:"<<std::endl;}
     for(auto [id,er,ur] : data.matinfovec){
       auto *mat =  new TPZScattering(id,er,ur,lambda,scale);
       scatt_cmesh->InsertMaterialObject(mat);
+      if(verbose){
+        std::cout<<"\tid "<<id<<" er "<<er<<" ur "<<ur<<std::endl;
+      }
       //for pml
       realvolmats.insert(id);
     }
@@ -747,6 +752,7 @@ namespace wgma::scattering{
 
     {
       TPZSimpleTimer t("PML");
+      if(verbose){std::cout<<"PMLs:"<<std::endl;}
       for(auto pml : data.pmlvec){
         //skip PMLs of other dimensions
         if(pml->dim != scatt_cmesh->Dimension()){continue;}
@@ -755,9 +761,26 @@ namespace wgma::scattering{
         if(cart_pml){
           cart_pml->neigh =
             cmeshtools::AddRectangularPMLRegion<TPZScattering>(*cart_pml, realvolmats, gmesh, scatt_cmesh);
+          if(verbose){
+            std::cout<<"\tid:";
+            for(auto [id,neigh]: pml->neigh){std::cout<<' '<<id<<"("<<neigh<<") ";}
+            std::cout<<"type  "<<wgma::pml::cart::to_string(cart_pml->t)
+                     <<" ax "<<cart_pml->alphax
+                     <<" ay "<<cart_pml->alphay
+                     <<" az "<<cart_pml->alphaz
+                     <<std::endl;
+          }
         }else if (cyl_pml){
           cyl_pml->neigh =
             cmeshtools::AddCylindricalPMLRegion<TPZScattering>(*cyl_pml, realvolmats, gmesh, scatt_cmesh);
+          if(verbose){
+            std::cout<<"\tid(neigh):";
+            for(auto [id,neigh]: pml->neigh){std::cout<<' '<<id<<"("<<neigh<<") ";}
+            std::cout<<"type  "<<wgma::pml::cyl::to_string(cyl_pml->t)
+                     <<" ar "<<cyl_pml->alphar
+                     <<" az "<<cyl_pml->alphaz
+                     <<std::endl;
+          }
         }else{
           DebugStop();
         }
@@ -768,12 +791,16 @@ namespace wgma::scattering{
     }
 
     allmats = volmats;
-    
+
+    if(verbose){std::cout<<"PROBES:"<<std::endl;}
     for(auto [id,matdim] : data.probevec){
       static constexpr int nstate{1};
       auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
       scatt_cmesh->InsertMaterialObject(mat);
       allmats.insert(id);
+      if(verbose){
+        std::cout<<"\t id "<<id<<" dim "<<matdim<<std::endl;
+      }
     }
 
     }
@@ -784,6 +811,7 @@ namespace wgma::scattering{
        this is important for the source boundary*/
     {
       TPZSimpleTimer tscatt("find bc neigh");
+      if(verbose){std::cout<<"BC:"<<std::endl;}
       for(auto &bc : data.bcvec){
         auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, volmats);
         if(!res.has_value()){
@@ -798,6 +826,10 @@ namespace wgma::scattering{
           dynamic_cast<TPZMaterialT<CSTATE>*> (scatt_cmesh->FindMaterial(volmatid));
         auto *bcmat = volmat->CreateBC(volmat, id, bctype, val1, val2);
         scatt_cmesh->InsertMaterialObject(bcmat);
+        if(verbose){
+          std::cout<<"\tid "<<id<<" bctype "<<wgma::bc::to_string(bc.t)
+                   <<" neigh "<<volmatid<<std::endl;
+        }
         allmats.insert(id);
       }
 
@@ -816,6 +848,7 @@ namespace wgma::scattering{
     std::set<int> src_mats, src_pml_mats;
     //we insert all the materials in the computational mesh
     {
+      if(verbose){std::cout<<"SOURCES:"<<std::endl;}
       TPZSimpleTimer tscatt("SrcMats");
       for(auto src_id : src_id_set){
         bool found_this_src = false;
@@ -835,6 +868,9 @@ namespace wgma::scattering{
           if(id == src_neigh){
             auto srcMat = new TPZScatteringSrc(src_id,er,ur,lambda,scale);
             scatt_cmesh->InsertMaterialObject(srcMat);
+            if(verbose){
+              std::cout<<"\tid : "<<src_id<<" neigh "<<src_neigh<<std::endl;
+            }
             found_this_src = true;
             src_mats.insert(src_id);
             break;
@@ -845,6 +881,9 @@ namespace wgma::scattering{
           for(auto &pml : data.pmlvec){
             if(pml->dim == scatt_cmesh->Dimension()){continue;}
             if (pml->ids.count(src_id)){
+              if(verbose){
+                std::cout<<"\tid : "<<src_id<<" neigh "<<*pml->ids.begin()<<std::endl;
+              }
               auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
               auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
               if(cart_pml){

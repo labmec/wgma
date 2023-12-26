@@ -158,7 +158,8 @@ Usually the source will be the result of a previously computed modal analysis.
                     int pOrder,
                     cmeshtools::PhysicalData &data,
                     const std::set<int> source_ids,
-                    const STATE lambda, const REAL scale);
+                    const STATE lambda, const REAL scale,
+                    const bool verbose=false);
 
   /**
      @brief Set the propagation constant value for the source of the scattering analysis.
