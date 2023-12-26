@@ -127,20 +127,28 @@ namespace wgma::post{
 
       TPZFNMatrix<3000,CSTATE> test_func(3,nsol,0.);
       
-      
+      /*
+        the test functions correspond to the tangential field component
+        in the bc, however, we always have 1i*beta*et
+        so we perform this multiplication now, just to avoid
+        yet another loop
+       */
       {
-        const CSTATE *ptr_rot_et = rot_et.Elem();
+        CSTATE *ptr_rot_et = rot_et.Elem();
         CSTATE *ptr_test_func = test_func.Elem();
-        for(int j = 0; j < nsol; j++){
-          for(int i = 0; i < 3; i++){
-            *ptr_test_func++ = std::conj(*ptr_rot_et++);
+        const auto nelem = 3*nsol;
+        for(int isol = 0; isol < nsol; isol++){
+          const auto beta = m_beta[isol];
+          for(int irow = 0; irow < 3; irow++){
+            *ptr_test_func++ = std::conj(*ptr_rot_et);
+            *ptr_rot_et++ *= 1i*beta;
           }
         }
       }
 
-      tmp = rot_et;
+      tmp = rot_grad_ez;
       tmp *= sign;
-      tmp += rot_grad_ez;
+      tmp += rot_et;
       ur.Substitution(&tmp);
       this->m_k_scratch[index].AddContribution(0, 0, test_func, true, tmp, false,cte);
       //src term
@@ -149,12 +157,14 @@ namespace wgma::post{
         TPZFNMatrix<3,CSTATE> sol_mat(3,1,0.);
         for(auto is = 0; is < nsol; is++){
           const auto coeff = m_coeff[is];
+          const auto z = datavec[0].x[2];
           //only ZERO
           if(coeff == 0.){continue;}
+          const auto beta = m_beta[is];
           for(auto x = 0; x < 3; x++){
             const auto val = sol_mat.Get(x,0);
-            const auto src = sign*rot_et.Get(x,is)+rot_grad_ez.Get(x,is);
-            sol_mat.Put(x,0,val + src*coeff);
+            const auto src = rot_et.Get(x,is)+sign*rot_grad_ez.Get(x,is);
+            sol_mat.Put(x, 0, val + src*coeff*std::exp(sign*1i*beta*z));
           }
         }
         ur.Substitution(&sol_mat);
