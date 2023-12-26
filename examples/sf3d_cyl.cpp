@@ -173,13 +173,15 @@ int main(int argc, char *argv[]) {
                                               gmshmats,
                                               verbosity_lvl);
 
+  constexpr bool cyl3d{true};
+  if(cyl3d){
   /**
      in order to exactly represent all the circles in the mesh,
      the python script that generated the mesh also generated this .csv file
     **/
     auto cyldata = SetUpCylData(simdata.cylfile, simdata.scale);
     wgma::gmeshtools::SetExactCylinderRepresentation(gmesh, cyldata);
-    
+  }
   // print wgma_gmesh to .txt and .vtk format
   if (simdata.printGmesh) {
     // prefix for the wgma_gmesh files
@@ -375,7 +377,6 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::Wgma2D &src_an,
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WgbcData& src_data,
                           WgbcData& match_data,
-                          const TPZVec<CSTATE> &source_coeffs,
                           const int nmodes,
                           const SimData &simdata);
 
@@ -513,7 +514,7 @@ void ComputeCouplingMat(wgma::wganalysis::Wgma2D &an,
   const int nsol = an_beta.size();
   TPZVec<CSTATE> betavec(nsol,0);
   for(int i = 0; i < nsol; i++){
-    betavec[i] = -sqrt(an_beta[i]);
+    betavec[i] = sqrt(-an_beta[i]);
   }
   integrator.SetBeta(betavec);
   
@@ -823,8 +824,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   for(int im = 0; im < nmodes.size(); im++){
     const int nm = nmodes[im];
     if(!nm){continue;}
-    RestrictDofsAndSolve(scatt_mesh_wgbc, src_data, match_data,
-                         src_coeffs, nm, simdata);
+    RestrictDofsAndSolve(scatt_mesh_wgbc, src_data, match_data, nm, simdata);
     //plot
     vtk.Do();
 #ifndef ONLY_WGBC
@@ -1092,7 +1092,6 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::Wgma2D &src_an,
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WgbcData& src_data,
                           WgbcData& match_data,
-                          const TPZVec<CSTATE> &source_coeffs,
                           const int nmodes,
                           const SimData &simdata)
 {
@@ -1164,14 +1163,10 @@ void ComputeWgbcCoeffs(wgma::wganalysis::Wgma2D& an,
                        TPZFMatrix<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
                        const bool positive_z, const TPZVec<CSTATE> &coeff){
   auto mesh = an.GetMesh();
-
-  TPZFMatrix<CSTATE>& sol_orig = mesh->Solution();
-  const int neq = sol_orig.Rows();
-  const int nsol = sol_orig.Cols();
   
   wgma::post::WaveguidePortBC<wgma::post::MultiphysicsIntegrator> wgbc(mesh);
   TPZManVector<CSTATE,1000> betavec = an.GetEigenvalues();
-  for(auto &b : betavec){b = std::sqrt(b);}
+  for(auto &b : betavec){b = std::sqrt(-b);}
   wgbc.SetPositiveZ(positive_z);
   wgbc.SetAdjoint(false);
   if(coeff.size()){
