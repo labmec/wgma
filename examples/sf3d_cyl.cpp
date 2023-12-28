@@ -375,7 +375,8 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
                   wgma::wganalysis::Wgma2D& src_an,
                   const TPZVec<CSTATE> &src_coeffs,
                   const SimData &simdata);
-void SetupPrecond(wgma::scattering::Analysis &scatt_an);
+void SetupPrecond(wgma::scattering::Analysis &scatt_an,
+                  const std::set<int64_t> &indep_cons);
 
 void ProjectSolIntoRestrictedMesh(wgma::wganalysis::Wgma2D &src_an,
                                   TPZAutoPointer<TPZCompMesh> scatt_mesh,
@@ -901,9 +902,10 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
 #endif
 }
 
-void SetupPrecond(wgma::scattering::Analysis &scatt_an) {
+void SetupPrecond(wgma::scattering::Analysis &scatt_an,
+                  const std::set<int64_t> &indep_cons) {
   TPZSimpleTimer solve("SetupPrecond", true);
-  constexpr REAL tol = 5e-3;
+  constexpr REAL tol = 5e-8;
       
   auto &solver = dynamic_cast<TPZStepSolver<CSTATE>&>(scatt_an.GetSolver());
 
@@ -924,7 +926,8 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an) {
     }
     
     TPZVec<int64_t> eqgraph, eqgraphindex;
-    wgma::precond::CreateZaglBlocks(scatt_cmesh,bnd_ids, eqfilt, eqgraph,eqgraphindex);
+    wgma::precond::CreateZaglBlocks(scatt_cmesh,bnd_ids, eqfilt, eqgraph,eqgraphindex,
+                                    indep_cons);
 
     TPZVec<int> colors(eqgraphindex.size()-1,0);
     auto mat = scatt_an.GetSolver().Matrix();
@@ -983,7 +986,7 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
         TPZSimpleTimer timer("Assemble",true);
         scatt_an.Assemble();
       }
-      SetupPrecond(scatt_an);
+      SetupPrecond(scatt_an, {});
     }else{
       scatt_an.AssembleRhs(src.id);
     }
@@ -1186,7 +1189,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                                  nmodes, src_data.wgbc_k, src_data.wgbc_f);
   }
 
-  constexpr bool direct{true};
+  constexpr bool direct{false};
   if(direct){
     //get pardiso control
     auto *pardiso = scatt_an.GetSolver().GetPardisoControl();
@@ -1198,7 +1201,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   }
   else{
     TPZSimpleTimer tscatt("SetupPrecond",true);
-    SetupPrecond(scatt_an);
+    SetupPrecond(scatt_an, {indep_con_id_src, indep_con_id_match});
   }
   TPZSimpleTimer tscatt("Solve",true);
   std::cout<<"Solving...";
