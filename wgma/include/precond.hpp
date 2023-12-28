@@ -16,12 +16,14 @@ namespace wgma::precond{
      @brief This function will create blocks based on Zaglmayr's approach,
      defining one block with the lowest order edge functions (which is solved directly)
      and blocks for (high order) edges and faces
+     @note Independent connects (due to space restriction) must be given as the last param
   */
   void CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
                         const std::set<int> dirichlet_mats,
                         const TPZEquationFilter &eqfilt,
                         TPZVec<int64_t> &eqgraph,
-                        TPZVec<int64_t> &eqgraphindex
+                        TPZVec<int64_t> &eqgraphindex,
+                        const std::set<int64_t> &indep_cons = {}
                         );
   /**
      @brief This function will create AFW blocks for preconditioning a matrix created

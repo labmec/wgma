@@ -15,7 +15,8 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
                                      const std::set<int> dirichlet_mats,
                                      const TPZEquationFilter &eqfilt,
                                      TPZVec<int64_t> &eqgraph,
-                                     TPZVec<int64_t> &eqgraphindex
+                                     TPZVec<int64_t> &eqgraphindex,
+                                     const std::set<int64_t> &indep_cons
                                      )
 {
   /*
@@ -75,7 +76,8 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
           }
           if(bcedge){ continue;}
           const auto &edgecon = el->Reference()->Connect(ie);
-          if( edgecon.IsCondensed() || edgecon.LagrangeMultiplier()){continue;}
+          if( edgecon.IsCondensed() || edgecon.LagrangeMultiplier()
+              || edgecon.HasDependency()){continue;}
           const auto seqnum = edgecon.SequenceNumber();
 #ifdef PZDEBUG
           if(seqnum<0 || seqnum >= allcons.size()){
@@ -123,7 +125,8 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
           auto neigh = gelside.Neighbour();
           bool bcface{false};
           const auto facecon = el->Reference()->Connect(itf+ne);
-          if(facecon.IsCondensed() || facecon.LagrangeMultiplier()){continue;}
+          if(facecon.IsCondensed() || facecon.LagrangeMultiplier()
+             || facecon.HasDependency()){continue;}
           const auto seqnum = facecon.SequenceNumber();
           while(neigh!=gelside){
             if(neigh.Element() && neigh.Element()->Dimension() < dim &&
@@ -181,15 +184,49 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
 
   const int nbl = blcount;
   eqgraphindex.Resize(nbl+1);
+  //now we take into account the independent connects eqs
+  for(auto con : indep_cons){
+    const auto seq = cmesh->ConnectVec()[con].SequenceNumber();
+    const auto sz = cmesh->Block().Size(seq);
+    eqcount+=sz;
+  }
   eqgraph.Resize(eqcount);
 
   blcount = 0;
   eqcount = 0;
   eqgraphindex[0] = 0;
+
+  int64_t first_indep=-1;
+  if(indep_cons.begin()!=indep_cons.end()){
+    //we store the index of the first indep connect
+    first_indep = *indep_cons.begin();
+    //we add the equations of the first indep connect (bound restriction)
+  
+    {
+      const auto seq = cmesh->ConnectVec()[first_indep].SequenceNumber();
+      const auto first = cmesh->Block().Position(seq);
+      const auto sz = cmesh->Block().Size(seq);
+      for(int ieq = 0; ieq < sz; ieq++){
+        eqgraph[eqcount++] = first+ieq;
+      }
+    }
+  }
+  
   //we get the first eq of each edge connect
   for(auto seq : edgemap){
     eqgraph[eqcount++] = cmesh->Block().Position(seq);
   }
+  //we add the equations of the remaining indep connect (bound restriction)
+  for(auto con : indep_cons){
+    if(con == first_indep){continue;}
+    const auto seq = cmesh->ConnectVec()[con].SequenceNumber();
+    const auto first = cmesh->Block().Position(seq);
+    const auto sz = cmesh->Block().Size(seq);
+    for(int ieq = 0; ieq < sz; ieq++){
+      eqgraph[eqcount++] = first+ieq;
+    }
+  }
+  
   std::sort(eqgraph.begin(), eqgraph.begin()+eqcount);
   eqgraphindex[++blcount] = eqcount;
   for(auto seq : edgemap){
