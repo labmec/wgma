@@ -274,6 +274,8 @@ void PostProcessModes(wgma::wganalysis::Wgma2D &an,
                       const int vtkres,
                       std::set<int> sols = {});
 
+void TransformModes(wgma::wganalysis::Wgma2D &an);
+
 
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const CSTATE target, const int nEigen,
@@ -350,6 +352,11 @@ ComputeModalAnalysis(
   if(simdata.exportVtk){
     PostProcessModes(*modal_an, modal_file, simdata.vtkRes);
   }
+  /*
+    in the modal analysis we perform a change of variables
+    now we transform back the solutions
+   */
+  TransformModes(*modal_an);
   return modal_an;
 }
 
@@ -359,6 +366,7 @@ ComputeModalAnalysis(
 #include <TPZBndCond.h>
 #include <TPZPardisoSolver.h>
 #include <pzstepsolver.h>
+#include <pzbuildmultiphysicsmesh.h>
 #include <slepcepshandler.hpp>
 #include <precond.hpp>
 #include <materials/solutionprojection.hpp>
@@ -556,6 +564,45 @@ void PostProcessModes(wgma::wganalysis::Wgma2D &an,
   }
 }
 
+void TransformModes(wgma::wganalysis::Wgma2D& an)
+{
+
+  TPZAutoPointer<TPZCompMesh> h1_mesh = an.GetH1Mesh();
+  TPZAutoPointer<TPZCompMesh> hcurl_mesh = an.GetHCurlMesh();
+  TPZAutoPointer<TPZCompMesh> mf_mesh = an.GetMesh();
+  TPZFMatrix<CSTATE> &hcurl_sol = hcurl_mesh->Solution();
+  TPZFMatrix<CSTATE> &h1_sol = h1_mesh->Solution();
+
+  TPZVec<CSTATE> betavec = an.GetEigenvalues();
+  for(auto &b : betavec){b = std::sqrt(-b);}
+    
+  const int nsol = hcurl_sol.Cols();
+  {
+    const int nrow = hcurl_sol.Rows();
+    for(int isol = 0; isol < nsol; isol++){
+      const auto beta = betavec[isol];
+      for(int irow = 0; irow < nrow; irow++){
+        const auto val = hcurl_sol.Get(irow,isol);
+        hcurl_sol.Put(irow,isol,val/beta);
+      }
+    }
+  }
+  {
+    const int nrow = h1_sol.Rows();
+    for(int isol = 0; isol < nsol; isol++){
+      for(int irow = 0; irow < nrow; irow++){
+        const auto val = h1_sol.Get(irow,isol);
+        h1_sol.Put(irow,isol,(CSTATE)1i*val);
+      }
+    }
+  }
+    
+  TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshvec(2);
+  meshvec[0] = h1_mesh;
+  meshvec[1] = hcurl_mesh;    
+  TPZBuildMultiphysicsMesh::TransferFromMeshes(meshvec,mf_mesh);
+}
+
 void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
                      TPZAutoPointer<wgma::wganalysis::Wgma2D> src_an,
                      TPZAutoPointer<wgma::wganalysis::Wgma2D> match_an,
@@ -719,7 +766,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     "Field_imag",
     "Field_abs"};
 //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  TPZVec<int> nmodes = {0,1,2,5};//,10,15,20};
+  TPZVec<int> nmodes = {0,2,5};//,10,15,20};
   //now we solve varying the number of modes used in the wgbc
   src_an->LoadAllSolutions();
   match_an->LoadAllSolutions();
