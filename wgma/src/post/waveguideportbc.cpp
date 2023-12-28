@@ -111,9 +111,14 @@ namespace wgma::post{
 
       TPZAxesTools<CSTATE>::Axes2XYZ(grad_ez_axes, rot_grad_ez, axes);
       //rotate grad ez
+      /*
+        in the modal analysis we always compute the +z propagating modes
+        we need to transform grad_ez at the -z boundary so we have the
+        appropriate -z propagating modes
+       */
       for(auto isol = 0; isol < nsol; isol++){
-        const CSTATE v0 = rot_grad_ez.Get(0,isol);
-        const CSTATE v1 = rot_grad_ez.Get(1,isol);
+        const CSTATE v0 = sign*rot_grad_ez.Get(0,isol);
+        const CSTATE v1 = sign*rot_grad_ez.Get(1,isol);
         rot_grad_ez.Put(0,isol,v1);
         rot_grad_ez.Put(1,isol,-v0);
       }
@@ -132,10 +137,10 @@ namespace wgma::post{
           }
         }
       }
-      
-      tmp = rot_grad_ez;
+
+      tmp = rot_et;
       tmp *= sign;
-      tmp += rot_et;
+      tmp += rot_grad_ez;
       ur.Substitution(&tmp);
       this->m_k_scratch[index].AddContribution(0, 0, test_func, true, tmp, false,cte);
       //src term
@@ -148,7 +153,8 @@ namespace wgma::post{
           if(coeff == 0.){continue;}
           for(auto x = 0; x < 3; x++){
             const auto val = sol_mat.Get(x,0);
-            sol_mat.Put(x,0,val + rot_et.Get(x,is)*coeff);
+            const auto src = sign*rot_et.Get(x,is)+rot_grad_ez.Get(x,is);
+            sol_mat.Put(x,0,val + src*coeff);
           }
           ur.Substitution(&sol_mat);
           TPZFMatrix<CSTATE> fmat(nsol,1,this->m_f_scratch[index].begin(),nsol);
