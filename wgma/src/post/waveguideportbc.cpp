@@ -156,10 +156,10 @@ namespace wgma::post{
             const auto src = sign*rot_et.Get(x,is)+rot_grad_ez.Get(x,is);
             sol_mat.Put(x,0,val + src*coeff);
           }
-          ur.Substitution(&sol_mat);
-          TPZFMatrix<CSTATE> fmat(nsol,1,this->m_f_scratch[index].begin(),nsol);
-          fmat.AddContribution(0, 0, test_func, true, sol_mat, false, cte*2.0);
         }
+        ur.Substitution(&sol_mat);
+        TPZFMatrix<CSTATE> fmat(nsol,1,this->m_f_scratch[index].begin(),nsol);
+        fmat.AddContribution(0, 0, test_func, true, sol_mat, false, cte*2.0);
       }
     }
   }
