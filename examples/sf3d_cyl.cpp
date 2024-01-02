@@ -86,7 +86,8 @@ ComputeModalAnalysis(
   const int nEigenpairs,
   const TPZEigenSort sortingRule,
   bool usingSLEPC,
-  const std::string &name);
+  const std::string &name,
+  const bool conj);
 
 void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
                      TPZAutoPointer<wgma::wganalysis::Wgma2D> modal_l_an,
@@ -149,8 +150,8 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   bool usingSLEPC {true};
-  constexpr int nEigenpairs_left{10};//0};
-  constexpr int nEigenpairs_right{10};//0};
+  constexpr int nEigenpairs_left{100};//0};
+  constexpr int nEigenpairs_right{100};//0};
   //if we put the exact target PETSc will complain about zero pivot in LU factor
   const CSTATE target{-1.0000001*simdata.ncore*simdata.ncore};
 
@@ -194,11 +195,14 @@ int main(int argc, char *argv[]) {
    * cmesh(modal analysis):left   *
    ********************************/
 
+  //for educational purposes only
+  constexpr bool conj{false};
   {
     TPZSimpleTimer timer("Modal analysis",true);
     modal_l_an = ComputeModalAnalysis(gmesh, gmshmats, simdata,
                                       target, nEigenpairs_left,
-                                      sortingRule, usingSLEPC, "left");
+                                      sortingRule, usingSLEPC,
+                                      "left",conj);
   
     /********************************
      * cmesh(modal analysis):right   *
@@ -206,7 +210,8 @@ int main(int argc, char *argv[]) {
 
     modal_r_an = ComputeModalAnalysis(gmesh, gmshmats, simdata,
                                       target, nEigenpairs_left,
-                                      sortingRule, usingSLEPC, "right");
+                                      sortingRule, usingSLEPC,
+                                      "right",conj);
   }
   SolveScattering(gmesh, modal_l_an,  modal_r_an, gmshmats, simdata);
   return 0;
@@ -267,7 +272,8 @@ TPZVec<wgma::gmeshtools::CylinderData> SetUpCylData(std::string_view filename,
 
 
 void ComputeModes(wgma::wganalysis::Wgma2D &an,
-                  const int nThreads);
+                  const int nThreads,
+                  const bool conj);
 
 void PostProcessModes(wgma::wganalysis::Wgma2D &an,
                       std::string filename,
@@ -282,7 +288,8 @@ SetupSolver(const CSTATE target, const int nEigen,
             TPZEigenSort sorting, bool &usingSLEPC);
 
 void ComputeCouplingMat(wgma::wganalysis::Wgma2D &an,
-                        std::string filename);
+                        std::string filename,
+                        const bool conj);
 
 
 TPZAutoPointer<wgma::wganalysis::Wgma2D>
@@ -294,7 +301,8 @@ ComputeModalAnalysis(
   const int nEigenpairs,
   const TPZEigenSort sortingRule,
   bool usingSLEPC,
-  const std::string &name)
+  const std::string &name,
+  const bool conj)
 {
   auto modal_cmesh = [gmesh,&gmshmats,&simdata,name](){
     // setting up cmesh data
@@ -338,16 +346,18 @@ ComputeModalAnalysis(
       SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC);
     modal_an->SetSolver(*solver);
   }
+  
   std::string modal_file{simdata.prefix+"_modal_"+name};
   if(usingSLEPC){
     modal_file += "_slepc";
   }else{
     modal_file += "_krylov";
   }
-  ComputeModes(*modal_an, simdata.nThreads);
+  ComputeModes(*modal_an, simdata.nThreads,conj);
   if(simdata.couplingmat){
-    std::string couplingfile{simdata.prefix+"_coupling_"+name+".csv"};
-    ComputeCouplingMat(*modal_an,couplingfile);
+    std::string suffix = conj ? "_conj.csv":".csv";
+    std::string couplingfile{simdata.prefix+"_coupling_"+name+suffix};
+    ComputeCouplingMat(*modal_an,couplingfile,conj);
   }
   if(simdata.exportVtk){
     PostProcessModes(*modal_an, modal_file, simdata.vtkRes);
@@ -476,7 +486,8 @@ SetupSolver(const CSTATE target,const int neigenpairs,
 
 
 void ComputeModes(wgma::wganalysis::Wgma2D &an,
-                  const int nThreads)
+                  const int nThreads,
+                  const bool conj)
 {
   
   TPZSimpleTimer analysis("Modal analysis");
@@ -489,11 +500,10 @@ void ComputeModes(wgma::wganalysis::Wgma2D &an,
   if(ortho){
     TPZSimpleTimer timer("Ortho",true);
     constexpr STATE tol{1e-9};
-    const int n_ortho = wgma::post::OrthoWgSol(an,tol);
+    const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
     std::cout<<"orthogonalised  "<<n_ortho<<" eigenvectors"<<std::endl;
   }else{
     auto cmesh = an.GetMesh();
-    constexpr bool conj{false};
     //leave empty for all valid matids
     std::set<int> matids {};
     wgma::post::SolutionNorm<wgma::post::MultiphysicsIntegrator>(cmesh,matids,conj,nThreads).Normalise();
@@ -506,13 +516,13 @@ void ComputeModes(wgma::wganalysis::Wgma2D &an,
   }
 }
 void ComputeCouplingMat(wgma::wganalysis::Wgma2D &an,
-                        std::string filename)
+                        std::string filename,
+                        const bool conj)
 {
   
   using namespace wgma::post;
 
   std::set<int> matids;
-  constexpr bool conj{false};
   const int nthreads = std::thread::hardware_concurrency();
   WaveguideCoupling<MultiphysicsIntegrator> integrator(an.GetMesh(),
                                                        matids,
