@@ -1002,7 +1002,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     this vector contains the coefficients of such combination
    */
   TPZVec<CSTATE> src_coeffs(n_eigenpairs_left,0);
-  src_coeffs[0] = 1;
+  src_coeffs[2] = 1; //settings for for validating slab, both slabs same width
+  //src_coeffs[0] = 1; //settings for slabs with different widths
 
   //set up post processing
   TPZVec<std::string> fvars = {

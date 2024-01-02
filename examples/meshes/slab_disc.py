@@ -21,13 +21,13 @@ from utils.gmsh import (
 #############################################
 #                  BEGIN                    #
 #############################################
-h1 = 0.4
-h2 = 1.5
-# h1 = 1.0
-# h2 = 1.0
+#h1 = 0.4
+#h2 = 1.5
+h1 = 1.0
+h2 = 1.0
 
 
-h_domain = 10
+h_domain = 6
 w_domain = 5
 d_src = 1
 d_far = 6*d_src
@@ -35,7 +35,7 @@ el_core = 0.06/1.55
 thickness = 2*max(h1, h2)
 el_clad = 0.1
 d_pmlx = 4
-d_pmly = 8
+d_pmly = 4
 nlayerspml = 10
 
 
