@@ -177,6 +177,13 @@ namespace wgma::post{
       //Btt term
       tmp = rot_et;
       tmp += rot_grad_ez;
+      if(m_conj){
+        const auto sz = tmp.Rows()*tmp.Cols();
+        CSTATE *tmp_ptr = tmp.Elem();
+        for(int i = 0; i < sz; i++,tmp_ptr++){
+          *tmp_ptr = std::conj(*tmp_ptr);
+        }
+      }
       ur.Substitution(&tmp);
       tmp *= cte;
       this->m_k_scratch[index].AddContribution(0, 0, rot_et, true, tmp, false);

@@ -3,7 +3,8 @@
 #include <wganalysis.hpp>
 
 int wgma::post::OrthoWgSol(wgma::wganalysis::Wgma &an,
-                           const STATE tol){
+                           const STATE tol,
+			   const bool conj){
   int n_ortho{0};
   auto BMat = [&an]() -> TPZAutoPointer<TPZMatrix<CSTATE>> {
     auto an_cast = dynamic_cast<wgma::wganalysis::Wgma2D*>(&an);
@@ -60,9 +61,15 @@ int wgma::post::OrthoWgSol(wgma::wganalysis::Wgma &an,
         {
           const CSTATE *pej = ej.Elem();
           const CSTATE *pbei = aux.Elem();
-          for (int ieq = 0; ieq < neq; ieq++) {
-            dot_ej += *pej++ * *pbei++;
-          }
+	  if(conj){
+	    for (int ieq = 0; ieq < neq; ieq++) {
+	      dot_ej += std::conj(*pej++) * *pbei++;
+	    }
+	  }else{
+	    for (int ieq = 0; ieq < neq; ieq++) {
+	      dot_ej += *pej++ * *pbei++;
+	    }
+	  }
         }
         //v_j^T B v_j is unity
         const CSTATE &coeff = dot_ej;
@@ -78,9 +85,15 @@ int wgma::post::OrthoWgSol(wgma::wganalysis::Wgma &an,
       {
         const CSTATE *pei = ei.Elem();
         const CSTATE *pbei = aux.Elem();
-        for (int ieq = 0; ieq < neq; ieq++) {
-          dot_ei += *pei++ * *pbei++;
-        }
+	if(conj){
+	  for (int ieq = 0; ieq < neq; ieq++) {
+	    dot_ei += std::conj(*pei++) * *pbei++;
+	  }
+	}else{
+	  for (int ieq = 0; ieq < neq; ieq++) {
+	    dot_ei += *pei++ * *pbei++;
+	  }
+	}
       }
       dot_ei = sqrt(dot_ei);
       {

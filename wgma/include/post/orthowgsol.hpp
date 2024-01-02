@@ -20,7 +20,7 @@ namespace wgma{
       @note Only valid for modal analysis whose resulting
       algebraic problem is a generalised eigenvalue problem
      */
-    int OrthoWgSol(wganalysis::Wgma &an, const STATE tol);
+    int OrthoWgSol(wganalysis::Wgma &an, const STATE tol, const bool conj=false);
   };
 };
 
