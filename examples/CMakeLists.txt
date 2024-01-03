@@ -84,4 +84,11 @@ add_pz_target(
   SOURCES acoustic_pcf2.cpp
   FILES meshes/pcf.msh meshes/pcf_circdata.csv
   )
-target_link_libraries(acoustic_pcf2 PUBLIC wgma)    
+  target_link_libraries(acoustic_pcf2 PUBLIC wgma)
+
+add_pz_target(
+  NAME meta_surf_1d
+  SOURCES meta_surf_1d.cpp
+  FILES meshes/meta_surf_1d.msh
+  )
+target_link_libraries(meta_surf_1d PUBLIC wgma)
