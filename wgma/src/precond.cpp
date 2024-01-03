@@ -124,7 +124,7 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
           TPZGeoElSide gelside(el,face);
           auto neigh = gelside.Neighbour();
           bool bcface{false};
-          const auto facecon = el->Reference()->Connect(itf+ne);
+          const auto &facecon = el->Reference()->Connect(itf+ne);
           if(facecon.IsCondensed() || facecon.LagrangeMultiplier()
              || facecon.HasDependency()){continue;}
           const auto seqnum = facecon.SequenceNumber();
