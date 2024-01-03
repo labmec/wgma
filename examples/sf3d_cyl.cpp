@@ -120,8 +120,8 @@ SimData GetSimData()
   data.ncore = 1.4457;
   data.nclad = 1.4378;
   data.alphaPMLr = {sqrt(0.4*0.4+0.4*0.4), 0.0};
-  data.alphaPMLz = {0.4, 0.0};
-  data.porder = 1;
+  data.alphaPMLz = {1.0, 0.0};
+  data.porder = 2;
   data.filterBoundEqs = true;
   data.printGmesh=true;
   data.exportVtk = true;
@@ -150,8 +150,8 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   bool usingSLEPC {true};
-  constexpr int nEigenpairs_left{100};//0};
-  constexpr int nEigenpairs_right{100};//0};
+  constexpr int nEigenpairs_left{5};//0};
+  constexpr int nEigenpairs_right{5};//0};
   //if we put the exact target PETSc will complain about zero pivot in LU factor
   const CSTATE target{-1.0000001*simdata.ncore*simdata.ncore};
 
@@ -577,7 +577,7 @@ void PostProcessModes(wgma::wganalysis::Wgma2D &an,
 
 void TransformModes(wgma::wganalysis::Wgma2D& an)
 {
-
+  using namespace std::complex_literals;
   TPZAutoPointer<TPZCompMesh> h1_mesh = an.GetH1Mesh();
   TPZAutoPointer<TPZCompMesh> hcurl_mesh = an.GetHCurlMesh();
   TPZAutoPointer<TPZCompMesh> mf_mesh = an.GetMesh();
@@ -777,7 +777,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     "Field_imag",
     "Field_abs"};
 //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  TPZVec<int> nmodes = {0,2,5};//,10,15,20};
+  TPZVec<int> nmodes = {1};//,10,15,20};
   //now we solve varying the number of modes used in the wgbc
   src_an->LoadAllSolutions();
   match_an->LoadAllSolutions();
@@ -789,7 +789,10 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
     auto vtk = TPZVTKGenerator(scatt_mesh_pml, fvars, scatt_file, simdata.vtkRes);
     vtk.SetNThreads(simdata.nThreads);
-    SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
+    {
+      TPZSimpleTimer timer("PML_Solve",true);
+      SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
+    }
     vtk.Do();
   }
 
@@ -809,12 +812,16 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
 
   //compute wgbc coefficients
   WgbcData src_data;
-  src_data.cmesh = src_an->GetHCurlMesh();
-  ComputeWgbcCoeffs(*src_an, src_data.wgbc_k, src_data.wgbc_f, false, src_coeffs);
-
   WgbcData match_data;
-  match_data.cmesh = match_an->GetHCurlMesh();
-  ComputeWgbcCoeffs(*match_an, match_data.wgbc_k, match_data.wgbc_f,true, {});
+
+  {
+    TPZSimpleTimer timer("Compute WGBC coeffs",true);
+    src_data.cmesh = src_an->GetHCurlMesh();
+    ComputeWgbcCoeffs(*src_an, src_data.wgbc_k, src_data.wgbc_f, false, src_coeffs);
+
+    match_data.cmesh = match_an->GetHCurlMesh();
+    ComputeWgbcCoeffs(*match_an, match_data.wgbc_k, match_data.wgbc_f,true, {});
+  }
 
   constexpr bool print_wgbc_mats{false};
   if(print_wgbc_mats){
@@ -882,7 +889,10 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   for(int im = 0; im < nmodes.size(); im++){
     const int nm = nmodes[im];
     if(!nm){continue;}
-    RestrictDofsAndSolve(scatt_mesh_wgbc, src_data, match_data, nm, simdata);
+    TPZSimpleTimer timer("Solve WGBC",true);
+    {
+      RestrictDofsAndSolve(scatt_mesh_wgbc, src_data, match_data, nm, simdata);
+    }
     //plot
     vtk.Do();
 #ifndef ONLY_WGBC
