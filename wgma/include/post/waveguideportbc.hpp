@@ -55,6 +55,10 @@ namespace wgma::post{
     void SetPositiveZ(const bool b){m_pos_z = b;}
     //! Sets direction
     [[nodiscard]] bool GetPositiveZ() const{return m_pos_z;}
+    //! Sets TE/TM
+    void SetTE(bool te){m_te = te;}
+    //! Gets TE/TM
+    [[nodiscard]] bool GetTE() const{return m_te;}
   protected:
     //! Computes contribution at an integration point
     void Compute(const ElData &data, REAL weight, int thread) override;
@@ -74,6 +78,9 @@ namespace wgma::post{
     bool m_adj{false};
     //! Whether boundary is +z or -z
     bool m_pos_z{true};
+    //! Whether solving TE/TM case in 1D
+    bool m_te{true};
+    
   };
 };
 
