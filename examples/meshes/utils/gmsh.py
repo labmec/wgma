@@ -870,3 +870,45 @@ def insert_pml_ids(
         new_id = new_id+1
     vol_ids.update(pml_ids)
     domain_tags.update(pml_tags)
+
+
+def set_periodic(dim: int, xmin: float, ymin: float, zmin: float, xmax: float,
+                 ymax: float, zmax: float, coord: int, e: float = 10 ** -5):
+    """
+    Sets entities of dimension dim as periodic and return lists of
+    independent entities tag, dependent entities tags and transformations
+    """
+    smin = gmsh.model.getEntitiesInBoundingBox(
+        xmin - e, ymin - e, zmin - 2, (xmin + e) if (coord == 0) else (xmax + e),
+        (ymin + e) if (coord == 1) else (ymax + e), (zmin + 2)
+        if (coord == 2) else (zmax + 2), dim)
+    dx = (xmax - xmin) if (coord == 0) else 0
+    dy = (ymax - ymin) if (coord == 1) else 0
+    dz = (zmax - zmin) if (coord == 2) else 0
+    dep_tag_list = []
+    indep_tag_list = []
+    trsf_list = []
+    # dimension is always dim
+    for _, indep_tag in smin:
+        bb = gmsh.model.getBoundingBox(dim, indep_tag)
+        bbe = [bb[0] - e + dx, bb[1] - e + dy, bb[2] - e + dz,
+               bb[3] + e + dx, bb[4] + e + dy, bb[5] + e + dz]
+        smax = gmsh.model.getEntitiesInBoundingBox(bbe[0], bbe[1], bbe[2],
+                                                   bbe[3], bbe[4], bbe[5], dim)
+        for _, dep_tag in smax:
+            bb2 = list(gmsh.model.getBoundingBox(dim, dep_tag))
+            bb2[0] -= dx
+            bb2[1] -= dy
+            bb2[2] -= dz
+            bb2[3] -= dx
+            bb2[4] -= dy
+            bb2[5] -= dz
+            if (abs(bb2[0] - bb[0]) < e and abs(bb2[1] - bb[1]) < e and
+               abs(bb2[2] - bb[2]) < e and abs(bb2[3] - bb[3]) < e and
+               abs(bb2[4] - bb[4]) < e and abs(bb2[5] - bb[5]) < e):
+                trsf = [1, 0, 0, dx, 0, 1, 0, dy, 0, 0, 1, dz, 0, 0, 0, 1]
+                gmsh.model.mesh.setPeriodic(dim, [dep_tag], [indep_tag], trsf)
+                dep_tag_list.append(dep_tag)
+                indep_tag_list.append(indep_tag)
+                trsf_list.append(trsf)
+    return dep_tag_list, indep_tag_list, trsf_list
