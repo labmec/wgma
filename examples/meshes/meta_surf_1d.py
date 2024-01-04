@@ -20,7 +20,7 @@ w_domain = 0.6
 h_domain = 0.65
 h_copper = 0.25
 h_rib = 0.1
-w_rib = 0.25
+w_rib = 0.3
 min_wl = 0.741
 # refractive index: air
 n_air = 1.0
@@ -29,15 +29,16 @@ n_copper = 0.1
 # imaginary part of refractive index:copper
 k_copper = 7
 # real part of refractive index: photoresist AZ5214E
-n_az = 0
+n_az = 1.63
 # imaginary part of refractive index: photoresist AZ5214E
-k_az = 1.63
+k_az = 0
 
 max_n = max(n_az, n_copper, n_air)
 
-el_copper = (min_wl/n_copper)/20
-el_rib = (min_wl/max_n)/20
-el_air = (min_wl/n_air)/20
+nel_lambda = 100
+el_copper = (min_wl/n_copper)/(5*nel_lambda)
+el_rib = (min_wl/max_n)/(5*nel_lambda)
+el_air = (min_wl/n_air)/nel_lambda
 
 gmsh.initialize()
 gmsh.option.set_number("Geometry.Tolerance", 10**-14)
@@ -117,33 +118,24 @@ top_bnds = gmsh.model.get_boundary(
 bnd_wgma_top = [t for _, t in top_bnds]
 
 # set element size per region
-thickness = h_rib
-gmsh.model.mesh.field.add("Distance", 1)
-gmsh.model.mesh.field.setNumbers(
-    1, "SurfacesList", bottom.tag)
+field_ct = 1
+gmsh.model.mesh.field.add("Constant", field_ct)
+gmsh.model.mesh.field.set_number(field_ct, "IncludeBoundary", 1)
+gmsh.model.mesh.field.set_numbers(field_ct, "SurfacesList", bottom.tag)
+gmsh.model.mesh.field.set_number(field_ct, "VIn", el_copper)
+gmsh.model.mesh.field.set_number(field_ct, "VOut", el_air)
+field_ct += 1
+gmsh.model.mesh.field.add("Constant", field_ct)
+gmsh.model.mesh.field.set_number(field_ct, "IncludeBoundary", 1)
+gmsh.model.mesh.field.set_numbers(field_ct, "SurfacesList", rib.tag)
+gmsh.model.mesh.field.set_number(field_ct, "VIn", el_rib)
+gmsh.model.mesh.field.set_number(field_ct, "VOut", el_air)
+field_ct += 1
+gmsh.model.mesh.field.add("Min", field_ct)
+gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList", [
+                                 t for t in range(1, field_ct)])
 
-gmsh.model.mesh.field.add("Threshold", 2)
-gmsh.model.mesh.field.setNumber(2, "InField", 1)
-gmsh.model.mesh.field.setNumber(2, "DistMin", 0)
-gmsh.model.mesh.field.setNumber(2, "DistMax", thickness)
-gmsh.model.mesh.field.setNumber(2, "SizeMin", el_copper)
-gmsh.model.mesh.field.setNumber(2, "SizeMax", el_air)
-
-gmsh.model.mesh.field.add("Distance", 3)
-gmsh.model.mesh.field.setNumbers(
-    3, "SurfacesList", rib.tag)
-
-gmsh.model.mesh.field.add("Threshold", 4)
-gmsh.model.mesh.field.setNumber(4, "InField", 3)
-gmsh.model.mesh.field.setNumber(4, "DistMin", 0)
-gmsh.model.mesh.field.setNumber(4, "DistMax", thickness)
-gmsh.model.mesh.field.setNumber(4, "SizeMin", el_rib)
-gmsh.model.mesh.field.setNumber(4, "SizeMax", el_air)
-
-gmsh.model.mesh.field.add("Min", 5)
-gmsh.model.mesh.field.setNumbers(5, "FieldsList", [2, 4])
-
-gmsh.model.mesh.field.setAsBackgroundMesh(5)
+gmsh.model.mesh.field.setAsBackgroundMesh(field_ct)
 gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
 gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
