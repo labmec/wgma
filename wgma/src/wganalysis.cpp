@@ -1025,7 +1025,7 @@ namespace wgma::wganalysis{
   TPZVec<TPZAutoPointer<TPZCompMesh>>
   CMeshWgma2DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
                       cmeshtools::PhysicalData &data,
-                      std::map<int64_t,int64_t> &periodic_els,
+                      const std::map<int64_t,int64_t> &periodic_els,
                       const STATE lambda, const REAL &scale,
                       bool verbose)
   {
@@ -1166,7 +1166,7 @@ namespace wgma::wganalysis{
   CMeshWgma1DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
                       wgma::planarwg::mode mode, int pOrder,
                       wgma::cmeshtools::PhysicalData &data,
-                      std::map<int64_t,int64_t> periodic_els,
+                      const std::map<int64_t,int64_t> periodic_els,
                       const STATE lambda, const REAL scale)
   {
   
@@ -1313,7 +1313,8 @@ namespace wgma::wganalysis{
   CMeshWgmaPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
                     const wgma::planarwg::mode mode, int pOrder,
                     wgma::cmeshtools::PhysicalData &data,
-                    std::map<int64_t,int64_t> periodic_els, const STATE lambda,
+                    const std::map<int64_t,int64_t> periodic_els,
+                    const STATE lambda,
                     const REAL scale)
   {
   
