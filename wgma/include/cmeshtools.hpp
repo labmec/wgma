@@ -145,6 +145,11 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
                                std::set<int64_t>  &boundConnects);
 
   /**
+     @brief Sets given elements as periodic
+   */
+  void SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
+                   const std::map<int64_t,int64_t> &periodic_els);
+  /**
      @brief Ensures correct destruction of a periodic computational mesh.
      This routine should be called before destroying a periodic mesh in
      order to avoid run-time errors.

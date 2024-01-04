@@ -208,6 +208,53 @@ cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
   activeEquations.Resize(neq);
 }
 
+void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
+                             const std::map<int64_t,int64_t> &periodic_els)
+{
+  auto gmesh = cmesh->Reference();
+  gmesh->ResetReference();
+  cmesh->LoadReferences();
+  //let us copy the connects
+  for(auto [dep, indep] : periodic_els){
+    //geometric elements
+    auto *dep_gel = gmesh->Element(dep);
+    const auto *indep_gel = gmesh->Element(indep);
+    //computational element
+    auto *indep_cel = indep_gel->Reference();
+    auto *dep_cel = dep_gel->Reference();
+    //number of connects
+    const auto n_dep_con = dep_cel->NConnects();
+    const auto n_indep_con = indep_cel->NConnects();
+    //just to be sure
+    if(n_dep_con != n_indep_con){
+      PZError<<__PRETTY_FUNCTION__
+             <<"\nindep cel "<<indep_cel->Index()
+             <<" has "<<n_indep_con<<" connects"
+             <<"\ndep cel "<<dep_cel->Index()
+             <<" has "<<n_dep_con<<" connects"<<std::endl;
+      DebugStop();
+    }
+
+    //now we create dependencies between connects
+    for(auto ic = 0; ic < n_indep_con; ic++){
+      const auto indep_ci = indep_cel->ConnectIndex(ic);
+      const auto dep_ci = dep_cel->ConnectIndex(ic);
+
+      auto &dep_con = dep_cel->Connect(ic);
+      const auto ndof = dep_con.NDof(cmesh);
+      if(ndof==0) {continue;}
+      constexpr int64_t ipos{0};
+      constexpr int64_t jpos{0};
+      
+      TPZFMatrix<REAL> mat(ndof,ndof);
+      mat.Identity();
+      dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
+    } 
+  }
+  cmesh->CleanUpUnconnectedNodes();
+  cmesh->ExpandSolution();
+}
+
 void cmeshtools::RemovePeriodicity(TPZAutoPointer<TPZCompMesh> cmesh)
 {
   for(auto &con : cmesh->ConnectVec()){

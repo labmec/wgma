@@ -1063,44 +1063,6 @@ namespace wgma::wganalysis{
       bc.volid = res.value();
     }
 
-
-    auto SetPeriodic = [&periodic_els](TPZAutoPointer<TPZCompMesh> cmesh){
-      auto gmesh = cmesh->Reference();
-      gmesh->ResetReference();
-      cmesh->LoadReferences();
-      //let us copy the connects
-      for(auto [dep, indep] : periodic_els){
-        //geometric elements
-        auto *dep_gel = gmesh->Element(dep);
-        const auto *indep_gel = gmesh->Element(indep);
-        //computational element
-        auto *indep_cel = indep_gel->Reference();
-        auto *dep_cel = dep_gel->Reference();
-        //number of connects
-        const auto n_dep_con = dep_cel->NConnects();
-        const auto n_indep_con = indep_cel->NConnects();
-        //just to be sure
-        assert(n_dep_con == n_indep_con);
-
-        //now we create dependencies between connects
-        for(auto ic = 0; ic < n_indep_con; ic++){
-          const auto indep_ci = indep_cel->ConnectIndex(ic);
-          const auto dep_ci = dep_cel->ConnectIndex(ic);
-
-          auto &dep_con = dep_cel->Connect(ic);
-          const auto ndof = dep_con.NDof(cmesh);
-          if(ndof==0) {continue;}
-          constexpr int64_t ipos{0};
-          constexpr int64_t jpos{0};
-      
-          TPZFMatrix<REAL> mat(ndof,ndof);
-          mat.Identity();
-          dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
-        } 
-      }
-      cmesh->CleanUpUnconnectedNodes();
-      cmesh->ExpandSolution();
-    };
     
     /*
       First we create the computational mesh associated with the H1 space
@@ -1114,7 +1076,7 @@ namespace wgma::wganalysis{
       Now we add the periodicity
      */
 
-    SetPeriodic(cmeshH1);
+    wgma::cmeshtools::SetPeriodic(cmeshH1,periodic_els);
     /*
       Then we create the computational mesh associated with the HCurl space
     */
@@ -1124,7 +1086,7 @@ namespace wgma::wganalysis{
     /*
       Now we add the periodicity
      */
-    SetPeriodic(cmeshHCurl);
+    wgma::cmeshtools::SetPeriodic(cmeshHCurl,periodic_els);
     /*
       Now we create the MF mesh
     */
@@ -1270,53 +1232,7 @@ namespace wgma::wganalysis{
 
     if(!periodic_els.size()) return cmeshH1;
 
-    //let us copy the connects
-    for(auto [dep, indep] : periodic_els){
-      //geometric elements
-      auto *dep_gel = gmesh->Element(dep);
-      const auto *indep_gel = gmesh->Element(indep);
-      //computational element
-      //we need interpolatedelement for SideConnectLocId
-      auto *indep_cel =
-        dynamic_cast<TPZInterpolatedElement*>(indep_gel->Reference());
-      auto *dep_cel =
-        dynamic_cast<TPZInterpolatedElement*>(dep_gel->Reference());
-      //not necessarily all elements belong to the comp mesh
-      if(!indep_cel && !dep_cel){continue;}
-      if(!indep_cel || !dep_cel){
-        PZError<<__PRETTY_FUNCTION__
-               <<"\nError: found only one of periodic els!\n";
-        if(!indep_cel){
-          PZError<<"Could not find comp el associated with geo el "<<indep<<std::endl;
-        }
-        if(!dep_cel){
-          PZError<<"Could not find comp el associated with geo el "<<dep<<std::endl;
-        }
-      }
-      //number of connects
-      const auto n_dep_con = dep_cel->NConnects();
-      const auto n_indep_con = indep_cel->NConnects();
-      //just to be sure
-      assert(n_dep_con == n_indep_con);
-
-      //now we create dependencies between connects
-      for(auto ic = 0; ic < n_indep_con; ic++){
-        const auto indep_ci = indep_cel->ConnectIndex(ic);
-        const auto dep_ci = dep_cel->ConnectIndex(ic);
-
-        auto &dep_con = dep_cel->Connect(ic);
-        const auto ndof = dep_con.NDof(cmeshH1);
-        if(ndof==0) {continue;}
-        constexpr int64_t ipos{0};
-        constexpr int64_t jpos{0};
-      
-        TPZFMatrix<REAL> mat(ndof,ndof);
-        mat.Identity();
-        dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
-      } 
-    }
-    cmeshH1->CleanUpUnconnectedNodes();
-    cmeshH1->ExpandSolution();
+    wgma::cmeshtools::SetPeriodic(cmeshH1,periodic_els);
     return cmeshH1;
   }
 
@@ -1429,42 +1345,8 @@ namespace wgma::wganalysis{
     cmeshH1->SetDefaultOrder(pOrder);
     cmeshH1->AutoBuild(allmats);
 
-  
-    //let us copy the connects
-    for(auto [dep, indep] : periodic_els){
-      //geometric elements
-      auto *dep_gel = gmesh->Element(dep);
-      const auto *indep_gel = gmesh->Element(indep);
-      //computational element
-      //we need interpolatedelement for SideConnectLocId
-      auto *indep_cel =
-        dynamic_cast<TPZInterpolatedElement*>(indep_gel->Reference());
-      auto *dep_cel =
-        dynamic_cast<TPZInterpolatedElement*>(dep_gel->Reference());
-      //number of connects
-      const auto n_dep_con = dep_cel->NConnects();
-      const auto n_indep_con = indep_cel->NConnects();
-      //just to be sure
-      assert(n_dep_con == n_indep_con);
-
-      //now we create dependencies between connects
-      for(auto ic = 0; ic < n_indep_con; ic++){
-        const auto indep_ci = indep_cel->ConnectIndex(ic);
-        const auto dep_ci = dep_cel->ConnectIndex(ic);
-
-        auto &dep_con = dep_cel->Connect(ic);
-        const auto ndof = dep_con.NDof(cmeshH1);
-        if(ndof==0) {continue;}
-        constexpr int64_t ipos{0};
-        constexpr int64_t jpos{0};
-      
-        TPZFMatrix<REAL> mat(ndof,ndof);
-        mat.Identity();
-        dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
-      } 
-    }
-    cmeshH1->CleanUpUnconnectedNodes();
-    cmeshH1->ExpandSolution();
+    wgma::cmeshtools::SetPeriodic(cmeshH1, periodic_els);
+    
     return cmeshH1;
   }
   
