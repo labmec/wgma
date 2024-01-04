@@ -222,6 +222,18 @@ void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
     //computational element
     auto *indep_cel = indep_gel->Reference();
     auto *dep_cel = dep_gel->Reference();
+    //not necessarily all elements belong to the comp mesh
+    if(!indep_cel && !dep_cel){continue;}
+    if(!indep_cel || !dep_cel){
+      PZError<<__PRETTY_FUNCTION__
+             <<"\nError: found only one of periodic els!\n";
+      if(!indep_cel){
+        PZError<<"Could not find comp el associated with geo el "<<indep<<std::endl;
+      }
+      if(!dep_cel){
+        PZError<<"Could not find comp el associated with geo el "<<dep<<std::endl;
+      }
+    }
     //number of connects
     const auto n_dep_con = dep_cel->NConnects();
     const auto n_indep_con = indep_cel->NConnects();
