@@ -129,6 +129,30 @@ namespace wgma::scattering{
      @param[in] mode whether to solve for TE or TM modes
      @param[in] pOrder polynomial order
      @param[in] data information regarding domain's regions
+     @param[in] periodic_els map of periodic geo elements
+     @param[in] source_ids contains the ids of the excitation source regions
+     @param[in] lambda operational wavelength
+     @param[in] scale geometric scaling (characteristic length) for better floating point precision
+  */
+  TPZAutoPointer<TPZCompMesh>
+  CMeshScattering2DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
+                            const planarwg::mode mode, int pOrder,
+                            cmeshtools::PhysicalData &data,
+                            const std::map<int64_t,int64_t> &periodic_els,
+                            const std::set<int> source_ids,
+                            const STATE lambda, const REAL scale);
+
+  /**
+     @brief Creates the computational mesh used for the scattering analysis of planar waveguides.
+     The mesh will be a H1 conforming approximation space and it will approximate
+     either Ex or Hx, depending on whether TE/TM modes are approximated.
+     For loading a source, see scattering::LoadSource and scattering::SetPropagationConstant. 
+     @note The computational domain is in the xy-plane, even though physically it
+     corresponds to the yz-plane.
+     @param[in] gmesh geometrical mesh
+     @param[in] mode whether to solve for TE or TM modes
+     @param[in] pOrder polynomial order
+     @param[in] data information regarding domain's regions
      @param[in] source_ids contains the ids of the excitation source regions
      @param[in] lambda operational wavelength
      @param[in] scale geometric scaling (characteristic length) for better floating point precision
@@ -138,7 +162,33 @@ namespace wgma::scattering{
                     const planarwg::mode mode, int pOrder,
                     cmeshtools::PhysicalData &data,
                     const std::set<int> source_ids,
-                    const STATE lambda, const REAL scale);
+                    const STATE lambda, const REAL scale)
+  {
+    return CMeshScattering2DPeriodic(gmesh,mode,pOrder,data,
+                                     {},source_ids,lambda,scale);
+  }
+  
+  /**
+     @brief Creates the computational mesh used for the scattering analysis in 3D.
+Usually the source will be the result of a previously computed modal analysis.
+     The mesh will be a Hcurl conforming approximation space and it will approximate
+     the electric field.
+     For loading a source, see scattering::LoadSource and scattering::SetPropagationConstant. 
+     @param[in] gmesh geometrical mesh
+     @param[in] pOrder polynomial order
+     @param[in] data information regarding domain's regions
+     @param[in] source_ids contains the ids of the excitation source regions
+     @param[in] lambda operational wavelength
+     @param[in] scale geometric scaling (characteristic length) for better floating point precision
+  */
+  TPZAutoPointer<TPZCompMesh>
+  CMeshScattering3DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
+                            int pOrder,
+                            cmeshtools::PhysicalData &data,
+                            const std::map<int64_t,int64_t> &periodic_els,
+                            const std::set<int> source_ids,
+                            const STATE lambda, const REAL scale,
+                            const bool verbose=false);
 
   /**
      @brief Creates the computational mesh used for the scattering analysis in 3D.
@@ -159,7 +209,11 @@ Usually the source will be the result of a previously computed modal analysis.
                     cmeshtools::PhysicalData &data,
                     const std::set<int> source_ids,
                     const STATE lambda, const REAL scale,
-                    const bool verbose=false);
+                    const bool verbose=false)
+  {
+    return CMeshScattering3DPeriodic(gmesh,pOrder,data,{},
+                                     source_ids,lambda,scale,verbose);
+  }
 
   /**
      @brief Set the propagation constant value for the source of the scattering analysis.

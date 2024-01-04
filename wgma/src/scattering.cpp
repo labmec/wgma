@@ -546,11 +546,12 @@ namespace wgma::scattering{
   }
   
   TPZAutoPointer<TPZCompMesh>
-  CMeshScattering2D(TPZAutoPointer<TPZGeoMesh> gmesh,
-                    const wgma::planarwg::mode mode, int pOrder,
-                    wgma::cmeshtools::PhysicalData &data,
-                    const std::set<int> src_id_set,
-                    const STATE lambda, const REAL scale)
+  CMeshScattering2DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
+                            const wgma::planarwg::mode mode, int pOrder,
+                            wgma::cmeshtools::PhysicalData &data,
+                            const std::map<int64_t,int64_t> &periodic_els,
+                            const std::set<int> src_id_set,
+                            const STATE lambda, const REAL scale)
   {
     static constexpr bool isComplex{true};
     static constexpr int dim{2};
@@ -704,16 +705,20 @@ namespace wgma::scattering{
     //create computational elements with memory for the source
     scatt_cmesh->AutoBuild(src_id_set);
 
+    if(periodic_els.size()){
+      wgma::cmeshtools::SetPeriodic(scatt_cmesh, periodic_els);
+    }
     return scatt_cmesh;
   }
 
   TPZAutoPointer<TPZCompMesh>
-  CMeshScattering3D(TPZAutoPointer<TPZGeoMesh> gmesh,
-                    int pOrder,
-                    wgma::cmeshtools::PhysicalData &data,
-                    const std::set<int> src_id_set,
-                    const STATE lambda, const REAL scale,
-                    bool verbose)
+  CMeshScattering3DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
+                            int pOrder,
+                            wgma::cmeshtools::PhysicalData &data,
+                            const std::map<int64_t,int64_t> &periodic_els,
+                            const std::set<int> src_id_set,
+                            const STATE lambda, const REAL scale,
+                            bool verbose)
   {
     static constexpr bool isComplex{true};
     static constexpr int dim{3};
@@ -917,6 +922,9 @@ namespace wgma::scattering{
       scatt_cmesh->AutoBuild(src_id_set);
     }
 
+    if(periodic_els.size()){
+      wgma::cmeshtools::SetPeriodic(scatt_cmesh,periodic_els);
+    }
 
     //this will already call cleanup unconnected nodes
     TPZCompMeshTools::CreatedCondensedElements(scatt_cmesh.operator->(), false, false);
