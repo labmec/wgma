@@ -355,6 +355,8 @@ cmeshtools::RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     }
     for(auto icon = 0; icon < ncon; icon++){
       auto &scatt_con = scatt_el->Connect(icon);
+      //TODO: check, in a robust way, if the independent connect has been 
+      if(scatt_con.HasDependency()){continue;}
       auto &modal_con = modal_el->Connect(icon);
         
       const int64_t modal_dfseq = modal_con.SequenceNumber();
