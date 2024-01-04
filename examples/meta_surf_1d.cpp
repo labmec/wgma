@@ -189,6 +189,9 @@ int main(int argc, char *argv[]) {
                                                       gmshmats,periodic_els,
                                                       verbosity_lvl);
 
+  //first we rotate the mesh
+
+  wgma::gmeshtools::RotateMesh(gmesh,{0,0,1},M_PI/2);
   // print wgma_gmesh to .txt and .vtk format
   if (simdata.printGmesh) {
     // prefix for the wgma_gmesh files
