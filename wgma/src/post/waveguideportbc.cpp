@@ -58,37 +58,76 @@ namespace wgma::post{
     const STATE sign = m_pos_z ? 1 : -1;
     const bool is_src = m_coeff.size() != 0;
     if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
+      //we expect a TPZPlanarWgma material
       const TPZMaterialDataT<CSTATE> &data = eldata;
-      const auto &sol =  data.sol;
-      const auto nsol = m_adj ? sol.size()/2 : sol.size();
-      const int firstj = m_adj ? nsol : 0;
       auto mat = dynamic_cast<const TPZScalarField*>(eldata.GetMaterial());
+      TPZFNMatrix<9,CSTATE> coeff_mat;
       const bool is_te = m_te;
-      const CSTATE coeffval = [mat,&data, is_te](){
-        if(is_te){
-          TPZFNMatrix<9,CSTATE> ur;
-          mat->GetPermeability(data.x, ur);
-          return 1./ur.Get(1,1);
-        }else{
-          TPZFNMatrix<9,CSTATE> er;
-          mat->GetPermittivity(data.x, er);
-          return 1./er.Get(1,1);
+      if(is_te){
+        mat->GetPermeability(data.x, coeff_mat);
+      }else{
+        mat->GetPermittivity(data.x, coeff_mat);
+      }
+      coeff_mat.Decompose(ELU);
+
+      const auto nsol = data.sol.size();
+      const auto detjac = data.detjac;
+      const CSTATE cte = weight*fabs(detjac);
+
+      TPZFNMatrix<3000,CSTATE> rot_et(3,nsol,0.);
+
+      const auto &sol = data.sol;
+      for(auto isol = 0; isol < nsol; isol++){
+        rot_et.Put(1,isol,sol[isol][0]);
+      }
+
+      TPZFNMatrix<3000,CSTATE> tmp;
+
+      TPZFNMatrix<3000,CSTATE> test_func(3,nsol,0.);
+      
+      /*
+        the test functions correspond to the tangential field component
+        in the bc, however, we always have 1i*beta*et
+        so we perform this multiplication now, just to avoid
+        yet another loop
+      */
+      {
+        const CSTATE *ptr_rot_et = rot_et.Elem();
+        CSTATE *ptr_test_func = test_func.Elem();
+        const auto nelem = 3*nsol;
+        for(int isol = 0; isol < nsol; isol++){
+          //first component
+          ptr_test_func++;
+          ptr_rot_et++;
+          //second component
+          *ptr_test_func++ = std::conj(*ptr_rot_et++);
+          ///third component
+          ptr_test_func++;
+          ptr_rot_et++;
         }
-      }();
-      const CSTATE cte = coeffval * weight * fabs(data.detjac);
-      constexpr bool m_conj = true;
-      for(auto is = 0; is < nsol; is++){
-        const auto isol = m_conj ? std::conj(sol[is][0]) : sol[is][0];
-        for(auto js = 0; js < nsol; js++){
-          const auto jsol = sol[firstj+js][0];
-          const auto beta = m_beta[js];
-          const CSTATE kval = 1i*beta*jsol*isol;
-          this->m_k_scratch[index](is,js) += cte * kval;
-          if(is_src){
-            const CSTATE fval = -2.*1i*beta*m_coeff[js]*jsol*isol;
-            this->m_f_scratch[index][is] += cte * fval;
+      }
+      tmp = rot_et;
+      coeff_mat.Substitution(&tmp);
+      this->m_k_scratch[index].AddContribution(0, 0, test_func, true, tmp, false,cte);
+      //src term
+      if(is_src){
+        //compute solution
+        TPZFNMatrix<3,CSTATE> sol_mat(3,1,0.);
+        for(auto is = 0; is < nsol; is++){
+          const auto coeff = m_coeff[is];
+          const auto z = data.x[0];
+          //only ZERO
+          if(coeff == 0.){continue;}
+          const auto beta = m_beta[is];
+          for(auto x = 0; x < 3; x++){
+            const auto val = sol_mat.Get(x,0);
+            const auto src = rot_et.Get(x,is);
+            sol_mat.Put(x, 0, val + src*coeff*std::exp(sign*1i*beta*z));
           }
         }
+        coeff_mat.Substitution(&sol_mat);
+        TPZFMatrix<CSTATE> fmat(nsol,1,this->m_f_scratch[index].begin(),nsol);
+        fmat.AddContribution(0, 0, test_func, true, sol_mat, false, cte*2.0);
       }
     }else{
       //we expect a TPZWgma material
