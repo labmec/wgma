@@ -334,7 +334,7 @@ namespace wgma::wganalysis{
               cmeshtools::PhysicalData &data,
               const STATE lambda, const REAL &scale, const bool verbose=false);
 
-
+  //!Modal analysis of 2D waveguides with periodic boundaries
   TPZVec<TPZAutoPointer<TPZCompMesh>>
   CMeshWgma2DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
                       cmeshtools::PhysicalData &data,
@@ -361,8 +361,34 @@ namespace wgma::wganalysis{
               wgma::planarwg::mode mode, int pOrder,
               cmeshtools::PhysicalData &data,
               const STATE lambda, const REAL scale);
+  /**
+     @brief Creates the computational meshes used for approximating the waveguide EVP in one dimension, for planar waveguides with periodic boundaries.
+     @param[in] gmesh geometrical mesh
+     @param[in] mode whether to solve for TE or TM modes
+     @param[in] pOrder polynomial order
+     @param[in] data information regarding domain's regions
+     @param[in] periodic_els map
+     @param[in] lambda operational wavelength
+     @param[in] scale geometric scaling (characteristic length) for better floating point precision
+  */
+  TPZAutoPointer<TPZCompMesh>
+  CMeshWgma1DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
+                      wgma::planarwg::mode mode, int pOrder,
+                      wgma::cmeshtools::PhysicalData &data,
+                      std::map<int64_t,int64_t> periodic_els,
+                      const STATE lambda, const REAL scale);
 
-  //creates computational mesh for modal analysis of periodic planar waveguides
+  /**
+     @brief Creates the computational meshes used for approximating the waveguide EVP
+     of planar periodic waveguides
+     @param[in] gmesh geometrical mesh
+     @param[in] mode whether to solve for TE or TM modes
+     @param[in] pOrder polynomial order
+     @param[in] data information regarding domain's regions
+     @param[in] periodic_els map
+     @param[in] lambda operational wavelength
+     @param[in] scale geometric scaling (characteristic length) for better floating point precision
+  */
   TPZAutoPointer<TPZCompMesh>
   CMeshWgmaPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
                     const wgma::planarwg::mode mode, int pOrder,

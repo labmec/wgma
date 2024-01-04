@@ -1158,6 +1158,17 @@ namespace wgma::wganalysis{
               wgma::cmeshtools::PhysicalData &data,
               const STATE lambda, const REAL scale)
   {
+    return CMeshWgma1DPeriodic(gmesh,mode,pOrder,data,
+                               {},lambda,scale);
+  }
+
+  TPZAutoPointer<TPZCompMesh>
+  CMeshWgma1DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
+                      wgma::planarwg::mode mode, int pOrder,
+                      wgma::cmeshtools::PhysicalData &data,
+                      std::map<int64_t,int64_t> periodic_els,
+                      const STATE lambda, const REAL scale)
+  {
   
     static constexpr bool isComplex{true};
     static constexpr int dim{1};
@@ -1256,8 +1267,47 @@ namespace wgma::wganalysis{
     cmeshH1->SetAllCreateFunctionsContinuous();
     cmeshH1->SetDefaultOrder(pOrder);
     cmeshH1->AutoBuild(allmats);
+
+    if(!periodic_els.size()) return cmeshH1;
+
+    //let us copy the connects
+    for(auto [dep, indep] : periodic_els){
+      //geometric elements
+      auto *dep_gel = gmesh->Element(dep);
+      const auto *indep_gel = gmesh->Element(indep);
+      //computational element
+      //we need interpolatedelement for SideConnectLocId
+      auto *indep_cel =
+        dynamic_cast<TPZInterpolatedElement*>(indep_gel->Reference());
+      auto *dep_cel =
+        dynamic_cast<TPZInterpolatedElement*>(dep_gel->Reference());
+      //number of connects
+      const auto n_dep_con = dep_cel->NConnects();
+      const auto n_indep_con = indep_cel->NConnects();
+      //just to be sure
+      assert(n_dep_con == n_indep_con);
+
+      //now we create dependencies between connects
+      for(auto ic = 0; ic < n_indep_con; ic++){
+        const auto indep_ci = indep_cel->ConnectIndex(ic);
+        const auto dep_ci = dep_cel->ConnectIndex(ic);
+
+        auto &dep_con = dep_cel->Connect(ic);
+        const auto ndof = dep_con.NDof(cmeshH1);
+        if(ndof==0) {continue;}
+        constexpr int64_t ipos{0};
+        constexpr int64_t jpos{0};
+      
+        TPZFMatrix<REAL> mat(ndof,ndof);
+        mat.Identity();
+        dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
+      } 
+    }
+    cmeshH1->CleanUpUnconnectedNodes();
+    cmeshH1->ExpandSolution();
     return cmeshH1;
   }
+
   
   TPZAutoPointer<TPZCompMesh>
   CMeshWgmaPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
