@@ -1122,3 +1122,42 @@ void wgma::gmeshtools::DirectionalRefinement(TPZAutoPointer<TPZGeoMesh> gmesh,
     }
   }
 }
+
+void wgma::gmeshtools::RotateMesh(TPZAutoPointer<TPZGeoMesh> &gmesh,
+                                  const TPZVec<REAL> &axis_vec, const REAL theta)
+{
+  if(axis_vec.size() < gmesh->Dimension()){
+    DebugStop();
+  }
+  
+  TPZFNMatrix<3,REAL> axis(3,1,0.);
+  //normalise axis
+  {
+    for(int ix = 0; ix < axis_vec.size(); ix++){axis.Put(ix,0,axis_vec[ix]);}    
+    const REAL norm = Norm(axis);
+    for(int ix = 0; ix < axis_vec.size(); ix++){axis(ix,0) /= norm;}
+  }
+
+  const REAL cos = std::cos(theta);
+  const REAL sin = std::sin(theta);
+  const REAL ux = axis.Get(0,0);
+  const REAL uy = axis.Get(1,0);
+  const REAL uz = axis.Get(2,0);
+  TPZFNMatrix<9,REAL>rot={
+    {cos+ux*ux*(1-cos), ux*uy*(1-cos)-uz*sin, ux*uz*(1-cos)+uy*sin},
+    {uy*ux*(1-cos)+uz*sin, cos+uy*uy*(1-cos), uy*uz*(1-cos)-ux*sin},
+    {uz*ux*(1-cos)-uy*sin, uz*uy*(1-cos)+ux*sin, cos+uz*uz*(1-cos)}};
+
+  const int64_t nnodes = gmesh->NNodes();
+  TPZManVector<REAL,3> co(3,0.);
+  TPZFNMatrix<3,REAL> orig_co(3,1,0.), rot_co(3,1,0.);
+  for(int in = 0; in < nnodes; in++){
+    auto &node = gmesh->NodeVec()[in];
+    
+    node.GetCoordinates(co);
+    for(int ix = 0; ix < 3; ix++){orig_co.Put(ix,0,co[ix]);}
+    rot.Multiply(orig_co, rot_co);
+    for(int ix = 0; ix < 3; ix++){co[ix] = rot_co.Get(ix,0);}
+    node.SetCoord(co);
+  }
+}

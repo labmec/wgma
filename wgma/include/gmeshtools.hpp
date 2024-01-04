@@ -245,6 +245,14 @@ namespace wgma::gmeshtools{
   **/
 void DirectionalRefinement(TPZAutoPointer<TPZGeoMesh> gmesh,
                            std::set<int> matids,const int nrefs);
+  /**
+     @brief Rotates all node-coordinates in the mesh around a given axis
+     @param gmesh geometrical mesh
+     @param axis rotation axis
+     @param theta rotation angle
+   */
+void RotateMesh(TPZAutoPointer<TPZGeoMesh> &gmesh,
+                const TPZVec<REAL> &axis, const REAL theta);
 };
 
 #endif /* _GMESHTOOLS_HPP_ */
