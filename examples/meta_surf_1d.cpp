@@ -36,7 +36,7 @@ struct SimData{
   //!.msh mesh
   std::string meshfile;
   //!wavelength
-  STATE lambda{0.741};
+  STATE wavelength{0.741};
   //!geometric scaling (floating point precision)
   REAL scale{1};
   //!real part of refractive index of copper
@@ -53,29 +53,42 @@ struct SimData{
   STATE k_rib{1};
   //!refractive index of air 
   STATE n_air{1};
-  //!Whether the rib is made of copper (instead of photoresist)
-  bool rib_copper{false};
   //!mode currently analysed
   wgma::planarwg::mode mode{wgma::planarwg::mode::TM};
   //!polynomial order
   int porder{-1};
+  //!number eigenpairs top
+  int n_eigen_top{300};
+  //!number eigenpairs bottom
+  int n_eigen_bot{300};
+  //!number of modes of wgbc
+  std::vector<int> nmodes = {1,10,15,100,200,250};
+  //!target eigenvalue top
+  CSTATE target_top{n_air*n_air*1.0001};
+  //!target eigenvalue bottom
+  CSTATE target_bot{n_copper*n_copper*1.0001};
   //!whether to filter dirichlet eqs
-  bool filterBoundEqs{true};
+  bool filter_bnd_eqs{true};
   //!renumber equations
-  bool optimizeBandwidth{true};
+  bool optimize_bandwidth{true};
   //!output geometric mesh in .txt and .vtk files
-  bool printGmesh{false};
-  //!post process fields
-  bool exportVtk{false};
+  bool print_gmesh{false};
+  //!post process modal fields
+  bool export_vtk_modes{false};
+  //!post process scatt fields
+  bool export_vtk_scatt{false};
   //!whether to compute coupling mat
   bool couplingmat{false};
   //!vtk resolution
-  int vtkRes{0};
+  int vtk_res{0};
   //!number of threads
-  int nThreads{(int)std::thread::hardware_concurrency()};
+  int n_threads{(int)std::thread::hardware_concurrency()};
   //!prefix for both meshes and output files
   std::string prefix{""};
 };
+
+//! Reads sim data from file
+SimData ReadSimData(const std::string &dataname);
 
 //!needed data from modal analysis to create waveguide port bc
 struct WgbcData{
@@ -108,7 +121,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
                      const SimData& simdata);
 
 
-SimData GetSimData()
+SimData GetSimData(bool rib_copper)
 {
 
   // path for output files
@@ -120,8 +133,7 @@ SimData GetSimData()
   
   SimData data;
   data.meshfile="meshes/meta_surf_1d.msh";
-  data.rib_copper = true;
-  data.lambda = data.rib_copper ? 0.746 : 0.741;
+  data.wavelength = rib_copper ? 0.746 : 0.741;
   /*
     Given the small dimensions of the domain, scaling it can help in
     achieving good precision. Using 1./k0 as a scale factor results in
@@ -129,21 +141,27 @@ SimData GetSimData()
     This scale factor is often referred to as characteristic length
     of the domain.
   */
-  data.scale = data.lambda/(2*M_PI);
+  data.scale = data.wavelength/(2*M_PI);
   data.mode = wgma::planarwg::mode::TM;
   data.n_copper = 0.1;
   data.k_copper = 7;
   data.n_az = 1.622;
   data.k_az = 0;
   data.n_air = 1;
-  data.n_rib = data.rib_copper ? data.n_copper : data.n_az;
-  data.k_rib = data.rib_copper ? data.k_copper : data.k_az;
+  data.n_rib = rib_copper ? data.n_copper : data.n_az;
+  data.k_rib = rib_copper ? data.k_copper : data.k_az;
   data.porder = 4;
-  data.filterBoundEqs = true;
-  data.printGmesh=true;
-  data.exportVtk = true;
-  data.couplingmat = true;
-  data.vtkRes=0;
+  data.filter_bnd_eqs = true;
+  data.print_gmesh=true;
+  data.export_vtk_modes = false;
+  data.export_vtk_scatt = true;
+  data.couplingmat = false;
+  data.n_eigen_top=300;
+  data.n_eigen_bot=300;
+  data.nmodes = {1,10,15,100,200,250};
+  data.target_top=data.n_air*data.n_air*1.0001;
+  data.target_bot=data.n_copper*data.n_copper*1.0001;
+  data.vtk_res=0;
   data.prefix = prefix;
   return std::move(data);
 }
@@ -155,7 +173,22 @@ int main(int argc, char *argv[]) {
    * the log should be initialised as:*/
   TPZLogger::InitializePZLOG();
 #endif
-  const SimData simdata=GetSimData();
+  if(argc>2){
+    PZError<<"Unexpected number of parameters. USAGE: ./meta_surf_1d param_file\n"
+           <<"or ./meta_surf_1d to run with hardcoded params"<<std::endl;
+    return -1;
+  }
+  
+  const SimData simdata= [argc, &argv](){
+    constexpr bool rib_copper{true};
+    if(argc==1){
+      auto sd = GetSimData(rib_copper);
+      sd.prefix+=rib_copper ? "_cu" : "_az";
+      return sd;
+    }
+    const std::string dataname = argv[1];
+    return ReadSimData(dataname);
+  }();
 
   //just to make sure we will output results
   wgma::util::CreatePath(wgma::util::ExtractPath(simdata.prefix));
@@ -167,10 +200,6 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   constexpr bool usingSLEPC {true};
-  constexpr int nEigenpairs_top{300};
-  constexpr int nEigenpairs_bottom{300};
-  const CSTATE target_top{simdata.n_air*simdata.n_air*1.0000001};
-  const CSTATE target_bottom{simdata.n_copper*simdata.n_copper*1.00000001};
 
   /*********
    * begin *
@@ -197,7 +226,7 @@ int main(int argc, char *argv[]) {
 
   wgma::gmeshtools::RotateMesh(gmesh,{0,0,1},M_PI/2);
   // print wgma_gmesh to .txt and .vtk format
-  if (simdata.printGmesh) {
+  if (simdata.print_gmesh) {
     // prefix for the wgma_gmesh files
     const std::string filename = simdata.prefix + "_gmesh";
     wgma::gmeshtools::PrintGeoMesh(gmesh, filename);
@@ -230,7 +259,7 @@ int main(int argc, char *argv[]) {
     modal_bottom_an = ComputeModalAnalysis(gmesh, gmshmats,
                                            periodic_els,
                                            epsilon_copper,simdata,
-                                           target_bottom, nEigenpairs_bottom,
+                                           simdata.target_bot, simdata.n_eigen_bot,
                                            sortingRule, usingSLEPC,
                                            "bottom");
   
@@ -240,7 +269,7 @@ int main(int argc, char *argv[]) {
     modal_top_an = ComputeModalAnalysis(gmesh, gmshmats,
                                         periodic_els,
                                         epsilon_air,simdata,
-                                        target_top, nEigenpairs_top,
+                                        simdata.target_top, simdata.n_eigen_top,
                                         sortingRule, usingSLEPC,
                                         "top");
   }
@@ -257,6 +286,7 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
+#include <json_util.hpp>
 #include <TPZKrylovEigenSolver.h>
 #include <TPZPardisoSolver.h>
 
@@ -265,7 +295,7 @@ SetupSolver(const CSTATE target, const int nEigen,
             TPZEigenSort sorting, bool &usingSLEPC);
 
 void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
-                  const int nThreads);
+                  const int n_threads);
 
 void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
                         std::string filename);
@@ -291,6 +321,69 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
                                   const TPZFMatrix<CSTATE> &wgbc_k,
                                   const TPZVec<CSTATE> &wgbc_f);
 
+
+//! Reads sim data from file
+SimData ReadSimData(const std::string &dataname)
+{
+  using json = nlohmann::json;
+  std::ifstream f(dataname);
+  json data = json::parse(f);
+  SimData sd;
+
+  sd.meshfile = data["meshfile"];
+  //!wavelength
+  sd.wavelength=data["wavelength"];
+  //!geometric scaling (floating point precision)
+  sd.scale=data["scale"];
+  //!real part of refractive index of copper
+  sd.n_copper=data["n_copper"];
+  //!imag part of refractive index of copper
+  sd.k_copper=data["k_copper"];
+  //!real part of refractive index of photoresist
+  sd.n_az=data["n_az"];
+  //!imag part of refractive index of photoresist
+  sd.k_az=data["k_az"];
+  //!real part of refractive index of rib
+  sd.n_rib=data["n_rib"];
+  //!imag part of refractive index of rib
+  sd.k_rib=data["k_rib"];
+  //!refractive index of air 
+  sd.n_air=data["n_air"];
+  //!mode currently analysed
+  sd.mode=wgma::planarwg::string_to_mode(data["mode"]);
+  //!polynomial order
+  sd.porder=data["porder"];
+  //!number eigenpairs top
+  sd.n_eigen_top=data["n_eigen_top"];
+  //!number eigenpairs bottom
+  sd.n_eigen_bot=data["n_eigen_bot"];
+  //!vector with number of modes of wgbc
+  sd.nmodes = data["nmodes"].get<std::vector<int>>();
+  //!target eigenvalue top
+  data.at("target_top").get_to(sd.target_top);
+  //!target eigenvalue bottom
+  data.at("target_bot").get_to(sd.target_bot);
+  //!whether to filter dirichlet eqs
+  sd.filter_bnd_eqs=data["filter_bnd_eqs"];
+  //!renumber equations
+  sd.optimize_bandwidth=true;
+  //!output geometric mesh in .txt and .vtk files
+  sd.print_gmesh=data["print_gmesh"];
+  //!post process modal fields
+  sd.export_vtk_modes=data["export_vtk_modes"];
+  //!post process scatt fields
+  sd.export_vtk_scatt=data["export_vtk_scatt"];
+  //!whether to compute coupling mat
+  sd.couplingmat=data["couplingmat"];
+  //!vtk resolution
+  sd.vtk_res=data["vtk_res"];
+  //!prefix for both meshes and output files
+  sd.prefix=data["prefix"];
+  //!number of threads
+  sd.n_threads = data.value("n_threads",(int)std::thread::hardware_concurrency());
+  return sd;
+}
+
 TPZAutoPointer<wgma::wganalysis::WgmaPlanar>
 ComputeModalAnalysis(
   TPZAutoPointer<TPZGeoMesh> gmesh,
@@ -311,7 +404,7 @@ ComputeModalAnalysis(
     // setting up cmesh data
     const auto &mode = simdata.mode;
     const auto &pOrder = simdata.porder;
-    const auto &lambda = simdata.lambda;
+    const auto &wavelength = simdata.wavelength;
     const auto &scale = simdata.scale;
     
     wgma::cmeshtools::PhysicalData modal_data;
@@ -326,7 +419,7 @@ ComputeModalAnalysis(
                                             {0}, modal_data, modal_dim);
     return wgma::wganalysis::CMeshWgma1DPeriodic(gmesh,mode,pOrder,modal_data,
                                                  periodic_els,
-                                                 lambda, scale);
+                                                 wavelength, scale);
   }(epsilon_mat);
   /******************************
    * solve(modal analysis left) *
@@ -334,22 +427,22 @@ ComputeModalAnalysis(
 
   TPZAutoPointer<wgma::wganalysis::WgmaPlanar>
     modal_an =
-    new wgma::wganalysis::WgmaPlanar(modal_cmesh, simdata.nThreads,
-                                     simdata.optimizeBandwidth,
-                                     simdata.filterBoundEqs);
+    new wgma::wganalysis::WgmaPlanar(modal_cmesh, simdata.n_threads,
+                                     simdata.optimize_bandwidth,
+                                     simdata.filter_bnd_eqs);
   {
     auto solver = SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC);
     modal_an->SetSolver(*solver);
   }
 
   const std::string modal_file{simdata.prefix+"_modal_"+name};
-  ComputeModes(*modal_an, simdata.nThreads);
+  ComputeModes(*modal_an, simdata.n_threads);
   if(simdata.couplingmat){
     std::string couplingfile{simdata.prefix+"_coupling_"+name};
     ComputeCouplingMat(*modal_an,couplingfile);
   }
-  if(simdata.exportVtk){
-    PostProcessModes(*modal_an, modal_file, simdata.vtkRes);
+  if(simdata.export_vtk_modes){
+    PostProcessModes(*modal_an, modal_file, simdata.vtk_res);
   }
   return modal_an;
 }
@@ -432,7 +525,7 @@ SetupSolver(const CSTATE target,const int neigenpairs,
 
 
 void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
-                  const int nThreads)
+                  const int n_threads)
 {
   
   TPZSimpleTimer analysis("Modal analysis");
@@ -457,7 +550,7 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   //   //leave empty for all valid matids
   //   std::set<int> matids {};
   //   wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,
-  //                                                               conj,nThreads).Normalise();
+  //                                                               conj,n_threads).Normalise();
   //   TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
   //   //we update analysis object
   //   an.SetEigenvectors(mesh_sol);
@@ -538,7 +631,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     (CSTATE e_rib, CSTATE e_copper, CSTATE e_air){
     const auto mode = simdata.mode;
     const auto &pOrder = simdata.porder;
-    const auto &lambda = simdata.lambda;
+    const auto &wavelength = simdata.wavelength;
     const auto &scale = simdata.scale;
     
     const std::string &prefix = simdata.prefix;
@@ -582,7 +675,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     std::set<int> src_ids;
     return wgma::scattering::CMeshScattering2DPeriodic(gmesh, mode, pOrder,
                                                        scatt_data,periodic_els,
-                                                       src_ids,lambda,scale);
+                                                       src_ids,wavelength,scale);
   }(epsilon_rib,epsilon_copper,epsilon_air);
   /*********************
    * solve(scattering) *  
@@ -599,7 +692,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   src_coeffs[0] = 1;
 
   //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  TPZVec<int> nmodes = {1,10,15,100,200,250};
+  auto nmodes = simdata.nmodes;
   //now we solve varying the number of modes used in the wgbc
   src_an->LoadAllSolutions();
   match_an->LoadAllSolutions();
@@ -625,14 +718,16 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   }
 
   //set up post processing
-  const std::string suffix = simdata.rib_copper ? "_copper" : "_az";
-  const std::string scatt_file = simdata.prefix+"_scatt"+suffix;
+  const std::string scatt_file = simdata.prefix+"_scatt";
   TPZVec<std::string> fvars = {
     "Field_real",
     "Field_imag",
     "Field_abs"};
-  auto vtk = TPZVTKGenerator(scatt_mesh, fvars, scatt_file, simdata.vtkRes);
-  vtk.SetNThreads(simdata.nThreads);
+  TPZAutoPointer<TPZVTKGenerator> vtk = nullptr;
+  if(simdata.export_vtk_scatt){
+    vtk = new TPZVTKGenerator(scatt_mesh, fvars, scatt_file, simdata.vtk_res);
+    vtk->SetNThreads(simdata.n_threads);
+  }
     
   int count{0};
   for(int im = 0; im < nmodes.size(); im++){
@@ -643,7 +738,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     }
     RestrictDofsAndSolve(scatt_mesh, src_data, match_data, nm, simdata);
     //plot
-    vtk.Do();
+    if(simdata.export_vtk_scatt){vtk->Do();}
     //removing restrictions
     wgma::cmeshtools::RemovePeriodicity(scatt_mesh);
   }
@@ -676,9 +771,9 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     wgma::cmeshtools::RestrictDofs(scatt_mesh, src_mesh, nmodes, boundConnects);
 
   constexpr bool sym{false};
-  auto scatt_an = wgma::scattering::Analysis(scatt_mesh, simdata.nThreads,
-                                             simdata.optimizeBandwidth,
-                                             simdata.filterBoundEqs,
+  auto scatt_an = wgma::scattering::Analysis(scatt_mesh, simdata.n_threads,
+                                             simdata.optimize_bandwidth,
+                                             simdata.filter_bnd_eqs,
                                              sym);
 
   
