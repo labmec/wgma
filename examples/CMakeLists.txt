@@ -86,9 +86,12 @@ add_pz_target(
   )
   target_link_libraries(acoustic_pcf2 PUBLIC wgma)
 
+
+
+file(GLOB meta_surf_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "scripts/meta_surf*json")
 add_pz_target(
   NAME meta_surf_1d
   SOURCES meta_surf_1d.cpp
-  FILES meshes/meta_surf_1d.msh
+  FILES meshes/meta_surf_1d.msh ${meta_surf_files}
   )
 target_link_libraries(meta_surf_1d PUBLIC wgma)

@@ -1,0 +1,33 @@
+{
+    "couplingmat": false,
+    "export_vtk_modes": false,
+    "export_vtk_scatt": true,
+    "filter_bnd_eqs": true,
+    "k_az": 0,
+    "k_copper": 7,
+    "k_rib": 7,
+    "meshfile": "meshes/meta_surf_1d.msh",
+    "mode": "TM",
+    "n_air": 1,
+    "n_az": 1.622,
+    "n_copper": 0.1,
+    "n_eigen_bot": 300,
+    "n_eigen_top": 300,
+    "n_rib": 0.1,
+    "nmodes": [
+        1,
+        10,
+        100,
+        200,
+        250
+    ],
+    "optimize_bandwidth": true,
+    "porder": 4,
+    "prefix": "res_meta_surf_1d/meta_surf_1d_cu",
+    "print_gmesh": false,
+    "scale": 0.11793381283109444,
+    "target_bot": 0.010000100000000003,
+    "target_top": 1.00001,
+    "vtk_res": 0,
+    "wavelength": 0.741
+}
