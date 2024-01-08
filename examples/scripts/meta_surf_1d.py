@@ -7,7 +7,7 @@ data = {
     "mode": "TM",
     "porder": 4,
     "n_eigen_top": 300,
-    "n_eigen_bot": 300,
+    "n_eigen_bot": 0,
     "nmodes": [250],
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,

@@ -11,7 +11,7 @@
     "n_air": 1,
     "n_az": 1.6289500000000001,
     "n_copper": 0.09881,
-    "n_eigen_bot": 300,
+    "n_eigen_bot": 0,
     "n_eigen_top": 300,
     "n_rib": 1.6289500000000001,
     "nmodes": [
