@@ -1,5 +1,6 @@
 import json
 import numpy as np
+from meta_surf_1d_indices import az_n, az_k, cu_n, cu_k
 
 data = {
     "meshfile": "meshes/meta_surf_1d.msh",
@@ -7,7 +8,7 @@ data = {
     "porder": 4,
     "n_eigen_top": 300,
     "n_eigen_bot": 300,
-    "nmodes": [1, 10, 100, 200, 250],
+    "nmodes": [250],
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
     "print_gmesh": False,
@@ -20,11 +21,10 @@ data = {
 
 wavelength = 0.741
 n_air = 1
-n_copper = 0.1
-k_copper = 7
-n_az = 1.622
-k_az = 0
-
+n_copper = cu_n(wavelength)
+k_copper = cu_k(wavelength)
+n_az = az_n(wavelength)
+k_az = az_k(wavelength)
 data["wavelength"] = wavelength
 data["scale"] = wavelength/(2*np.pi)
 data["n_air"] = n_air
@@ -33,8 +33,10 @@ data["k_copper"] = k_copper
 data["n_az"] = n_az
 data["k_az"] = k_az
 
-rib_copper = True
+rib_copper = False
 data["prefix"] += "_cu" if rib_copper else "_az"
+data["prefix"] += "_TE" if data["mode"] == "TE" else "_TM"
+
 data["n_rib"] = n_copper if rib_copper else n_az
 data["k_rib"] = k_copper if rib_copper else k_az
 
