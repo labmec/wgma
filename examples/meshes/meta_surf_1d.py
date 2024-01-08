@@ -17,7 +17,7 @@ from utils.gmsh import (
 #                  BEGIN                    #
 #############################################
 w_domain = 0.6
-h_domain = 0.65
+h_domain = 1.1
 h_copper = 0.25
 h_rib = 0.1
 w_rib = 0.3
