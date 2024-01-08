@@ -35,9 +35,9 @@ k_az = 0
 
 max_n = max(n_az, n_copper, n_air)
 
-nel_lambda = 100
-el_copper = (min_wl/n_copper)/(5*nel_lambda)
-el_rib = (min_wl/max_n)/(5*nel_lambda)
+nel_lambda = 50
+el_copper = (min_wl/n_copper)/nel_lambda/3
+el_rib = (min_wl/max_n)/nel_lambda/2
 el_air = (min_wl/n_air)/nel_lambda
 
 gmsh.initialize()
@@ -45,7 +45,7 @@ gmsh.option.set_number("Geometry.Tolerance", 10**-14)
 gmsh.option.set_number("Geometry.MatchMeshTolerance", 10**-14)
 # Next we add a new model named "t1" (if gmsh.model.add() is not called a new
 # unnamed model will be created on the fly, if necessary):
-gmsh.model.add("slab_disc")
+gmsh.model.add("meta_surf_1d")
 
 
 # We can log all messages for further processing with:
@@ -119,21 +119,32 @@ bnd_wgma_top = [t for _, t in top_bnds]
 
 # set element size per region
 field_ct = 1
-gmsh.model.mesh.field.add("Constant", field_ct)
-gmsh.model.mesh.field.set_number(field_ct, "IncludeBoundary", 1)
-gmsh.model.mesh.field.set_numbers(field_ct, "SurfacesList", bottom.tag)
-gmsh.model.mesh.field.set_number(field_ct, "VIn", el_copper)
-gmsh.model.mesh.field.set_number(field_ct, "VOut", el_air)
+gmsh.model.mesh.field.add("Distance", field_ct)
+gmsh.model.mesh.field.setNumbers(
+    field_ct, "CurvesList", [5,9,13])
+field_ct +=1
+gmsh.model.mesh.field.add("Threshold", field_ct)
+gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
+# gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
+gmsh.model.mesh.field.set_number(field_ct, "DistMin", 0.1*h_copper)
+gmsh.model.mesh.field.set_number(field_ct, "DistMax", 0.3*h_copper)
+gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_copper)
+gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_rib)
 field_ct += 1
 gmsh.model.mesh.field.add("Constant", field_ct)
 gmsh.model.mesh.field.set_number(field_ct, "IncludeBoundary", 1)
 gmsh.model.mesh.field.set_numbers(field_ct, "SurfacesList", rib.tag)
 gmsh.model.mesh.field.set_number(field_ct, "VIn", el_rib)
-gmsh.model.mesh.field.set_number(field_ct, "VOut", el_air)
+# gmsh.model.mesh.field.set_number(field_ct, "VOut", el_air)
+field_ct += 1
+gmsh.model.mesh.field.add("Constant", field_ct)
+gmsh.model.mesh.field.set_number(field_ct, "IncludeBoundary", 1)
+gmsh.model.mesh.field.set_numbers(field_ct, "SurfacesList", air.tag)
+gmsh.model.mesh.field.set_number(field_ct, "VIn", el_air)
+# gmsh.model.mesh.field.set_number(field_ct, "VOut", el_air)
 field_ct += 1
 gmsh.model.mesh.field.add("Min", field_ct)
-gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList", [
-                                 t for t in range(1, field_ct)])
+gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList", [2,3,4])
 
 gmsh.model.mesh.field.setAsBackgroundMesh(field_ct)
 gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
