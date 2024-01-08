@@ -77,10 +77,18 @@ struct SimData{
   bool export_vtk_modes{false};
   //!post process scatt fields
   bool export_vtk_scatt{false};
+  /**
+     @brief Computes reflection and exports to .csv file
+     @note This will APPEND to a given csv file, be sure to
+     erase it in between non-related runs
+   */
+  bool compute_reflection_norm{true};
   //!whether to compute coupling mat
   bool couplingmat{false};
   //!vtk resolution
   int vtk_res{0};
+  //!initial count for vtk files
+  int initial_count{0};
   //!number of threads
   int n_threads{(int)std::thread::hardware_concurrency()};
   //!prefix for both meshes and output files
@@ -154,6 +162,7 @@ SimData GetSimData(bool rib_copper)
   data.filter_bnd_eqs = true;
   data.print_gmesh=true;
   data.export_vtk_modes = false;
+  data.compute_reflection_norm = true;
   data.export_vtk_scatt = true;
   data.couplingmat = false;
   data.n_eigen_top=300;
@@ -373,12 +382,16 @@ SimData ReadSimData(const std::string &dataname)
   sd.print_gmesh=data["print_gmesh"];
   //!post process modal fields
   sd.export_vtk_modes=data["export_vtk_modes"];
+  //!export reflection norm
+  sd.compute_reflection_norm = data["compute_reflection_norm"];
   //!post process scatt fields
   sd.export_vtk_scatt=data["export_vtk_scatt"];
   //!whether to compute coupling mat
   sd.couplingmat=data["couplingmat"];
   //!vtk resolution
-  sd.vtk_res=data["vtk_res"];
+  sd.vtk_res=data.value("vtk_res",(int)0);
+  //!vtk initial count
+  sd.initial_count=data.value("initial_count",(int)0);
   //!prefix for both meshes and output files
   sd.prefix=data["prefix"];
   //!number of threads
@@ -545,6 +558,19 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   constexpr STATE tol{1e-9};
   const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
   std::cout<<"orthogonalised  "<<n_ortho<<" eigenvectors"<<std::endl;
+  //now we normalise them in case we need to compute the reflective spectra
+  {
+    auto cmesh = an.GetMesh();
+    //leave empty for all valid matids
+    std::set<int> matids {};
+    constexpr bool conj{true};
+    wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,
+                                                                conj,n_threads).Normalise();
+    TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
+    //we update analysis object
+    an.SetEigenvectors(mesh_sol);
+    an.LoadAllSolutions();
+  }
   // constexpr bool ortho{true};
   // if(ortho){
   //   TPZSimpleTimer timer("Ortho",true);
@@ -701,9 +727,34 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
 
   //index of the number of modes to be used to restrict the dofs on waveguide bcs
   auto nmodes = simdata.nmodes;
+  
+  if(has_bot){match_an->LoadAllSolutions();}
+
+  /*
+    this mesh will be used to compute the reflection
+    so, first, we need to store the solution corresponding to our src
+   */
+  TPZFMatrix<CSTATE> src_sol;
+  TPZAutoPointer<TPZCompMesh> ref_mesh = nullptr;
+
+  if(simdata.compute_reflection_norm){
+    ref_mesh = src_an->GetMesh()->Clone();
+    TPZFMatrix<CSTATE> &sol = src_an->GetMesh()->Solution();
+    const int64_t neq_ref_mesh = sol.Rows();
+    src_sol.Redim(neq_ref_mesh,1);
+    
+    for(int i = 0; i < n_eigenpairs_top; i++){
+      if(src_coeffs[i]!=0.){
+        src_an->LoadSolution(i);
+        TPZFMatrix<CSTATE> sol = src_an->GetMesh()->Solution();
+        sol*=src_coeffs[i];
+        src_sol += sol;
+      }
+    }
+  }
+  
   //now we solve varying the number of modes used in the wgbc
   src_an->LoadAllSolutions();
-  if(has_bot){match_an->LoadAllSolutions();}
   
   const auto mode = simdata.mode;
   //compute wgbc coefficients
@@ -736,9 +787,11 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   if(simdata.export_vtk_scatt){
     vtk = new TPZVTKGenerator(scatt_mesh, fvars, scatt_file, simdata.vtk_res);
     vtk->SetNThreads(simdata.n_threads);
+    const int count = simdata.initial_count;
+    vtk->SetStep(count);
   }
     
-  int count{0};
+  TPZFMatrix<CSTATE> ref_sol = src_sol;
   for(int im = 0; im < nmodes.size(); im++){
     const int nm = nmodes[im];
     if(!nm){continue;}
@@ -754,11 +807,28 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
       0;
     const int nmodes_match = neq_match > nm ? nm : neq_match;
     RestrictDofsAndSolve(scatt_mesh, src_data, match_data, nmodes_src,nmodes_match, simdata);
+
+    
+    if(simdata.compute_reflection_norm){
+      //now we compute the reflection
+      wgma::cmeshtools::ExtractSolFromMesh(ref_mesh, scatt_mesh, ref_sol);
+      //subtract source
+      ref_sol -= src_sol;
+      ref_mesh->LoadSolution(ref_sol);
+      wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator> sol_norm(ref_mesh);
+      sol_norm.SetNThreads(simdata.n_threads);
+      const STATE ref_norm = std::real(sol_norm.ComputeNorm()[0]);
+      std::string outputfile = simdata.prefix+"_reflection.csv";
+      std::ofstream ost;
+      ost.open(outputfile, std::ios_base::app);
+      ost << simdata.wavelength<<','<<ref_norm<<std::endl;
+    }
     //plot
     if(simdata.export_vtk_scatt){vtk->Do();}
     //removing restrictions
     wgma::cmeshtools::RemovePeriodicity(scatt_mesh);
   }
+  if(simdata.compute_reflection_norm){wgma::cmeshtools::RemovePeriodicity(ref_mesh);}
 }
 
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
