@@ -59,7 +59,7 @@ struct SimData{
   int porder{-1};
   //!number eigenpairs top
   int n_eigen_top{300};
-  //!number eigenpairs bottom
+  //!number eigenpairs bottom (0 for no modal analysis)
   int n_eigen_bot{300};
   //!number of modes of wgbc
   std::vector<int> nmodes = {1,10,15,100,200,250};
@@ -105,7 +105,7 @@ ComputeModalAnalysis(
   const CSTATE epsilon_mat,
   const SimData& simdata,
   const CSTATE target,
-  const int nEigenpairs,
+  int &nEigenpairs,
   const TPZEigenSort sortingRule,
   bool usingSLEPC,
   const std::string &name);
@@ -179,7 +179,7 @@ int main(int argc, char *argv[]) {
     return -1;
   }
   
-  const SimData simdata= [argc, &argv](){
+  SimData simdata= [argc, &argv](){
     constexpr bool rib_copper{true};
     if(argc==1){
       auto sd = GetSimData(rib_copper);
@@ -252,17 +252,18 @@ int main(int argc, char *argv[]) {
   {
     TPZSimpleTimer timer("Modal analysis",true);
     
-
-    /********************************
-   * cmesh(modal analysis):bottom   *
-   ********************************/
-    modal_bottom_an = ComputeModalAnalysis(gmesh, gmshmats,
-                                           periodic_els,
-                                           epsilon_copper,simdata,
-                                           simdata.target_bot, simdata.n_eigen_bot,
-                                           sortingRule, usingSLEPC,
-                                           "bottom");
-  
+    if(simdata.n_eigen_bot){
+      //maybe there is no need to perform this
+      /********************************
+       * cmesh(modal analysis):bottom   *
+       ********************************/
+      modal_bottom_an = ComputeModalAnalysis(gmesh, gmshmats,
+                                             periodic_els,
+                                             epsilon_copper,simdata,
+                                             simdata.target_bot, simdata.n_eigen_bot,
+                                             sortingRule, usingSLEPC,
+                                             "bottom");
+    }
     /********************************
      * cmesh(modal analysis):top   *
      ********************************/
@@ -282,7 +283,7 @@ int main(int argc, char *argv[]) {
                   simdata);
   //otherwise it will crash on destructor
   wgma::cmeshtools::RemovePeriodicity(modal_top_an->GetMesh());
-  wgma::cmeshtools::RemovePeriodicity(modal_bottom_an->GetMesh());
+  if(modal_bottom_an){wgma::cmeshtools::RemovePeriodicity(modal_bottom_an->GetMesh());}
   return 0;
 }
 
@@ -307,7 +308,8 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WgbcData& src_data,
                           WgbcData& match_data,
-                          const int nmodes,
+                          const int nmodes_src,
+                          const int nmodes_match,
                           const SimData &simdata);
 
 void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
@@ -392,7 +394,7 @@ ComputeModalAnalysis(
   const CSTATE epsilon_mat,
   const SimData& simdata,
   const CSTATE target,
-  const int nEigenpairs,
+  int &nEigenpairs,
   const TPZEigenSort sortingRule,
   bool usingSLEPC,
   const std::string &name)
@@ -430,6 +432,10 @@ ComputeModalAnalysis(
     new wgma::wganalysis::WgmaPlanar(modal_cmesh, simdata.n_threads,
                                      simdata.optimize_bandwidth,
                                      simdata.filter_bnd_eqs);
+
+  //now we check if neigenpairs > neq
+  const int neq = modal_an->StructMatrix()->EquationFilter().NActiveEquations();
+  nEigenpairs = nEigenpairs >= neq ? neq : nEigenpairs;
   {
     auto solver = SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC);
     modal_an->SetSolver(*solver);
@@ -626,8 +632,10 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
                      const CSTATE epsilon_air,
                      const SimData& simdata)
 {
-    
-  auto scatt_mesh = [gmesh,&gmshmats,&simdata, &periodic_els]
+
+  //maybe bottom is just PEC
+  const bool has_bot = match_an;
+  auto scatt_mesh = [gmesh,&gmshmats,&simdata, &periodic_els, &has_bot]
     (CSTATE e_rib, CSTATE e_copper, CSTATE e_air){
     const auto mode = simdata.mode;
     const auto &pOrder = simdata.porder;
@@ -646,7 +654,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     std::map<std::string, wgma::bc::type> scatt_bcs;
     scatt_bcs["bnd_periodic_1"] = wgma::bc::type::PERIODIC;
     scatt_bcs["bnd_periodic_2"] = wgma::bc::type::PERIODIC;
-
+    if(!has_bot){scatt_bcs["bnd_bottom"] = wgma::bc::type::PEC;}
     
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
                                             {0,0}, scatt_data);
@@ -664,7 +672,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     {
       std::vector<std::string> probeMats;
       probeMats.push_back("bnd_top");
-      probeMats.push_back("bnd_bottom");
+      if(has_bot){probeMats.push_back("bnd_bottom");}
       for(auto &mat : probeMats){
         const auto matdim = 1;
         const auto id = gmshmats[matdim].at(mat);
@@ -695,7 +703,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   auto nmodes = simdata.nmodes;
   //now we solve varying the number of modes used in the wgbc
   src_an->LoadAllSolutions();
-  match_an->LoadAllSolutions();
+  if(has_bot){match_an->LoadAllSolutions();}
   
   const auto mode = simdata.mode;
   //compute wgbc coefficients
@@ -704,9 +712,10 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   ComputeWgbcCoeffs(*src_an, src_data.wgbc_k, src_data.wgbc_f, mode, false, src_coeffs);
 
   WgbcData match_data;
-  match_data.cmesh = match_an->GetMesh();
-  ComputeWgbcCoeffs(*match_an, match_data.wgbc_k, match_data.wgbc_f,mode, true, {});
-
+  if(has_bot){
+    match_data.cmesh = match_an->GetMesh();
+    ComputeWgbcCoeffs(*match_an, match_data.wgbc_k, match_data.wgbc_f,mode, true, {});
+  }
   constexpr bool print_wgbc_mats{false};
   if(print_wgbc_mats){
     std::ofstream matfile{simdata.prefix+"_wgbc_k.csv"};
@@ -736,7 +745,15 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     if(im != 0){
       wgma::cmeshtools::SetPeriodic(scatt_mesh, periodic_els);
     }
-    RestrictDofsAndSolve(scatt_mesh, src_data, match_data, nm, simdata);
+    //now we check how many modes we have in each
+    const int neq_src = src_an->StructMatrix()->EquationFilter().NActiveEquations();
+    const int nmodes_src = neq_src > nm ? nm : neq_src;
+    const int neq_match = has_bot ?
+      (match_an->StructMatrix()->EquationFilter().NActiveEquations())
+      :
+      0;
+    const int nmodes_match = neq_match > nm ? nm : neq_match;
+    RestrictDofsAndSolve(scatt_mesh, src_data, match_data, nmodes_src,nmodes_match, simdata);
     //plot
     if(simdata.export_vtk_scatt){vtk->Do();}
     //removing restrictions
@@ -747,14 +764,20 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WgbcData& src_data,
                           WgbcData& match_data,
-                          const int nmodes,
+                          const int nmodes_src,
+                          const int nmodes_match,
                           const SimData &simdata)
 {
 
   auto gmesh = scatt_mesh->Reference();
   
 
-  auto match_mesh = match_data.cmesh;
+  TPZAutoPointer<TPZCompMesh> match_mesh = match_data.cmesh;
+
+  if((match_mesh && nmodes_match == 0)||(!match_mesh && nmodes_match != 0)){
+    DebugStop();
+  }
+   
   auto src_mesh = src_data.cmesh;
 
   /**
@@ -762,13 +785,13 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
    **/
   std::set<int64_t> boundConnects;
   wgma::cmeshtools::FindDirichletConnects(scatt_mesh, boundConnects);
-
-
-
-  const int64_t indep_con_id_match =
-    wgma::cmeshtools::RestrictDofs(scatt_mesh, match_mesh, nmodes, boundConnects);
+  int64_t indep_con_id_match = -1;
+  if(match_mesh){
+    indep_con_id_match = wgma::cmeshtools::RestrictDofs(scatt_mesh, match_mesh,
+                                                        nmodes_match, boundConnects);
+  }
   const int64_t indep_con_id_src =
-    wgma::cmeshtools::RestrictDofs(scatt_mesh, src_mesh, nmodes, boundConnects);
+    wgma::cmeshtools::RestrictDofs(scatt_mesh, src_mesh, nmodes_src, boundConnects);
 
   constexpr bool sym{false};
   auto scatt_an = wgma::scattering::Analysis(scatt_mesh, simdata.n_threads,
@@ -776,22 +799,24 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                                              simdata.filter_bnd_eqs,
                                              sym);
 
-  
-  std::cout<<"nmodes on outgoing boundary: "<<nmodes<<std::endl;
+  std::cout<<"nmodes on ingoing boundary: "<<nmodes_src<<std::endl;
+  std::cout<<"nmodes on outgoing boundary: "<<nmodes_match<<std::endl;
 
   {
-    TPZSimpleTimer timer("Assemble_"+std::to_string(nmodes),true);
+    TPZSimpleTimer timer("Assemble_"+std::to_string(nmodes_src),true);
     std::cout<<"Assembling...";
     scatt_an.Assemble();
     std::cout<<"\nAssembled!"<<std::endl;
   }
   {
-    TPZSimpleTimer timer("Add contribution_"+std::to_string(nmodes),true);
+    TPZSimpleTimer timer("Add contribution_"+std::to_string(nmodes_src),true);
   //now we must add the waveguide port terms
-    AddWaveguidePortContribution(scatt_an, indep_con_id_match,
-                                 nmodes, match_data.wgbc_k, match_data.wgbc_f);
+    if(match_mesh){
+      AddWaveguidePortContribution(scatt_an, indep_con_id_match,
+                                   nmodes_match, match_data.wgbc_k, match_data.wgbc_f);
+    }
     AddWaveguidePortContribution(scatt_an, indep_con_id_src,
-                                 nmodes, src_data.wgbc_k, src_data.wgbc_f);
+                                 nmodes_src, src_data.wgbc_k, src_data.wgbc_f);
   }
 
   {
