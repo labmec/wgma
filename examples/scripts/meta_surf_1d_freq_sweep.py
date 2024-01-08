@@ -11,11 +11,12 @@ data = {
     "n_eigen_top": 300,
     "n_eigen_bot": 0,
     "nmodes": [250],
+    "compute_reflection_norm": True,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
     "print_gmesh": False,
     "export_vtk_modes": False,
-    "export_vtk_scatt": True,
+    "export_vtk_scatt": False,
     "couplingmat": False,
     "vtk_res": 0,
 }
@@ -26,11 +27,19 @@ data["n_air"] = n_air
 data["target_top"] = n_air*n_air*1.00001
 
 prefix_orig = "res_meta_surf_1d/meta_surf_1d"
-wl_list = [wl/1000 for wl in np.arange(738, 750, 1.0)]
+wl_list = [wl/1000 for wl in np.arange(600, 1400, 1.0)]
+
 
 for rib_copper in [True, False]:
     prefix = prefix_orig
     prefix += "_cu" if rib_copper else "_az"
+    data["prefix"] = prefix
+    # we erase any reflection file before starting the freq sweep
+    if data["compute_reflection_norm"]:
+        try:
+            os.remove("../"+prefix+"_reflection.csv")
+        except FileNotFoundError:
+            pass
     for i, wavelength in enumerate(wl_list):
 
         n_copper = cu_n(wavelength)
@@ -46,7 +55,7 @@ for rib_copper in [True, False]:
         data["n_rib"] = n_copper if rib_copper else n_az
         data["k_rib"] = k_copper if rib_copper else k_az
         filename = 'meta_surf_1d_'+str(i)+'.json'
-        data["prefix"] = prefix+'_'+str(i)
+        data["initial_count"] = i
         data["wavelength"] = wavelength
         data["scale"] = wavelength/(2*np.pi)
 
