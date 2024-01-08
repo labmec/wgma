@@ -90,6 +90,7 @@ add_pz_target(
 
   file(GLOB meta_surf_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "scripts/meta_surf*json")
   list(APPEND meta_surf_files scripts/meta_surf_1d_freq_sweep.py)
+  list(APPEND meta_surf_files scripts/meta_surf_1d_indices.py scripts/data/AZ.dat scripts/data/Cu1.dat)
 add_pz_target(
   NAME meta_surf_1d
   SOURCES meta_surf_1d.cpp
