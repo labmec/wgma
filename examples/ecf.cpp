@@ -221,8 +221,7 @@ void RunSimulation(const STATE lambda, const int nEigenpairs, const int pOrder, 
       analysis.LoadSolution(isol);
       //since only the solution has changed (no element/geometry change)
       //we dont need to compute the vtk points again, just the field values
-      constexpr bool samenodes{true};
-      vtk.Do(samenodes);
+      vtk.Do();
     }
   }
   return;
