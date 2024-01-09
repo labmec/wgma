@@ -746,7 +746,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
    */
   TPZFMatrix<CSTATE> src_sol;
   TPZAutoPointer<TPZCompMesh> ref_mesh = nullptr;
-
+  STATE src_norm{0};
   if(simdata.compute_reflection_norm){
     ref_mesh = src_an->GetMesh()->Clone();
     TPZFMatrix<CSTATE> &sol = src_an->GetMesh()->Solution();
@@ -761,6 +761,11 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
         src_sol += sol;
       }
     }
+
+    ref_mesh->LoadSolution(src_sol);
+    wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator> sol_norm(ref_mesh);
+    sol_norm.SetNThreads(simdata.n_threads);
+    src_norm = std::real(sol_norm.ComputeNorm()[0]);
   }
   
   //now we solve varying the number of modes used in the wgbc
@@ -828,10 +833,11 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
       wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator> sol_norm(ref_mesh);
       sol_norm.SetNThreads(simdata.n_threads);
       const STATE ref_norm = std::real(sol_norm.ComputeNorm()[0]);
+      const STATE ref_ratio = ref_norm/src_norm;
       std::string outputfile = simdata.prefix+"_reflection.csv";
       std::ofstream ost;
       ost.open(outputfile, std::ios_base::app);
-      ost << simdata.wavelength<<','<<ref_norm<<std::endl;
+      ost << simdata.wavelength<<','<<ref_ratio<<std::endl;
     }
     //plot
     if(simdata.export_vtk_scatt){vtk->Do();}
