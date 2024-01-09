@@ -92,15 +92,17 @@ namespace wgma::post{
         yet another loop
       */
       {
-        const CSTATE *ptr_rot_et = rot_et.Elem();
+        CSTATE *ptr_rot_et = rot_et.Elem();
         CSTATE *ptr_test_func = test_func.Elem();
         const auto nelem = 3*nsol;
         for(int isol = 0; isol < nsol; isol++){
+          const auto beta = m_beta[isol];
           //first component
           ptr_test_func++;
           ptr_rot_et++;
           //second component
-          *ptr_test_func++ = std::conj(*ptr_rot_et++);
+          *ptr_test_func++ = std::conj(*ptr_rot_et);
+          *ptr_rot_et++ *= 1i*beta;
           ///third component
           ptr_test_func++;
           ptr_rot_et++;
