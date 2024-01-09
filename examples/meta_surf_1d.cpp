@@ -307,6 +307,7 @@ SetupSolver(const CSTATE target, const int nEigen,
             TPZEigenSort sorting, bool &usingSLEPC);
 
 void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
+                  const REAL scale,
                   const int n_threads);
 
 void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
@@ -457,7 +458,7 @@ ComputeModalAnalysis(
   }
 
   const std::string modal_file{simdata.prefix+"_modal_"+name};
-  ComputeModes(*modal_an, simdata.n_threads);
+  ComputeModes(*modal_an, simdata.scale, simdata.n_threads);
   if(simdata.couplingmat){
     std::string couplingfile{simdata.prefix+"_coupling_"+name};
     ComputeCouplingMat(*modal_an,couplingfile);
@@ -546,6 +547,7 @@ SetupSolver(const CSTATE target,const int neigenpairs,
 
 
 void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
+                  const REAL scale,
                   const int n_threads)
 {
   
@@ -569,6 +571,12 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
     wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,
                                                                 conj,n_threads).Normalise();
     TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
+
+    const int sz = mesh_sol.Rows() * mesh_sol.Cols();
+    auto *sol_ptr = mesh_sol.Elem();
+    for(int i = 0; i < sz; i++){
+      *sol_ptr++= *sol_ptr*scale;
+    }
     //we update analysis object
     an.SetEigenvectors(mesh_sol);
     an.LoadAllSolutions();
