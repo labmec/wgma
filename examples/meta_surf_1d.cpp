@@ -30,6 +30,8 @@ light illuminating a meta surface
 #include <regex>//for string search
 #include <thread>
 
+//1i
+using namespace std::complex_literals;
 
 //!minimum shared sim data
 struct SimData{
@@ -379,15 +381,15 @@ SimData ReadSimData(const std::string &dataname)
   //!renumber equations
   sd.optimize_bandwidth=true;
   //!output geometric mesh in .txt and .vtk files
-  sd.print_gmesh=data["print_gmesh"];
+  sd.print_gmesh=data.value("print_gmesh",false);
   //!post process modal fields
-  sd.export_vtk_modes=data["export_vtk_modes"];
+  sd.export_vtk_modes=data.value("export_vtk_modes",false);
   //!export reflection norm
-  sd.compute_reflection_norm = data["compute_reflection_norm"];
+  sd.compute_reflection_norm = data.value("compute_reflection_norm",false);
   //!post process scatt fields
-  sd.export_vtk_scatt=data["export_vtk_scatt"];
+  sd.export_vtk_scatt=data.value("export_vtk_scatt",false);
   //!whether to compute coupling mat
-  sd.couplingmat=data["couplingmat"];
+  sd.couplingmat=data.value("couplingmat",false);
   //!vtk resolution
   sd.vtk_res=data.value("vtk_res",(int)0);
   //!vtk initial count
