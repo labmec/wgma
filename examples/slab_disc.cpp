@@ -117,7 +117,8 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
                        const TPZFMatrix<CSTATE> &sol_conj,
                        TPZFMatrix<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
-                       const bool positive_z, const TPZVec<CSTATE> &coeff);
+                       const bool positive_z, const TPZVec<CSTATE> &coeff,
+                       const wgma::planarwg::mode mode);
 
 
 SimData GetSimData()
@@ -1044,12 +1045,14 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   WgbcData src_data;
   src_data.cmesh = src_an.GetMesh();
   ComputeWgbcCoeffs(src_an, src_adjoint_sol,
-                    src_data.wgbc_k, src_data.wgbc_f, false, src_coeffs);
+                    src_data.wgbc_k, src_data.wgbc_f, false, src_coeffs,
+                    simdata.mode);
 
   WgbcData match_data;
   match_data.cmesh = match_an.GetMesh();
   ComputeWgbcCoeffs(match_an, match_adjoint_sol,
-                    match_data.wgbc_k, match_data.wgbc_f,true, {});
+                    match_data.wgbc_k, match_data.wgbc_f,true, {},
+                    simdata.mode);
     
     
   //here we will store the error between pml approx and wgbc approx
@@ -1225,7 +1228,8 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
 void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
                        const TPZFMatrix<CSTATE> &sol_conj,
                        TPZFMatrix<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
-                       const bool positive_z, const TPZVec<CSTATE> &coeff){
+                       const bool positive_z, const TPZVec<CSTATE> &coeff,
+                       const wgma::planarwg::mode mode){
   auto mesh = an.GetMesh();
 
   TPZFMatrix<CSTATE>& sol_orig = mesh->Solution();
@@ -1249,8 +1253,10 @@ void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
   }
   
   wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(mesh);
+  const bool is_te = mode == wgma::planarwg::mode::TE;
   TPZManVector<CSTATE,1000> betavec = an.GetEigenvalues();
   for(auto &b : betavec){b = std::sqrt(b);}
+  wgbc.SetTE(is_te);
   wgbc.SetPositiveZ(positive_z);
   wgbc.SetAdjoint(adj);
   if(coeff.size()){
