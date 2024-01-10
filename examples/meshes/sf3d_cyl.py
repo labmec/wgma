@@ -1,6 +1,6 @@
 import os
 import csv
-
+import sys
 import gmsh
 from math import ceil
 
@@ -49,7 +49,8 @@ r_core_right = 8  # core radius
 # distance from center to end of cladding region(inner box)
 r_box = max(r_core_left,r_core_right) + 3.5 * wl/nclad
 l_domain = 0.25*wl if test_old_target else 0.5*wl 
-d_pml = 1.75*wl/nclad  # pml width
+d_pml_xy = 1.75*wl/nclad  # pml width
+d_pml_z = 1*wl/nclad  # pml width
 nel_l = 5  # number of elements / wavelength
 # element sizes are different in cladding or core
 el_clad = (wl/nclad)/nel_l  # el size in cladding
@@ -57,10 +58,10 @@ el_core = (wl/ncore)/nel_l  # el size in core
 
 
 # pml width
-d_pmlx = d_pml
-d_pmly = d_pml
-d_pmlz = d_pml
-nlayerspml = ceil(d_pml/el_clad)
+d_pmlx = d_pml_xy
+d_pmly = d_pml_xy
+d_pmlz = d_pml_z
+nlayerspml = ceil(d_pml_z/el_clad)
 # all cylinders in the mesh
 all_cyl_data = []
 
@@ -79,7 +80,7 @@ gmsh.logger.start()
 pml = CylinderData()
 pml.xc = [0, 0, -l_domain/2]
 pml.axis = [0, 0, l_domain]
-pml.radius = r_box+d_pml
+pml.radius = r_box+d_pml_xy
 pml.tag = [gmsh.model.occ.add_cylinder(
     *pml.xc, *pml.axis, pml.radius)]
 
@@ -131,7 +132,7 @@ probe = CircleData()
 probe.xc = 0
 probe.yc = 0
 probe.zc = 0 if test_old_target else -l_domain/4
-probe.radius = r_box+d_pml
+probe.radius = r_box+d_pml_xy
 
 create_circle(probe, el_clad)
 
@@ -140,10 +141,10 @@ gmsh.model.occ.synchronize()
 
 #we divide it at the y=0 plane to avoid issues when finding the PML
 horiz_plane = RectData()
-horiz_plane.xc = -(r_box+d_pml)
+horiz_plane.xc = -(r_box+d_pml_xy)
 horiz_plane.yc = 0
 horiz_plane.zc = -l_domain/2
-horiz_plane.h = 2*(r_box+d_pml)
+horiz_plane.h = 2*(r_box+d_pml_xy)
 horiz_plane.w = l_domain
 
 create_rect(horiz_plane, el_clad,'y')
@@ -409,8 +410,9 @@ add_cylindrical_regions(all_cyl_data, domain_physical_ids, domain_regions)
 
 insert_pml_ids(pmlmap, domain_physical_ids, domain_regions)
 generate_physical_ids(domain_physical_ids, domain_regions)
+if '-nopopup' not in sys.argv:
+    gmsh.fltk.run()
 
-gmsh.fltk.run()
 
 gmsh.model.mesh.generate(3)
 
@@ -432,5 +434,6 @@ if __name__ == "__main__":
             writer.writerow(row)
 
     gmsh.write(filename+".msh")
-
-gmsh.fltk.run()
+    
+if '-nopopup' not in sys.argv:
+    gmsh.fltk.run()
