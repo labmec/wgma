@@ -27,7 +27,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <regex>//for string search
 #include <thread>
 
-#define ONLY_WGBC
+// #define ONLY_WGBC
 //!minimum shared sim data
 struct SimData{
   //!.msh mesh
