@@ -15,6 +15,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <util.hpp>
 #include <slepcepshandler.hpp>
 #include <post/solutionnorm.hpp>
+#include <post/wgnorm.hpp>
 #include <post/waveguideportbc.hpp>
 #include <post/waveguidecoupling.hpp>
 // pz includes
@@ -49,6 +50,20 @@ struct SimData{
   CSTATE alphaPMLx{0};
   //!pml attenuation constant in y-direction
   CSTATE alphaPMLy{0};
+  //!number of eigenvalues computed on left port
+  int n_eigenpairs_left;
+  //!number of eigenvalues computed on right port
+  int n_eigenpairs_right;
+  //!index of the number of modes to be used to restrict the dofs on waveguide bcs
+  TPZVec<int> n_modes;
+  //!whether to solve PML problem
+  bool solve_pml{false};
+  //!whether to project PML solution against WG modes
+  bool project_pml_sol{false};
+  //!whether to compare PML solution against WPBC solution
+  bool compare_pml_sol{false};
+  //!whether to analyse WPBC solution close to input port
+  bool project_near_wpbc{false};
   //!whether to filter dirichlet eqs
   bool filter_bnd_eqs{true};
   //!renumber equations
@@ -63,6 +78,7 @@ struct SimData{
   bool export_vtk_error{false};
   //!whether to compute coupling mat
   bool couplingmat{false};
+  
   //!vtk resolution
   int vtk_res{0};
   //!number of threads
@@ -89,7 +105,7 @@ ComputeModalAnalysis(
   const CSTATE epsilon_core,
   const SimData& simdata,
   const CSTATE target,
-  int &nEigenpairs,
+  const int nEigenpairs,
   const TPZEigenSort sortingRule,
   bool usingSLEPC,
   const std::string &name);
@@ -99,6 +115,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      wgma::wganalysis::WgmaPlanar &src_an,
                      wgma::wganalysis::WgmaPlanar &match_an,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
+                     const std::map<int64_t,int64_t> &periodic_els,
                      const SimData &simdata);
 
 
@@ -129,11 +146,18 @@ SimData GetSimData()
   data.alphaPMLx = {0.8, 0.0};
   data.alphaPMLy = {0.8, 0.0};
   data.porder = 4;
+  data.n_eigenpairs_left = 300;
+  data.n_eigenpairs_right = 300;
+  data.n_modes = {1,10,20,50,100,300};
   data.filter_bnd_eqs = true;
   data.print_gmesh=true;
-  data.export_vtk_modes = true;
+  data.export_vtk_modes = false;
   data.export_vtk_scatt = true;
   data.export_vtk_error = true;
+  data.solve_pml = true;
+  data.project_pml_sol = true;
+  data.compare_pml_sol = true;
+  data.project_near_wpbc = true;
   data.couplingmat = true;
   data.vtk_res=0;
   data.prefix = prefix;
@@ -173,8 +197,8 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
   constexpr bool usingSLEPC {true};
-  int nEigenpairs_left{500};
-  int nEigenpairs_right{500};
+  const int nEigenpairs_left = simdata.n_eigenpairs_left;
+  const int nEigenpairs_right = simdata.n_eigenpairs_right;
   const CSTATE target{simdata.ncore*simdata.ncore};
 
   /*********
@@ -192,9 +216,10 @@ int main(int argc, char *argv[]) {
 
   TPZVec<std::map<std::string, int>> gmshmats;
   constexpr bool verbosity_lvl{false};
-  auto gmesh = wgma::gmeshtools::ReadGmshMesh(simdata.meshfile, simdata.scale,
-                                              gmshmats,
-                                              verbosity_lvl);
+  std::map<int64_t,int64_t> periodic_els;
+  auto gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(simdata.meshfile, simdata.scale,
+                                                      gmshmats, periodic_els,
+                                                      verbosity_lvl);
 
   // print wgma_gmesh to .txt and .vtk format
   if (simdata.print_gmesh) {
@@ -236,7 +261,7 @@ int main(int argc, char *argv[]) {
   }
 
   
-  SolveScattering(gmesh, modal_l_an,  modal_r_an, gmshmats,simdata);
+  SolveScattering(gmesh, modal_l_an,  modal_r_an, gmshmats, periodic_els, simdata);
   return 0;
 }
 
@@ -245,6 +270,8 @@ int main(int argc, char *argv[]) {
 #include <TPZPardisoSolver.h>
 #include <TPZYSMPPardiso.h>
 #include <post/orthowgsol.hpp>
+#include <materials/solutionprojection.hpp>
+
 //utility functions
 TPZAutoPointer<TPZEigenSolver<CSTATE>>
 SetupSolver(const CSTATE target,const int neigenpairs,
@@ -289,6 +316,13 @@ AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
                              const int nm,
                              const TPZFMatrix<CSTATE> &wgbc_k,
                              const TPZVec<CSTATE> &wgbc_f);
+void
+ReplaceMaterialsForProjection(TPZAutoPointer<TPZCompMesh> proj_mesh);
+
+void
+TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
+                                      TPZAutoPointer<TPZCompMesh> src_mesh,
+                                      const std::map<int64_t,int64_t>& periodic_els);
 
 SimData ReadSimData(const std::string &dataname) {
   DebugStop();
@@ -305,7 +339,7 @@ ComputeModalAnalysis(
   const CSTATE epsilon_core,
   const SimData& simdata,
   const CSTATE target,
-  int &nEigenpairs,
+  const int nEigenpairs,
   const TPZEigenSort sortingRule,
   bool usingSLEPC,
   const std::string &name)
@@ -473,18 +507,24 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   //now we normalise them in case we need to compute the reflective spectra
   {
     auto cmesh = an.GetMesh();
-    //leave empty for all valid matids
-    std::set<int> matids {};
-    constexpr bool conj{true};
-    wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,
-                                                                conj,n_threads).Normalise();
+    // //leave empty for all valid matids
+    // std::set<int> matids {};
+    // constexpr bool conj{true};
+    // auto norm =
+    //   wgma::post::WgNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,
+    //                                                         conj,n_threads);
+    // TPZVec<CSTATE> betavec = an.GetEigenvalues();
+    // for(auto &b : betavec){b = sqrt(b);}
+    // norm.SetBeta(betavec);
+    // norm.SetWavelength(1.5);
+    // norm.Normalise();
     TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
 
-    const int sz = mesh_sol.Rows() * mesh_sol.Cols();
-    auto *sol_ptr = mesh_sol.Elem();
-    for(int i = 0; i < sz; i++){
-      *sol_ptr++= *sol_ptr*scale;
-    }
+    // const int sz = mesh_sol.Rows() * mesh_sol.Cols();
+    // auto *sol_ptr = mesh_sol.Elem();
+    // for(int i = 0; i < sz; i++){
+    //   *sol_ptr++= *sol_ptr*scale;
+    // }
     //we update analysis object
     an.SetEigenvectors(mesh_sol);
     an.LoadAllSolutions();
@@ -586,10 +626,6 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
   }
 }
 
-
-#include <materials/solutionprojection.hpp>
-#include <TPZNullMaterial.h>
-
 void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
                                   TPZAutoPointer<TPZCompMesh> scatt_mesh,
                                   const SimData &simdata,
@@ -603,28 +639,7 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
   //mesh used to project the solution into the restricted space
   TPZAutoPointer<TPZCompMesh> proj_mesh = src_mesh->Clone();
   //replace all materials for L2 projection
-  TPZMaterialT<CSTATE> *last_mat{nullptr};
-  for(auto [id,mat] : proj_mesh->MaterialVec()){
-    auto bnd = dynamic_cast<TPZBndCond*>(mat);
-    if(!bnd){
-      constexpr int dim{1};
-      constexpr int soldim{1};
-      auto newmat = new wgma::materials::SolutionProjection<CSTATE>(id,dim,soldim);
-      delete mat;
-      proj_mesh->MaterialVec()[id]=newmat;
-      last_mat = newmat;
-    }
-  }
-  for(auto [id,mat] : proj_mesh->MaterialVec()){
-    auto bnd = dynamic_cast<TPZBndCond*>(mat);
-    if(bnd){
-      TPZFMatrix<CSTATE> v1;
-      TPZVec<CSTATE> v2;
-      auto newmat = last_mat->CreateBC(last_mat,id,0,v1,v2);
-      delete bnd;
-      proj_mesh->MaterialVec()[id]=dynamic_cast<TPZMaterial*>(newmat);
-    }
-  }
+  ReplaceMaterialsForProjection(proj_mesh);
   TPZAutoPointer<TPZCompMesh> error_mesh = proj_mesh->Clone();
 
   //setup vtk objects
@@ -706,11 +721,13 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
     couplingmat.Print("",couplfile,ECSV);
     couplfile.close();
   }
+  int64_t indep_con{-1};
   for(int im = 0; im < nmodes.size(); im++){
     const int nm = nmodes[im];
     //restrict dofs in proj mesh
     if(nm){
-      wgma::cmeshtools::RestrictDofs(proj_mesh, src_mesh, nm, bound_connects);
+      indep_con =
+        wgma::cmeshtools::RestrictDofs(proj_mesh, src_mesh, nm, bound_connects);
       TPZFMatrix<CSTATE> &sol = proj_mesh->Solution();
       std::cout<<"neqs after restriction: "<<sol.Rows()<<std::endl;
     }
@@ -719,8 +736,6 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
     auto proj_an = wgma::scattering::Analysis(proj_mesh, simdata.n_threads,
                                               false,
                                               simdata.filter_bnd_eqs,false);
-    std::ofstream cmesh_file{simdata.prefix+"_proj_mesh_"+std::to_string(nm)+".txt"};
-    proj_mesh->Print(cmesh_file);
     //now we load desired solution into proj_mesh so we can project it
     {
       TPZFMatrix<CSTATE> &sol_reference = proj_mesh->Solution();
@@ -753,6 +768,20 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
     vtk.Do();
     //now we compute the error
     wgma::cmeshtools::ExtractSolFromMesh(error_mesh, proj_mesh, sol_proj);
+
+    if(nm){
+      const auto seqnum = proj_mesh->ConnectVec()[indep_con].SequenceNumber();
+      const auto pos = proj_mesh->Block().Position(seqnum);
+      
+      TPZFMatrix<CSTATE> &sol = proj_mesh->Solution();
+      std::cout<<"nmodes  coeff: "<<std::endl;
+      for(int i = 0; i < nm; i++){
+        const auto coeff = sol.Get(pos+i,0);
+        const char sign = coeff.imag() > 0 ? '+' : '-';
+        std::cout<<i<<","
+                 <<coeff.real()<<sign<<std::abs(coeff.imag())<<'j'<<std::endl;
+      }
+    }
     
     sol_proj -= sol_pml;
 
@@ -760,6 +789,7 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
     vtk_error.Do();
     auto normsol =
       wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
+    
     normsol.SetNThreads(std::thread::hardware_concurrency());
     const auto norm = std::real(normsol.ComputeNorm()[0]);
     std::cout<<"nmodes "<<nm<<" error "<<norm<<std::endl;
@@ -782,6 +812,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      wgma::wganalysis::WgmaPlanar &src_an,
                      wgma::wganalysis::WgmaPlanar &match_an,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
+                     const std::map<int64_t,int64_t> &periodic_els,
                      const SimData &simdata)
 {
   
@@ -945,9 +976,10 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     "Field_abs"};
 
   
-  auto scatt_mesh_pml = CreateScattMesh(true);
+  TPZAutoPointer<TPZCompMesh> scatt_mesh_pml{nullptr};
   //solve using PML as a reference solution
-  {
+  if(simdata.solve_pml){
+    scatt_mesh_pml= CreateScattMesh(true);
     const std::string suffix = "pml";
     const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
     SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
@@ -959,17 +991,18 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   //now we solve varying the number of modes used in the wgbc
   
   //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  TPZVec<int> nmodes = {0,1,2,5,10,15,20,100,300};
+  auto &nmodes = simdata.n_modes;
   src_an.LoadAllSolutions();
   match_an.LoadAllSolutions();
 
   //as an initial test, one could just simply project the solution and check
   //the results
-  constexpr bool test_proj{false};
-  if(test_proj){
+  if(simdata.project_pml_sol){
+    if(!scatt_mesh_pml){
+      DebugStop();//is simdata.solve_pml==true?
+    }
     ProjectSolIntoRestrictedMesh(src_an, scatt_mesh_pml, simdata, nmodes);
   }
-  
   auto scatt_mesh_wgbc = CreateScattMesh(false);
   const std::string suffix = "wgbc";
   const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
@@ -988,55 +1021,91 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                     match_data.wgbc_f,true, {},
                     simdata.mode);
     
-    
-  //here we will store the error between pml approx and wgbc approx
+
+
   /*
-  TPZAutoPointer<TPZCompMesh> error_mesh = [gmesh,&gmshmats, &simdata](){
-    // setting up cmesh data
-    const auto &nclad = simdata.nclad;
-    const auto &ncore = simdata.ncore;
-    const auto &alphaPMLx = simdata.alphaPMLx;
-    const auto &alphaPMLy = simdata.alphaPMLy;
-    const auto &mode = simdata.mode;
-    const auto &pOrder = simdata.porder;
-    const auto &lambda = simdata.lambda;
-    const auto &scale = simdata.scale;
-    
-    wgma::cmeshtools::PhysicalData modal_data;
-    std::map<std::string, std::pair<CSTATE, CSTATE>> modal_mats;
-    modal_mats["eval_clad_left"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad, 1.);
-    modal_mats["eval_core_left"] = std::make_pair<CSTATE, CSTATE>(ncore*ncore, 1.);
-    std::map<std::string, wgma::bc::type> modal_bcs;
-    modal_bcs["eval_left_bnd"] = wgma::bc::type::PEC;
-    //dimension of the modal analysis 
-    constexpr int modal_dim{1};
-    wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
-                                            {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
-    //we must now filter the 1D PMLs
-    std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
-    for(const auto &pml : modal_data.pmlvec){
-      const std::string pattern{"eval_clad_left"};
-      const auto rx = std::regex{pattern, std::regex_constants::icase };
-    
-      const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
-      if(found_pattern){pmlvec.push_back(pml);}
-    }
-    modal_data.pmlvec = pmlvec;
-    return wgma::wganalysis::CMeshWgma1D(gmesh,mode,pOrder,modal_data,
-                                         lambda, scale);
-  }();
-  */
-  TPZAutoPointer<TPZCompMesh> error_mesh = src_an.GetMesh()->Clone();
+    we want to analyse the solution close to the port and see if the
+    number of modes is sufficient to represent it.
+   */
+  TPZAutoPointer<TPZCompMesh> wpbc_error_mesh;
+  // solution from the 2d problem using WPBC
+  TPZFMatrix<CSTATE> sol_proj_wpbc;
+  TPZFMatrix<CSTATE> projected_modes;
   
-  TPZFMatrix<CSTATE> sol_pml = error_mesh->Solution();
-  {
-    wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh_pml, sol_pml);
+  if(simdata.project_near_wpbc){
+    wpbc_error_mesh = [gmesh,&gmshmats, &simdata](){
+      // setting up cmesh data
+      const auto &nclad = simdata.nclad;
+      const auto &ncore = simdata.ncore;
+      const auto &alphaPMLx = simdata.alphaPMLx;
+      const auto &alphaPMLy = simdata.alphaPMLy;
+      const auto &mode = simdata.mode;
+      const auto &pOrder = simdata.porder;
+      const auto &lambda = simdata.lambda;
+      const auto &scale = simdata.scale;
+    
+      wgma::cmeshtools::PhysicalData modal_data;
+      std::map<std::string, std::pair<CSTATE, CSTATE>> modal_mats;
+      modal_mats["eval_clad_left"] = std::make_pair<CSTATE, CSTATE>(nclad*nclad, 1.);
+      modal_mats["eval_core_left"] = std::make_pair<CSTATE, CSTATE>(ncore*ncore, 1.);
+      std::map<std::string, wgma::bc::type> modal_bcs;
+      modal_bcs["eval_left_bnd"] = wgma::bc::type::PEC;
+      //dimension of the modal analysis 
+      constexpr int modal_dim{1};
+      wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
+                                              {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
+      //we must now filter the 1D PMLs
+      std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
+      for(const auto &pml : modal_data.pmlvec){
+        const std::string pattern{"eval_clad_left"};
+        const auto rx = std::regex{pattern, std::regex_constants::icase };
+    
+        const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
+        if(found_pattern){pmlvec.push_back(pml);}
+      }
+      modal_data.pmlvec = pmlvec;
+      return wgma::wganalysis::CMeshWgma1D(gmesh,mode,pOrder,modal_data,
+                                           lambda, scale);
+    }();
+    ReplaceMaterialsForProjection(wpbc_error_mesh);
+    //now we transfer the modal solution from the WPBC to the error mesh and store it
+    TransferSolutionBetweenPeriodicMeshes(wpbc_error_mesh, src_an.GetMesh(), periodic_els);
+    projected_modes = wpbc_error_mesh->Solution();
+    
+  }
+  // this will be the restricted mesh close to the wg port
+  TPZAutoPointer<TPZCompMesh> wpbc_proj_mesh;
+  /*
+    dirichlet boundary connects should not be restricted, otherwise
+    this will result in all the equations on the same dependency
+    being removed as well
+  */
+  std::set<int64_t> bound_connects;
+  if(simdata.project_near_wpbc){
+    wpbc_proj_mesh = wpbc_error_mesh->Clone();
+    wgma::cmeshtools::FindDirichletConnects(wpbc_proj_mesh, bound_connects);
+  }
+  
+
+  
+  //here we will store the error between pml approx and wgbc approx
+  TPZAutoPointer<TPZCompMesh> pml_error_mesh;
+  //only used if compare_pml_sol==true
+  TPZFMatrix<CSTATE> sol_pml;
+  if(simdata.compare_pml_sol){
+    sol_pml = pml_error_mesh->Solution();
+    pml_error_mesh = src_an.GetMesh()->Clone();
+    wgma::cmeshtools::ExtractSolFromMesh(pml_error_mesh, scatt_mesh_pml, sol_pml);
   }
   //just to get the same size, we will zero it later
   auto sol_wgbc = sol_pml;
-  const std::string error_file = simdata.prefix+"_error_";
-  auto vtk_error = TPZVTKGenerator(error_mesh, fvars, error_file, simdata.vtk_res);
-  std::map<int,STATE> error_res;
+  const std::string pml_error_file = simdata.prefix+"_error_";
+  auto vtk_error = TPZVTKGenerator(pml_error_mesh, fvars, pml_error_file, simdata.vtk_res);
+  std::map<int,STATE> pml_error_res;
+  std::map<int,STATE> wpbc_error_res;
+  //just to set correct size for these matrices
+  TPZFMatrix<CSTATE> sol_ref = wpbc_error_mesh->Solution();
+  TPZFMatrix<CSTATE> near_proj_error = sol_ref;
   for(int im = 0; im < nmodes.size(); im++){
     const int nm = nmodes[im];
     if(!nm){continue;}
@@ -1044,28 +1113,78 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                          src_coeffs, nm,simdata);
     //plot
     if(simdata.export_vtk_scatt){vtk.Do();}
+    if(simdata.project_near_wpbc){
+      //first we load the projected modes to the error mesh
+      wpbc_error_mesh->LoadSolution(projected_modes);
+      //now we restrict the proj mesh
+      wgma::cmeshtools::RestrictDofs(wpbc_proj_mesh, wpbc_error_mesh, nm, bound_connects);
+      
+      { //we want just 1 column
+        const int neq = wpbc_error_mesh->Solution().Rows();
+        wpbc_error_mesh->Solution().Resize(neq, 1);
+      }
+      //we extract the 2d sol and load it into the error mesh
+      wgma::cmeshtools::ExtractSolFromMesh(wpbc_error_mesh, scatt_mesh_wgbc, sol_proj_wpbc);
+      //now we compute projection
+      auto proj_an = wgma::scattering::Analysis(wpbc_proj_mesh, simdata.n_threads,
+                                                false,
+                                                simdata.filter_bnd_eqs,false);
+      //now we load desired solution into proj_mesh so we can project it
+      TPZFMatrix<CSTATE> &sol_proj = wpbc_proj_mesh->Solution();
+      wgma::cmeshtools::ExtractSolFromMesh(wpbc_proj_mesh, scatt_mesh_wgbc, sol_proj);
+      //get reference solution
+      wgma::cmeshtools::ExtractSolFromMesh(wpbc_error_mesh, scatt_mesh_wgbc, sol_ref);
+      proj_an.Solve();
+      //now we copy it to the error mesh
+      wgma::cmeshtools::ExtractSolFromMesh(wpbc_error_mesh, wpbc_proj_mesh, near_proj_error);
+      near_proj_error -= sol_ref;
+      wpbc_error_mesh->LoadSolution(near_proj_error);
+      auto normsol =
+        wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(wpbc_error_mesh);
+    
+      normsol.SetNThreads(std::thread::hardware_concurrency());
+      const auto norm = std::real(normsol.ComputeNorm()[0]);
+      std::cout<<"nmodes "<<nm<<" error (wpbc) "<<norm<<std::endl;
+      wpbc_error_res.insert({nm,norm});
+      //now we remove restrictions
+      wgma::cmeshtools::RemovePeriodicity(wpbc_proj_mesh);
+      wpbc_proj_mesh->ComputeNodElCon();
+      wpbc_proj_mesh->CleanUpUnconnectedNodes();
+    }
     //now we compute the error
-    wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh_wgbc, sol_wgbc);
-    sol_wgbc -= sol_pml;
-    error_mesh->LoadSolution(sol_wgbc);
-    if(simdata.export_vtk_error){vtk_error.Do();}
-    auto normsol =
-      wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
-    normsol.SetNThreads(std::thread::hardware_concurrency());
-    const auto norm = std::real(normsol.ComputeNorm()[0]);
-    std::cout<<"nmodes "<<nm<<" error "<<norm<<std::endl;
-    error_res.insert({nm,norm});
+    if(simdata.compare_pml_sol){
+      wgma::cmeshtools::ExtractSolFromMesh(pml_error_mesh, scatt_mesh_wgbc, sol_wgbc);
+      sol_wgbc -= sol_pml;
+      pml_error_mesh->LoadSolution(sol_wgbc);
+      if(simdata.export_vtk_error){vtk_error.Do();}
+      auto normsol =
+        wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(pml_error_mesh);
+      normsol.SetNThreads(std::thread::hardware_concurrency());
+      const auto norm = std::real(normsol.ComputeNorm()[0]);
+      std::cout<<"nmodes "<<nm<<" error (pml) "<<norm<<std::endl;
+      pml_error_res.insert({nm,norm});
+    }
       
     //removing restrictions
     wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wgbc);
     scatt_mesh_wgbc->ComputeNodElCon();
     scatt_mesh_wgbc->CleanUpUnconnectedNodes();
   }
-  std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
-  for(auto [nm,error] : error_res){
-    std::cout<<"nmodes "<<nm<<" norm error: "<<error<<std::endl;
+  if(simdata.compare_pml_sol){
+    std::cout<<"+++++++++++++WPBC COMPARISON+++++++++++++"<<std::endl;
+    for(auto [nm,error] : wpbc_error_res){
+      std::cout<<"nmodes "<<nm<<" norm error: "<<error<<std::endl;
+    }
+    std::cout<<"+++++++++++++++++++++++++++++++++++++++++"<<std::endl;
   }
-  std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
+  if(simdata.compare_pml_sol){
+    std::cout<<"+++++++++++++PML COMPARISON+++++++++++++"<<std::endl;
+    for(auto [nm,error] : pml_error_res){
+      std::cout<<"nmodes "<<nm<<" norm error: "<<error<<std::endl;
+    }
+    std::cout<<"++++++++++++++++++++++++++++++++++++++++"<<std::endl;
+  }
+  
 }
 
 void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
@@ -1235,3 +1354,75 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   scatt_an.Solve();
 }
 
+void
+ReplaceMaterialsForProjection(TPZAutoPointer<TPZCompMesh> proj_mesh)
+{
+  //replace all materials for L2 projection
+  TPZMaterialT<CSTATE> *last_mat{nullptr};
+  for(auto [id,mat] : proj_mesh->MaterialVec()){
+    auto bnd = dynamic_cast<TPZBndCond*>(mat);
+    if(!bnd){
+      constexpr int dim{1};
+      constexpr int soldim{1};
+      auto newmat = new wgma::materials::SolutionProjection<CSTATE>(id,dim,soldim);
+      delete mat;
+      proj_mesh->MaterialVec()[id]=newmat;
+      last_mat = newmat;
+    }
+  }
+  for(auto [id,mat] : proj_mesh->MaterialVec()){
+    auto bnd = dynamic_cast<TPZBndCond*>(mat);
+    if(bnd){
+      TPZFMatrix<CSTATE> v1;
+      TPZVec<CSTATE> v2;
+      auto newmat = last_mat->CreateBC(last_mat,id,0,v1,v2);
+      delete bnd;
+      proj_mesh->MaterialVec()[id]=dynamic_cast<TPZMaterial*>(newmat);
+    }
+  }
+}
+
+void
+TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
+                                      TPZAutoPointer<TPZCompMesh> src_mesh,
+                                      const std::map<int64_t,int64_t>& periodic_els)
+{
+  TPZGeoMesh *gmesh = dest_mesh->Reference();
+  const TPZFMatrix<CSTATE> &src_sol = src_mesh->Solution();
+  const auto &src_block = src_mesh->Block();
+  const int nrow = src_sol.Rows();
+  const int ncol = src_sol.Cols();
+  TPZFMatrix<CSTATE> &dest_sol = dest_mesh->Solution();
+  const auto &dest_block = dest_mesh->Block();
+  dest_sol.Redim(nrow,ncol);
+  //gmesh will point to dest_mesh
+  src_mesh->LoadReferences();
+  for(auto dest_cel : dest_mesh->ElementVec()){
+    //we skip boundary els
+    if(dest_cel->Dimension()!=dest_mesh->Dimension()){
+      continue;
+    }
+    const int64_t dest_gel_index = dest_cel->ReferenceIndex();
+    const int64_t src_gel_index = periodic_els.at(dest_gel_index);
+    auto src_cel = gmesh->ElementVec()[dest_gel_index]->Reference();
+    if(dest_cel->NConnects()!=src_cel->NConnects()){
+      DebugStop();
+    }
+    const int ncon = dest_cel->NConnects();
+    for(int icon = 0; icon < ncon; icon++){
+      const auto src_seqnum = src_cel->Connect(icon).SequenceNumber();
+      const auto src_pos = src_block.Position(src_seqnum);
+
+      const auto dest_seqnum = dest_cel->Connect(icon).SequenceNumber();
+      const auto dest_pos = dest_block.Position(dest_seqnum);
+      
+      const auto neq = src_cel->Connect(icon).NDof();
+      for(int icol = 0; icol < ncol; icol++){
+        for(int ieq = 0; ieq < neq; ieq++){
+          const auto val = src_sol.Get(src_pos+ieq,icol);
+          dest_sol.Put(dest_pos+ieq,icol,val);
+        }
+      }
+    }
+  }
+}
