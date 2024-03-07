@@ -14,7 +14,6 @@ from utils.gmsh import (
     LineData,
     RectData,
     remap_tags,
-    set_periodic,
     split_region_dir
 )
 
@@ -119,7 +118,7 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
         up = up[0]
         src_left_clad_tags.append(
             tag) if up in rec_left.tag else src_left_core_tags.append(tag)
-
+    src_left_clad_tags.sort()
     # let us split the eval domains
     eval_left_clad_tags = []
     eval_left_core_tags = []
@@ -129,6 +128,7 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
         up = up[0]
         eval_left_clad_tags.append(
             tag) if up in rec_left.tag else eval_left_core_tags.append(tag)
+    eval_left_clad_tags.sort()
 
     # now we make the eval line periodic regarding the src left line
     affine = [1.0 if i == j else 0 for i in range(4) for j in range(4)]
@@ -141,6 +141,7 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
     lpb = src_left_clad_tags+src_left_core_tags
     dim = 1
     gmsh.model.mesh.set_periodic(dim, rpb, lpb, affine)
+    
     # right domain (cladding+core)
     rec_right = RectData()
     rec_right.xc = 0
@@ -274,8 +275,9 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
     pmlmap1d.update(pml1d_eval_left)
     pmlmap1d.update(pml1d_src_right)
     pml1d_src_left_tags = [tag for _, tag in pml1d_src_left.keys()]
+    pml1d_src_left_tags.sort()
     pml1d_eval_left_tags = [tag for _, tag in pml1d_eval_left.keys()]
-    pml1d_src_right_tags = [tag for _, tag in pml1d_src_right.keys()]
+    pml1d_eval_left_tags.sort()
     # get boundaries
     dim = 2
     all_domains = gmsh.model.get_entities(dim)
@@ -413,7 +415,12 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
 
     gmsh.model.mesh.generate(2)
 
+    # pml regions must be set periodic after the meshing
+    # this can be done since we know that the nodes will match
+    # otherwise gmsh throws a weird error
     dim = 1
+    for r,l in zip(pml1d_eval_left_tags,pml1d_src_left_tags):
+        gmsh.model.mesh.set_periodic(dim, [r], [l], affine)
     # we invert one of the periodic edges
     gmsh.model.mesh.reverse([(dim, t) for t in rpb])
     if len(filename) > 0:
