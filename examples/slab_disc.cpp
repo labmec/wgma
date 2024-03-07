@@ -1028,8 +1028,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     number of modes is sufficient to represent it.
    */
   TPZAutoPointer<TPZCompMesh> wpbc_error_mesh;
-  // solution from the 2d problem using WPBC
-  TPZFMatrix<CSTATE> sol_proj_wpbc;
   TPZFMatrix<CSTATE> projected_modes;
   
   if(simdata.project_near_wpbc){
@@ -1067,11 +1065,11 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       return wgma::wganalysis::CMeshWgma1D(gmesh,mode,pOrder,modal_data,
                                            lambda, scale);
     }();
-    ReplaceMaterialsForProjection(wpbc_error_mesh);
     //now we transfer the modal solution from the WPBC to the error mesh and store it
     TransferSolutionBetweenPeriodicMeshes(wpbc_error_mesh, src_an.GetMesh(), periodic_els);
     projected_modes = wpbc_error_mesh->Solution();
-    
+    const int neq = wpbc_error_mesh->Solution().Rows();
+    wpbc_error_mesh->Solution().Resize(neq, 1);
   }
   // this will be the restricted mesh close to the wg port
   TPZAutoPointer<TPZCompMesh> wpbc_proj_mesh;
@@ -1083,6 +1081,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   std::set<int64_t> bound_connects;
   if(simdata.project_near_wpbc){
     wpbc_proj_mesh = wpbc_error_mesh->Clone();
+    ReplaceMaterialsForProjection(wpbc_proj_mesh);
     wgma::cmeshtools::FindDirichletConnects(wpbc_proj_mesh, bound_connects);
   }
   
@@ -1093,14 +1092,18 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   //only used if compare_pml_sol==true
   TPZFMatrix<CSTATE> sol_pml;
   if(simdata.compare_pml_sol){
-    sol_pml = pml_error_mesh->Solution();
     pml_error_mesh = src_an.GetMesh()->Clone();
+    sol_pml = pml_error_mesh->Solution();
     wgma::cmeshtools::ExtractSolFromMesh(pml_error_mesh, scatt_mesh_pml, sol_pml);
   }
   //just to get the same size, we will zero it later
   auto sol_wgbc = sol_pml;
-  const std::string pml_error_file = simdata.prefix+"_error_";
-  auto vtk_error = TPZVTKGenerator(pml_error_mesh, fvars, pml_error_file, simdata.vtk_res);
+  const std::string pml_error_file = simdata.prefix+"_pml_error";
+  auto vtk_pml_error = TPZVTKGenerator(pml_error_mesh, fvars, pml_error_file, simdata.vtk_res);
+  const std::string wpbc_error_file = simdata.prefix+"_wpbc_error";
+  auto vtk_wpbc_error = TPZVTKGenerator(wpbc_error_mesh, fvars, wpbc_error_file, simdata.vtk_res);
+  const std::string wpbc_proj_file = simdata.prefix+"_wpbc_proj";
+  auto vtk_wpbc_proj = TPZVTKGenerator(wpbc_proj_mesh, {"Solution"}, wpbc_proj_file, simdata.vtk_res);
   std::map<int,STATE> pml_error_res;
   std::map<int,STATE> wpbc_error_res;
   //just to set correct size for these matrices
@@ -1123,8 +1126,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
         const int neq = wpbc_error_mesh->Solution().Rows();
         wpbc_error_mesh->Solution().Resize(neq, 1);
       }
-      //we extract the 2d sol and load it into the error mesh
-      wgma::cmeshtools::ExtractSolFromMesh(wpbc_error_mesh, scatt_mesh_wgbc, sol_proj_wpbc);
       //now we compute projection
       auto proj_an = wgma::scattering::Analysis(wpbc_proj_mesh, simdata.n_threads,
                                                 false,
@@ -1134,11 +1135,15 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       wgma::cmeshtools::ExtractSolFromMesh(wpbc_proj_mesh, scatt_mesh_wgbc, sol_proj);
       //get reference solution
       wgma::cmeshtools::ExtractSolFromMesh(wpbc_error_mesh, scatt_mesh_wgbc, sol_ref);
-      proj_an.Solve();
+      proj_an.Run();
       //now we copy it to the error mesh
       wgma::cmeshtools::ExtractSolFromMesh(wpbc_error_mesh, wpbc_proj_mesh, near_proj_error);
       near_proj_error -= sol_ref;
       wpbc_error_mesh->LoadSolution(near_proj_error);
+      if(simdata.export_vtk_error){
+        vtk_wpbc_proj.Do();
+        vtk_wpbc_error.Do();
+      }
       auto normsol =
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(wpbc_error_mesh);
     
@@ -1156,7 +1161,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       wgma::cmeshtools::ExtractSolFromMesh(pml_error_mesh, scatt_mesh_wgbc, sol_wgbc);
       sol_wgbc -= sol_pml;
       pml_error_mesh->LoadSolution(sol_wgbc);
-      if(simdata.export_vtk_error){vtk_error.Do();}
+      if(simdata.export_vtk_error){vtk_pml_error.Do();}
       auto normsol =
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(pml_error_mesh);
       normsol.SetNThreads(std::thread::hardware_concurrency());
@@ -1395,7 +1400,7 @@ TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
   TPZFMatrix<CSTATE> &dest_sol = dest_mesh->Solution();
   const auto &dest_block = dest_mesh->Block();
   dest_sol.Redim(nrow,ncol);
-  //gmesh will point to dest_mesh
+  //gmesh will point to src_mesh
   src_mesh->LoadReferences();
   for(auto dest_cel : dest_mesh->ElementVec()){
     //we skip boundary els
@@ -1404,7 +1409,10 @@ TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
     }
     const int64_t dest_gel_index = dest_cel->ReferenceIndex();
     const int64_t src_gel_index = periodic_els.at(dest_gel_index);
-    auto src_cel = gmesh->ElementVec()[dest_gel_index]->Reference();
+    auto src_cel = gmesh->ElementVec()[src_gel_index]->Reference();
+    if(!src_cel){
+      DebugStop();
+    }
     if(dest_cel->NConnects()!=src_cel->NConnects()){
       DebugStop();
     }
@@ -1412,11 +1420,29 @@ TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
     for(int icon = 0; icon < ncon; icon++){
       const auto src_seqnum = src_cel->Connect(icon).SequenceNumber();
       const auto src_pos = src_block.Position(src_seqnum);
-
+      const auto src_sz = src_block.Size(src_seqnum);
+      
       const auto dest_seqnum = dest_cel->Connect(icon).SequenceNumber();
       const auto dest_pos = dest_block.Position(dest_seqnum);
+      const auto dest_sz = dest_block.Size(dest_seqnum);
       
-      const auto neq = src_cel->Connect(icon).NDof();
+      if(src_sz != dest_sz){
+        PZError<<__PRETTY_FUNCTION__<<'\n'
+               <<"src sz: "<<src_sz<<" dest sz: "<<dest_sz<<'\n'
+               <<"src_cel index: "<<src_cel->Index()<<'\t'
+               <<"dest_cel index: "<<dest_cel->Index()<<'\t'
+               <<"icon: "<<icon<<std::endl;
+        DebugStop();
+      }
+      const auto neq = src_cel->Connect(icon).NDof(src_mesh);
+      if(neq != src_sz){
+        PZError<<__PRETTY_FUNCTION__<<'\n'
+               <<"src sz: "<<src_sz<<" src_cel->Connect(icon).NDof: "<<neq<<'\n'
+               <<"src_cel index: "<<src_cel->Index()<<'\t'
+               <<"dest_cel index: "<<dest_cel->Index()<<'\t'
+               <<"icon: "<<icon<<std::endl;
+        DebugStop();
+      }
       for(int icol = 0; icol < ncol; icol++){
         for(int ieq = 0; ieq < neq; ieq++){
           const auto val = src_sol.Get(src_pos+ieq,icol);
