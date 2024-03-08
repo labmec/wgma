@@ -1120,7 +1120,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       //first we load the projected modes to the error mesh
       wpbc_error_mesh->LoadSolution(projected_modes);
       //now we restrict the proj mesh
-      wgma::cmeshtools::RestrictDofs(wpbc_proj_mesh, wpbc_error_mesh, nm, bound_connects);
+      int64_t indep_con =
+        wgma::cmeshtools::RestrictDofs(wpbc_proj_mesh, wpbc_error_mesh, nm, bound_connects);
       
       { //we want just 1 column
         const int neq = wpbc_error_mesh->Solution().Rows();
@@ -1136,6 +1137,15 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       //get reference solution
       wgma::cmeshtools::ExtractSolFromMesh(wpbc_error_mesh, scatt_mesh_wgbc, sol_ref);
       proj_an.Run();
+      // if(im > 0){
+      //   const auto seqnum = wpbc_proj_mesh->ConnectVec()[indep_con].SequenceNumber();
+      //   const auto pos = wpbc_proj_mesh->Block().Position(seqnum);
+      //   std::cout<<"coeffs:\n";
+      //   for(int ii = 0; ii < nm; ii++){
+      //     std::cout<<"\tii "<<ii<<" alpha "<<sol_proj.Get(pos+ii,0)<<'\n';
+      //   }
+      //   std::cout<<std::endl;
+      // }
       //now we copy it to the error mesh
       wgma::cmeshtools::ExtractSolFromMesh(wpbc_error_mesh, wpbc_proj_mesh, near_proj_error);
       near_proj_error -= sol_ref;
