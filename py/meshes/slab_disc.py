@@ -141,7 +141,7 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
     lpb = src_left_clad_tags+src_left_core_tags
     dim = 1
     gmsh.model.mesh.set_periodic(dim, rpb, lpb, affine)
-    
+
     # right domain (cladding+core)
     rec_right = RectData()
     rec_right.xc = 0
@@ -419,10 +419,23 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
     # this can be done since we know that the nodes will match
     # otherwise gmsh throws a weird error
     dim = 1
-    for r,l in zip(pml1d_eval_left_tags,pml1d_src_left_tags):
+    for r, l in zip(pml1d_eval_left_tags, pml1d_src_left_tags):
         gmsh.model.mesh.set_periodic(dim, [r], [l], affine)
-    # we invert one of the periodic edges
-    gmsh.model.mesh.reverse([(dim, t) for t in rpb])
+    # we need to check which edges must be inverted
+    lpb = lpb + pml1d_src_left_tags
+    rpb = rpb + pml1d_eval_left_tags
+    invert = []
+    for r, l in zip(rpb, lpb):
+        coord = [0]
+        d_l = gmsh.model.get_derivative(dim, l, coord)
+        d_r = gmsh.model.get_derivative(dim, r, coord)
+        print("d_l {}".format(d_l))
+        print("d_r {}".format(d_r))
+        diff = sum([(x_l-x_r)*(x_l-x_r) for x_l, x_r in zip(d_l, d_r)])
+        if diff > 0.01:
+            invert.append(r)
+
+    gmsh.model.mesh.reverse([(dim, t) for t in invert])
     if len(filename) > 0:
         abspath = os.path.abspath(__file__)
         dname = os.path.dirname(abspath)
