@@ -268,6 +268,7 @@ int main(int argc, char *argv[]) {
 #include <slepcepshandler.hpp>
 #include <TPZKrylovEigenSolver.h>
 #include <TPZPardisoSolver.h>
+#include <TPZParallelUtils.h>
 #include <TPZYSMPPardiso.h>
 #include <post/orthowgsol.hpp>
 #include <materials/solutionprojection.hpp>
@@ -323,6 +324,9 @@ void
 TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
                                       TPZAutoPointer<TPZCompMesh> src_mesh,
                                       const std::map<int64_t,int64_t>& periodic_els);
+
+void
+SetupPardiso(TPZPardisoSolver<CSTATE> *pardiso);
 
 SimData ReadSimData(const std::string &dataname) {
   DebugStop();
@@ -497,7 +501,7 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
 
   {
     TPZSimpleTimer timer("Ortho",true);
-    constexpr STATE tol{1e-8};
+    constexpr STATE tol{1e-14};
     constexpr bool conj{false};
     const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
     std::cout<<"orthogonalised  "<<n_ortho<<" eigenvectors"<<std::endl;
@@ -1136,7 +1140,15 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       wgma::cmeshtools::ExtractSolFromMesh(wpbc_proj_mesh, scatt_mesh_wgbc, sol_proj);
       //get reference solution
       wgma::cmeshtools::ExtractSolFromMesh(wpbc_error_mesh, scatt_mesh_wgbc, sol_ref);
-      proj_an.Run();
+
+      proj_an.Assemble();
+      {
+        //get pardiso control
+        auto *pardiso = proj_an.GetSolver().GetPardisoControl();
+        if(!pardiso){DebugStop();}
+        SetupPardiso(pardiso);
+      }
+      proj_an.Solve();
       // if(im > 0){
       //   const auto seqnum = wpbc_proj_mesh->ConnectVec()[indep_con].SequenceNumber();
       //   const auto pos = wpbc_proj_mesh->Block().Position(seqnum);
@@ -1359,12 +1371,8 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                                nmodes, src_data.wgbc_k, src_data.wgbc_f);
   //get pardiso control
   auto *pardiso = scatt_an.GetSolver().GetPardisoControl();
-  pardiso->SetMessageLevel(0);
-  
-  pardiso->ResetParam();
-  constexpr auto sys_type = SymProp::Sym;
-  constexpr auto prop = TPZPardisoSolver<CSTATE>::MProperty::EIndefinite;
-  pardiso->SetMatrixType(sys_type,prop);
+  if(!pardiso){DebugStop();}
+  SetupPardiso(pardiso);
   TPZSimpleTimer tscatt("Solve",true);
   scatt_an.Solve();
 }
@@ -1412,10 +1420,17 @@ TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
   dest_sol.Redim(nrow,ncol);
   //gmesh will point to src_mesh
   src_mesh->LoadReferences();
-  for(auto dest_cel : dest_mesh->ElementVec()){
+
+  auto elvec = dest_mesh->ElementVec();
+  const int nel = elvec.NElements();
+  
+  pzutils::ParallelFor(0,nel,[&gmesh, &dest_mesh, &src_mesh, &elvec,
+                              &periodic_els, &src_block, &dest_block,
+                              &src_sol, &dest_sol, ncol](int iel){
+    auto dest_cel = elvec[iel];
     //we skip boundary els
     if(dest_cel->Dimension()!=dest_mesh->Dimension()){
-      continue;
+      return;
     }
     const int64_t dest_gel_index = dest_cel->ReferenceIndex();
     const int64_t src_gel_index = periodic_els.at(dest_gel_index);
@@ -1460,5 +1475,20 @@ TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
         }
       }
     }
-  }
+  });
+}
+
+void
+SetupPardiso(TPZPardisoSolver<CSTATE> *pardiso)
+{
+  pardiso->SetMessageLevel(1);
+  
+  pardiso->ResetParam();
+  constexpr auto sys_type = SymProp::Sym;
+  constexpr auto prop = TPZPardisoSolver<CSTATE>::MProperty::EIndefinite;
+  pardiso->SetMatrixType(sys_type,prop);
+  //auto iparm = pardiso->GetParam();
+  //iparm[8]=13;
+  //iparm[9]=13;
+  //pardiso->SetParam(iparm);
 }
