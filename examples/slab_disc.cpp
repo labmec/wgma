@@ -326,7 +326,7 @@ TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
                                       const std::map<int64_t,int64_t>& periodic_els);
 
 void
-SetupPardiso(TPZPardisoSolver<CSTATE> *pardiso);
+SetupPardiso(TPZPardisoSolver<CSTATE> *pardiso, SymProp type);
 
 SimData ReadSimData(const std::string &dataname) {
   DebugStop();
@@ -511,17 +511,17 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   //now we normalise them in case we need to compute the reflective spectra
   {
     auto cmesh = an.GetMesh();
-    // //leave empty for all valid matids
-    // std::set<int> matids {};
-    // constexpr bool conj{true};
-    // auto norm =
-    //   wgma::post::WgNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,
-    //                                                         conj,n_threads);
-    // TPZVec<CSTATE> betavec = an.GetEigenvalues();
-    // for(auto &b : betavec){b = sqrt(b);}
-    // norm.SetBeta(betavec);
-    // norm.SetWavelength(1.5);
-    // norm.Normalise();
+    //leave empty for all valid matids
+    std::set<int> matids {};
+    constexpr bool conj{true};
+    auto norm =
+      wgma::post::WgNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,
+                                                            conj,0);
+    TPZVec<CSTATE> betavec = an.GetEigenvalues();
+    for(auto &b : betavec){b = sqrt(b);}
+    norm.SetBeta(betavec);
+    norm.SetWavelength(1.55/scale);
+    norm.Normalise();
     TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
 
     // const int sz = mesh_sol.Rows() * mesh_sol.Cols();
@@ -529,6 +529,7 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
     // for(int i = 0; i < sz; i++){
     //   *sol_ptr++= *sol_ptr*scale;
     // }
+    
     //we update analysis object
     an.SetEigenvectors(mesh_sol);
     an.LoadAllSolutions();
@@ -664,25 +665,25 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
 
 
 
-  {
-    auto eqfilt = src_an.StructMatrix()->EquationFilter();
-    auto neqcondense = eqfilt.NActiveEquations();
-    std::string sol2dfilename = simdata.prefix+"_sol.csv";
-    std::ofstream sol2dfile(sol2dfilename);
-    TPZFMatrix<CSTATE> sol2d(neqcondense,1);
-    eqfilt.Gather(sol_proj, sol2d);
-    std::cout<<"sol2d dimensions: "<<sol2d.Rows()<<","<<sol2d.Cols()<<std::endl;
-    sol2d.Print("",sol2dfile,ECSV);
+  // {
+  //   auto eqfilt = src_an.StructMatrix()->EquationFilter();
+  //   auto neqcondense = eqfilt.NActiveEquations();
+  //   std::string sol2dfilename = simdata.prefix+"_sol.csv";
+  //   std::ofstream sol2dfile(sol2dfilename);
+  //   TPZFMatrix<CSTATE> sol2d(neqcondense,1);
+  //   eqfilt.Gather(sol_proj, sol2d);
+  //   std::cout<<"sol2d dimensions: "<<sol2d.Rows()<<","<<sol2d.Cols()<<std::endl;
+  //   sol2d.Print("",sol2dfile,ECSV);
 
-    // std::string vmatfilename = simdata.prefix+"_ev.csv";
-    // std::ofstream vmatfile(vmatfilename);
-    // std::string vmatname = "vmat=";
-    // auto &eigenvectors = src_an.GetEigenvectors();
-    // TPZFMatrix<CSTATE> vmat(neqcondense,eigenvectors.Cols());
-    // eqfilt.Gather(eigenvectors, vmat);
-    // std::cout<<"vmat dimensions: "<<vmat.Rows()<<","<<vmat.Cols()<<std::endl;
-    // vmat.Print("",vmatfile,ECSV);
-  }
+  //   std::string vmatfilename = simdata.prefix+"_ev.csv";
+  //   std::ofstream vmatfile(vmatfilename);
+  //   std::string vmatname = "vmat=";
+  //   auto &eigenvectors = src_an.GetEigenvectors();
+  //   TPZFMatrix<CSTATE> vmat(neqcondense,eigenvectors.Cols());
+  //   eqfilt.Gather(eigenvectors, vmat);
+  //   std::cout<<"vmat dimensions: "<<vmat.Rows()<<","<<vmat.Cols()<<std::endl;
+  //   vmat.Print("",vmatfile,ECSV);
+  // }
   
   /*
     dirichlet boundary connects should not be restricted, otherwise
@@ -701,7 +702,7 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
 
   constexpr bool export_mats{false};
   TPZFMatrix<CSTATE> couplingmat;
-  {
+  if(export_mats){
     using namespace wgma::post;
     std::set<int> matids;
     constexpr bool conj{true};
@@ -718,9 +719,7 @@ void ProjectSolIntoRestrictedMesh(wgma::wganalysis::WgmaPlanar &src_an,
     integrator.SetMu(false);
     integrator.ComputeCoupling();
     integrator.GetCoupling(couplingmat);
-  }
-
-  if(export_mats){
+  
     std::ofstream couplfile{simdata.prefix+"_proj_coupl.csv"};
     couplingmat.Print("",couplfile,ECSV);
     couplfile.close();
@@ -1132,9 +1131,11 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
         wpbc_error_mesh->Solution().Resize(neq, 1);
       }
       //now we compute projection
+      constexpr bool sym{true};
       auto proj_an = wgma::scattering::Analysis(wpbc_proj_mesh, simdata.n_threads,
-                                                false,
-                                                simdata.filter_bnd_eqs,false);
+                                                simdata.optimize_bandwidth,
+                                                simdata.filter_bnd_eqs,
+                                                sym);
       //now we load desired solution into proj_mesh so we can project it
       TPZFMatrix<CSTATE> &sol_proj = wpbc_proj_mesh->Solution();
       wgma::cmeshtools::ExtractSolFromMesh(wpbc_proj_mesh, scatt_mesh_wgbc, sol_proj);
@@ -1146,7 +1147,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
         //get pardiso control
         auto *pardiso = proj_an.GetSolver().GetPardisoControl();
         if(!pardiso){DebugStop();}
-        SetupPardiso(pardiso);
+        SetupPardiso(pardiso, SymProp::Herm);
       }
       proj_an.Solve();
       // if(im > 0){
@@ -1372,7 +1373,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   //get pardiso control
   auto *pardiso = scatt_an.GetSolver().GetPardisoControl();
   if(!pardiso){DebugStop();}
-  SetupPardiso(pardiso);
+  SetupPardiso(pardiso,SymProp::NonSym);
   TPZSimpleTimer tscatt("Solve",true);
   scatt_an.Solve();
 }
@@ -1479,16 +1480,13 @@ TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
 }
 
 void
-SetupPardiso(TPZPardisoSolver<CSTATE> *pardiso)
+SetupPardiso(TPZPardisoSolver<CSTATE> *pardiso, SymProp type)
 {
-  pardiso->SetMessageLevel(1);
+  pardiso->SetMessageLevel(0);
   
   pardiso->ResetParam();
-  constexpr auto sys_type = SymProp::Sym;
-  constexpr auto prop = TPZPardisoSolver<CSTATE>::MProperty::EIndefinite;
-  pardiso->SetMatrixType(sys_type,prop);
-  //auto iparm = pardiso->GetParam();
-  //iparm[8]=13;
-  //iparm[9]=13;
-  //pardiso->SetParam(iparm);
+  const auto prop = type == SymProp::Herm ?
+    TPZPardisoSolver<CSTATE>::MProperty::EPositiveDefinite :
+    TPZPardisoSolver<CSTATE>::MProperty::EIndefinite;
+  pardiso->SetMatrixType(type, prop);
 }
