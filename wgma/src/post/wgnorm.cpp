@@ -23,10 +23,6 @@ namespace wgma::post{
       }
     }
 
-    for(int isol = 0; isol < nsol; isol++){
-      res[isol] = sqrt(res[isol]);
-      // std::cout<<"computed norm of solution "<<isol<<": "<<res[isol]<<std::endl;
-    }
     return res;
   }
   
@@ -84,17 +80,35 @@ namespace wgma::post{
       }
       coeff_mat.Decompose(ELU);
       const auto detjac = data.detjac;
-      //omega*\mu_0
-      const auto wuo = m_wl * 0.4*M_PI;
-      const auto cte = -weight*fabs(detjac)*1/wuo;
+      //speed of light times \mu_0
+      const auto c_uo = 120*M_PI;
+      const auto omega_uo = (2*M_PI/m_wl)*c_uo;
+      const auto cte = 0.5*weight*fabs(detjac);
       const int nsol = data.sol.size();
+      TPZFNMatrix<3000,CSTATE> rot_e_field(3,nsol,0.), h_field(3,nsol,0.);
       for(int isol = 0; isol < nsol; isol++){
-        const auto &efield =  data.sol[isol][0];
+        const auto val = data.sol[isol][0];
+        rot_e_field.Put(1,isol,-val);
         const auto beta = m_beta[isol];
-        const auto hfield = coeff_mat.Get(1,1)*beta*efield;
-        CSTATE val = m_conj ?
-          efield * std::conj(hfield) : efield * hfield;
-        this->m_res[index][isol] += val * cte;
+        //we have -jbeta/(j\omega\mu_0)
+        const auto ct = -1.0*beta/omega_uo;
+        h_field.Put(1,isol,ct*val);
+      }
+      //apply constitutive param
+      coeff_mat.Substitution(&h_field);
+      //if conj
+      if(m_conj){
+        for(int isol = 0; isol < nsol; isol++){
+          const auto val = h_field.Get(1,isol);
+          h_field.Put(1,isol,std::conj(val));
+        }
+      }
+      
+      for(int isol = 0; isol < nsol; isol++){
+        const auto e = rot_e_field.Get(1,isol);
+        const auto h = h_field.Get(1,isol);
+        
+        this->m_res[index][isol] += e * h * cte;
       }
     }else{
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
