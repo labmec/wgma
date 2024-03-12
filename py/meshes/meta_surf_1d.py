@@ -121,8 +121,8 @@ bnd_wgma_top = [t for _, t in top_bnds]
 field_ct = 1
 gmsh.model.mesh.field.add("Distance", field_ct)
 gmsh.model.mesh.field.setNumbers(
-    field_ct, "CurvesList", [5,9,13])
-field_ct +=1
+    field_ct, "CurvesList", [5, 9, 13])
+field_ct += 1
 gmsh.model.mesh.field.add("Threshold", field_ct)
 gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
 # gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
@@ -144,7 +144,7 @@ gmsh.model.mesh.field.set_number(field_ct, "VIn", el_air)
 # gmsh.model.mesh.field.set_number(field_ct, "VOut", el_air)
 field_ct += 1
 gmsh.model.mesh.field.add("Min", field_ct)
-gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList", [2,3,4])
+gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList", [2, 3, 4])
 
 gmsh.model.mesh.field.setAsBackgroundMesh(field_ct)
 gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
@@ -193,6 +193,21 @@ generate_physical_ids(domain_physical_ids, domain_regions)
 gmsh.model.mesh.generate(2)
 
 dim = 1
+
+invert = []
+for r, l in zip(bnd_right, bnd_left):
+    coord = [0]
+    d_l = gmsh.model.get_derivative(dim, l, coord)
+    d_r = gmsh.model.get_derivative(dim, r, coord)
+    print("d_l {}".format(d_l))
+    print("d_r {}".format(d_r))
+    diff = sum([(x_l-x_r)*(x_l-x_r) for x_l, x_r in zip(d_l, d_r)])
+    if diff > 0.01:
+        invert.append(l)
+
+print("invert {}\nbnd_left {}".format(invert, bnd_left))
+# gmsh.model.mesh.reverse([(dim, t) for t in invert])
+
 gmsh.model.mesh.reverse([(dim, t) for t in bnd_left])
 
 if __name__ == "__main__":
