@@ -1094,10 +1094,16 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   TPZAutoPointer<TPZCompMesh> pml_error_mesh;
   //only used if compare_pml_sol==true
   TPZFMatrix<CSTATE> sol_pml;
+  STATE norm_sol_pml{1};
   if(simdata.compare_pml_sol){
     pml_error_mesh = src_an.GetMesh()->Clone();
     sol_pml = pml_error_mesh->Solution();
     wgma::cmeshtools::ExtractSolFromMesh(pml_error_mesh, scatt_mesh_pml, sol_pml);
+    pml_error_mesh->LoadSolution(sol_pml);
+    auto normsol =
+        wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(pml_error_mesh);
+    norm_sol_pml = std::real(normsol.ComputeNorm()[0]);
+    std::cout<<"norm sol pml: "<<norm_sol_pml<<std::endl;
   }
   //just to get the same size, we will zero it later
   auto sol_wgbc = sol_pml;
@@ -1142,6 +1148,16 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       //get reference solution
       wgma::cmeshtools::ExtractSolFromMesh(wpbc_error_mesh, scatt_mesh_wgbc, sol_ref);
 
+      STATE norm_sol_wpbc{1};
+      {
+        wpbc_error_mesh->LoadSolution(sol_ref);
+        auto normsol =
+          wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(wpbc_error_mesh);
+        norm_sol_wpbc = std::real(normsol.ComputeNorm()[0]);
+        constexpr STATE tol = 1000*std::numeric_limits<STATE>::epsilon();
+        if(norm_sol_wpbc < tol){norm_sol_wpbc=1.;}
+        std::cout<<"norm sol wpbc: "<<norm_sol_wpbc<<std::endl;
+      }
       proj_an.Assemble();
       {
         //get pardiso control
@@ -1172,8 +1188,9 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     
       normsol.SetNThreads(std::thread::hardware_concurrency());
       const auto norm = std::real(normsol.ComputeNorm()[0]);
-      std::cout<<"nmodes "<<nm<<" error (wpbc) "<<norm<<std::endl;
-      wpbc_error_res.insert({nm,norm});
+      const auto error = norm/norm_sol_wpbc;
+      std::cout<<"nmodes "<<nm<<" error (wpbc) "<<error<<std::endl;
+      wpbc_error_res.insert({nm,error});
       //now we remove restrictions
       wgma::cmeshtools::RemovePeriodicity(wpbc_proj_mesh);
       wpbc_proj_mesh->ComputeNodElCon();
@@ -1189,8 +1206,9 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(pml_error_mesh);
       normsol.SetNThreads(std::thread::hardware_concurrency());
       const auto norm = std::real(normsol.ComputeNorm()[0]);
-      std::cout<<"nmodes "<<nm<<" error (pml) "<<norm<<std::endl;
-      pml_error_res.insert({nm,norm});
+      const auto error = norm/norm_sol_pml;
+      std::cout<<"nmodes "<<nm<<" error (pml) "<<error<<std::endl;
+      pml_error_res.insert({nm,error});
     }
       
     //removing restrictions
