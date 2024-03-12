@@ -124,7 +124,7 @@ namespace wgma::post{
           for(auto x = 0; x < 3; x++){
             const auto val = sol_mat.Get(x,0);
             const auto src = rot_et.Get(x,is);
-            sol_mat.Put(x, 0, val + src*coeff*std::exp(sign*1i*beta*z));
+            sol_mat.Put(x, 0, val + sign*src*coeff);//*std::exp(sign*1i*beta*z));
           }
         }
         coeff_mat.Substitution(&sol_mat);
