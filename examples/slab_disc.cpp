@@ -18,6 +18,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <post/wgnorm.hpp>
 #include <post/waveguideportbc.hpp>
 #include <post/waveguidecoupling.hpp>
+#include <post/solcoupling.hpp>
 // pz includes
 #include <MMeshType.h>      //for MMeshType
 #include <TPZSimpleTimer.h> //for TPZSimpleTimer
@@ -29,7 +30,7 @@ and then the subsequent scattering analysis at a waveguide discontinuity.
 #include <regex>//for string search
 #include <thread>
 
-
+using namespace std::complex_literals;
 //!minimum shared sim data
 struct SimData{
   //!.msh mesh
@@ -139,7 +140,7 @@ SimData GetSimData()
     This scale factor is often referred to as characteristic length
     of the domain.
   */
-  data.scale = data.lambda/(2*M_PI);
+  data.scale = 1.0;//data.lambda/(2*M_PI);
   data.mode = wgma::planarwg::mode::TE;
   data.ncore = 1.55;
   data.nclad = 1.00;
@@ -148,15 +149,15 @@ SimData GetSimData()
   data.porder = 4;
   data.n_eigenpairs_left = 300;
   data.n_eigenpairs_right = 300;
-  data.n_modes = {1,10,20,50,100,300};
+  data.n_modes = {3,5,10,20};
   data.filter_bnd_eqs = true;
   data.print_gmesh=true;
   data.export_vtk_modes = false;
   data.export_vtk_scatt = true;
   data.export_vtk_error = true;
-  data.solve_pml = true;
-  data.project_pml_sol = true;
-  data.compare_pml_sol = true;
+  data.solve_pml = false;
+  data.project_pml_sol = false;
+  data.compare_pml_sol = false;
   data.project_near_wpbc = true;
   data.couplingmat = true;
   data.vtk_res=0;
@@ -199,7 +200,7 @@ int main(int argc, char *argv[]) {
   constexpr bool usingSLEPC {true};
   const int nEigenpairs_left = simdata.n_eigenpairs_left;
   const int nEigenpairs_right = simdata.n_eigenpairs_right;
-  const CSTATE target{simdata.ncore*simdata.ncore};
+  const CSTATE target{simdata.ncore*simdata.ncore*4*M_PI*M_PI/simdata.lambda/simdata.lambda};
 
   /*********
    * begin *
@@ -501,7 +502,7 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
 
   {
     TPZSimpleTimer timer("Ortho",true);
-    constexpr STATE tol{1e-14};
+    constexpr STATE tol{1e-8};
     constexpr bool conj{false};
     const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
     std::cout<<"orthogonalised  "<<n_ortho<<" eigenvectors"<<std::endl;
@@ -1108,11 +1109,20 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   //just to get the same size, we will zero it later
   auto sol_wgbc = sol_pml;
   const std::string pml_error_file = simdata.prefix+"_pml_error";
-  auto vtk_pml_error = TPZVTKGenerator(pml_error_mesh, fvars, pml_error_file, simdata.vtk_res);
+  TPZAutoPointer<TPZVTKGenerator> vtk_pml_error = nullptr;
+  if(simdata.compare_pml_sol && simdata.export_vtk_error){
+    vtk_pml_error = new TPZVTKGenerator(pml_error_mesh, fvars, pml_error_file, simdata.vtk_res);
+  }
   const std::string wpbc_error_file = simdata.prefix+"_wpbc_error";
-  auto vtk_wpbc_error = TPZVTKGenerator(wpbc_error_mesh, fvars, wpbc_error_file, simdata.vtk_res);
+  TPZAutoPointer<TPZVTKGenerator> vtk_wpbc_error = nullptr;
+  if(simdata.project_near_wpbc && simdata.export_vtk_error){
+    vtk_wpbc_error = new TPZVTKGenerator(wpbc_error_mesh, fvars, wpbc_error_file, simdata.vtk_res);
+  }
   const std::string wpbc_proj_file = simdata.prefix+"_wpbc_proj";
-  auto vtk_wpbc_proj = TPZVTKGenerator(wpbc_proj_mesh, {"Solution"}, wpbc_proj_file, simdata.vtk_res);
+  TPZAutoPointer<TPZVTKGenerator> vtk_wpbc_proj = nullptr;
+  if(simdata.project_near_wpbc && simdata.export_vtk_error){
+    vtk_wpbc_proj = new TPZVTKGenerator(wpbc_proj_mesh, {"Solution"}, wpbc_proj_file, simdata.vtk_res);
+  }
   std::map<int,STATE> pml_error_res;
   std::map<int,STATE> wpbc_error_res;
   //just to set correct size for these matrices
@@ -1137,7 +1147,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
         wpbc_error_mesh->Solution().Resize(neq, 1);
       }
       //now we compute projection
-      constexpr bool sym{true};
+      constexpr bool sym{false};
       auto proj_an = wgma::scattering::Analysis(wpbc_proj_mesh, simdata.n_threads,
                                                 simdata.optimize_bandwidth,
                                                 simdata.filter_bnd_eqs,
@@ -1159,29 +1169,129 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
         std::cout<<"norm sol wpbc: "<<norm_sol_wpbc<<std::endl;
       }
       proj_an.Assemble();
+      
       {
         //get pardiso control
         auto *pardiso = proj_an.GetSolver().GetPardisoControl();
         if(!pardiso){DebugStop();}
-        SetupPardiso(pardiso, SymProp::Herm);
+        SetupPardiso(pardiso, SymProp::NonSym);
       }
       proj_an.Solve();
-      // if(im > 0){
-      //   const auto seqnum = wpbc_proj_mesh->ConnectVec()[indep_con].SequenceNumber();
-      //   const auto pos = wpbc_proj_mesh->Block().Position(seqnum);
-      //   std::cout<<"coeffs:\n";
-      //   for(int ii = 0; ii < nm; ii++){
-      //     std::cout<<"\tii "<<ii<<" alpha "<<sol_proj.Get(pos+ii,0)<<'\n';
-      //   }
-      //   std::cout<<std::endl;
-      // }
+      
+      if(nm > 2){
+        //first we compare mats
+        TPZFMatrix<CSTATE> coupl_mat;
+
+        
+        {
+          wpbc_error_mesh->LoadSolution(projected_modes);
+          const int neq = wpbc_error_mesh->Solution().Rows();
+          wpbc_error_mesh->Solution().Resize(neq,nm);
+          std::set<int> matids;
+          auto solcoupl =
+            wgma::post::SolCoupling<wgma::post::SingleSpaceIntegrator>(wpbc_error_mesh,matids,simdata.n_threads);
+          solcoupl.ComputeCoupling();
+          solcoupl.GetCoupling(coupl_mat);
+          wpbc_error_mesh->Solution().Resize(neq, 1);
+        }
+
+        auto mat =
+          TPZAutoPointerDynamicCast<TPZFYsmpMatrix<CSTATE>>(proj_an.GetSolver().Matrix());
+
+        {
+          std::ofstream projfile{simdata.prefix+"_l2_mat_"+std::to_string(nm)+".csv"};
+          mat->Print("",projfile,ECSV);
+          projfile.close();
+
+          std::ofstream couplfile{simdata.prefix+"_sol_coupl_mat_"+std::to_string(nm)+".csv"};
+          coupl_mat.Print("",couplfile,ECSV);
+          couplfile.close();
+          
+        }
+        
+        if(!mat){DebugStop();}
+        //now we compute the difference
+        {
+          int64_t *ia{nullptr}, *ja{nullptr};
+          CSTATE *avec{nullptr};
+          mat->GetData(ia,ja,avec);
+          for(int ir = 0; ir < nm; ir++){
+            const auto first = ia[ir];
+            const auto last = ia[ir+1];
+            for(int j = first; j < last; j++){
+              const auto ic = ja[j];
+              const auto val = avec[j];
+              coupl_mat(ir,ic)-=val;
+            }
+          }
+        }
+        std::cout<<"diff mat norm: "<<Norm(coupl_mat)<<std::endl;
+        
+        //now we evaluate the residual with the computed solution
+        const int neq = proj_an.Rhs().Rows();
+        TPZFMatrix<CSTATE> sol(nm,1,0.), sol_scatt(neq,1,0.);
+        auto beta = sqrt(src_an.GetEigenvalues()[2]);
+        TPZFMatrix<CSTATE> res = sol, rhs=sol;
+        auto eqfilt = proj_an.StructMatrix()->EquationFilter();
+        eqfilt.Gather(proj_an.Rhs(),rhs);
+
+        {
+          std::ofstream rhsfile{simdata.prefix+"_rhs_"+std::to_string(nm)+".csv"};
+          rhs.Print("",rhsfile,ECSV);
+          rhsfile.close();
+        }
+        
+        const auto seqnum = wpbc_proj_mesh->ConnectVec()[indep_con].SequenceNumber();
+        const auto pos = wpbc_proj_mesh->Block().Position(seqnum);
+          
+        //difference between analytic and computed dof for desired mode
+        const auto val_analytic = -1.0*std::exp(-1i*beta*0.1);
+        const auto val_computed = sol_proj.Get(pos+2,0);
+        const auto diff = std::abs(val_analytic-val_computed);
+        std::cout<<"v_analytic: "<<val_analytic<<std::endl;
+        std::cout<<"v_computed: "<<val_computed<<std::endl;
+        std::cout<<"diff: "<<diff<<std::endl;
+
+        //option 1: computed sol
+        std::cout<<"solution:"<<std::endl;
+        for(int i = 0; i < neq; i++){
+          const auto val = sol_proj.Get(i,0);
+          sol_scatt.Put(i,0,val);
+          std::cout<<'\t'<<val<<std::endl;
+        }
+
+        // //option 2: sol is just the computed dof for desired mode
+        // sol_scatt.Put(pos+2,0,val_computed);
+
+        // //option 3: sol is just the analytic dof for desired mode
+        // sol_scatt.Put(pos+2,0,val_analytic);
+
+        // //option 4: computed sol + analytic dof for desired mode
+        // std::cout<<"solution:"<<std::endl;
+        // for(int i = 0; i < neq; i++){
+        //   const auto val = sol_proj.Get(i,0);
+        //   sol_scatt.Put(i,0,val);
+        //   std::cout<<'\t'<<val<<std::endl;
+        // }
+        // sol_scatt.Put(pos+2,0,val_analytic);
+
+        eqfilt.Gather(sol_scatt,sol);
+        const auto normsol = Norm(sol);
+        mat->Residual(sol, rhs, res);
+        const auto normres = Norm(res);
+        std::cout<<"sol norm: "<<normsol<<std::endl;
+        std::cout<<"res norm: "<<normres<<std::endl;
+        std::cout<<"rel res norm: "<<normres/normsol<<std::endl;
+      }
       //now we copy it to the error mesh
       wgma::cmeshtools::ExtractSolFromMesh(wpbc_error_mesh, wpbc_proj_mesh, near_proj_error);
+
+      
       near_proj_error -= sol_ref;
       wpbc_error_mesh->LoadSolution(near_proj_error);
       if(simdata.export_vtk_error){
-        vtk_wpbc_proj.Do();
-        vtk_wpbc_error.Do();
+        vtk_wpbc_proj->Do();
+        vtk_wpbc_error->Do();
       }
       auto normsol =
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(wpbc_error_mesh);
@@ -1201,7 +1311,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       wgma::cmeshtools::ExtractSolFromMesh(pml_error_mesh, scatt_mesh_wgbc, sol_wgbc);
       sol_wgbc -= sol_pml;
       pml_error_mesh->LoadSolution(sol_wgbc);
-      if(simdata.export_vtk_error){vtk_pml_error.Do();}
+      if(simdata.export_vtk_error){vtk_pml_error->Do();}
       auto normsol =
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(pml_error_mesh);
       normsol.SetNThreads(std::thread::hardware_concurrency());
