@@ -69,31 +69,31 @@ add_pz_target(
   NAME aniso_pcf
   SOURCES aniso_pcf.cpp
   FILES meshes/pcf.msh meshes/pcf_circdata.csv
-  )
+)
 target_link_libraries(aniso_pcf PUBLIC wgma)
 
 add_pz_target(
   NAME acoustic_pcf
   SOURCES acoustic_pcf.cpp
   FILES meshes/pcf.msh meshes/pcf_circdata.csv
-  )
-  target_link_libraries(acoustic_pcf PUBLIC wgma)
+)
+target_link_libraries(acoustic_pcf PUBLIC wgma)
 
 add_pz_target(
   NAME acoustic_pcf2
   SOURCES acoustic_pcf2.cpp
   FILES meshes/pcf.msh meshes/pcf_circdata.csv
-  )
-  target_link_libraries(acoustic_pcf2 PUBLIC wgma)
+)
+target_link_libraries(acoustic_pcf2 PUBLIC wgma)
 
 
 
-  file(GLOB meta_surf_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "../py/scripts/meta_surf*json")
-  list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_freq_sweep.py)
-  list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_indices.py ../py/scripts/data/AZ.dat ../py/scripts/data/Cu1.dat)
+file(GLOB meta_surf_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "../py/scripts/meta_surf*json")
+list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_freq_sweep.py)
+list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_indices.py ../py/scripts/data/AZ.dat ../py/scripts/data/Cu1.dat)
 add_pz_target(
   NAME meta_surf_1d
   SOURCES meta_surf_1d.cpp
   FILES meshes/meta_surf_1d.msh ${meta_surf_files}
-  )
+)
 target_link_libraries(meta_surf_1d PUBLIC wgma)
