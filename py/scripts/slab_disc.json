@@ -1,0 +1,29 @@
+{
+    "prefix": "res_slab_disc/slab_disc",
+    "meshfile": "meshes/slab_disc.msh",
+    "wavelength": 1.55,
+    "scale": 0.2466901617924378,
+    "n_eigenpairs_left" : 400,
+    "n_eigenpairs_right" : 400,
+    "source_coeffs":[[0,1]],
+    "compare_pml": false,
+    "n_modes_left": [
+        200,300
+    ],
+    "n_modes_right": [
+        5,200,300,350
+    ],
+    "ncore" : 1.55,
+    "nclad"  : 1.00,
+    "mode": "TE",
+    "alpha_pml_x" : [0.8, 0.0],
+    "alpha_pml_y" : [0.8, 0.0],
+    "porder": 4,
+    "export_vtk_modes": false,
+    "export_vtk_scatt": true,
+    "export_vtk_error": true,
+    "print_gmesh": false,
+    "filter_bnd_eqs": true,
+    "optimize_bandwidth": true,
+    "vtk_res": 0
+}

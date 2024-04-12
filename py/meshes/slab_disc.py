@@ -79,7 +79,7 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
         combined=True, oriented=False, recursive=False)
     source_left_pts = [reg[1] for reg in source_left_pts]
 
-    # create eval line
+    # create eval line (left)
     eval_left = LineData()
     eval_left.xb = -d_src*0.9
     eval_left.yb = rec_left.h/2
@@ -137,10 +137,10 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
     affine[pos["dx"]] = val["dx"]
     affine[pos["dy"]] = val["dy"]
     affine[pos["dz"]] = val["dz"]
-    rpb = eval_left_clad_tags+eval_left_core_tags
-    lpb = src_left_clad_tags+src_left_core_tags
+    rpb_left = eval_left_clad_tags+eval_left_core_tags
+    lpb_left = src_left_clad_tags+src_left_core_tags
     dim = 1
-    gmsh.model.mesh.set_periodic(dim, rpb, lpb, affine)
+    gmsh.model.mesh.set_periodic(dim, rpb_left, lpb_left, affine)
 
     # right domain (cladding+core)
     rec_right = RectData()
@@ -178,16 +178,33 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
         combined=True, oriented=False, recursive=False)
     source_right_pts = [reg[1] for reg in source_right_pts]
 
+    # create eval line (right)
+    eval_right = LineData()
+    eval_right.xb = d_src*0.9
+    eval_right.yb = -rec_right.h/2
+    eval_right.xe = d_src*0.9
+    eval_right.ye = rec_right.h/2
+    create_line(eval_right, el_clad)
+    gmsh.model.occ.synchronize()  # for get_boundary
+    eval_right_pts = gmsh.model.get_boundary(
+        [(1, tag) for tag in eval_right.tag],
+        combined=True, oriented=False, recursive=False)
+    eval_right_pts = [reg[1] for reg in eval_right_pts]
+
     objs = []
     [objs.append((2, s)) for s in rec_right.tag]
     [objs.append((2, s)) for s in rec_rcore.tag]
     tools = []
     [tools.append((1, l)) for l in source_right.tag]
     [tools.append((0, p)) for p in source_right_pts]
+    [tools.append((1, l)) for l in eval_right.tag]
+    [tools.append((0, p)) for p in eval_right_pts]
 
     modal_map_right = apply_boolean_operation(
         objs, tools, "fragment", True, el_clad)
-    remap_tags([rec_right, rec_rcore, source_right], modal_map_right)
+    remap_tags(
+        [rec_right, rec_rcore, source_right, eval_right],
+        modal_map_right)
 
     # update new numbering after deleting duplicates
     gmsh.model.occ.remove_all_duplicates()
@@ -202,6 +219,30 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
         up = up[0]
         src_right_clad_tags.append(
             tag) if up in rec_right.tag else src_right_core_tags.append(tag)
+
+    src_right_clad_tags.sort()
+    # let us split the eval domains
+    eval_right_clad_tags = []
+    eval_right_core_tags = []
+
+    for tag in eval_right.tag:
+        up, _ = gmsh.model.get_adjacencies(1, tag)
+        up = up[0]
+        eval_right_clad_tags.append(
+            tag) if up in rec_right.tag else eval_right_core_tags.append(tag)
+    eval_right_clad_tags.sort()
+
+    # now we make the eval line periodic regarding the src right line
+    affine = [1.0 if i == j else 0 for i in range(4) for j in range(4)]
+    pos = {"dx": 3, "dy": 7, "dz": 11}
+    val = {"dx": -0.1*d_src, "dy": 0, "dz": 0}
+    affine[pos["dx"]] = val["dx"]
+    affine[pos["dy"]] = val["dy"]
+    affine[pos["dz"]] = val["dz"]
+    rpb_right = eval_right_clad_tags+eval_right_core_tags
+    lpb_right = src_right_clad_tags+src_right_core_tags
+    dim = 1
+    gmsh.model.mesh.set_periodic(dim, rpb_right, lpb_right, affine)
 
     # just to make sure, let us update our 1D tags for the source regions
     src_left_core_tags, _ = split_region_dir(gmsh.model.get_boundary(
@@ -255,10 +296,12 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
     src_right_clad_dimtags = [(1, t) for t in src_right_clad_tags]
     src_left_clad_dimtags = [(1, t) for t in src_left_clad_tags]
     eval_left_clad_dimtags = [(1, t) for t in eval_left_clad_tags]
+    eval_right_clad_dimtags = [(1, t) for t in eval_right_clad_tags]
     pmldim = 2
     pml1d_src_left = find_pml_region(src_left_clad_dimtags, pmlmap, pmldim)
     pml1d_src_right = find_pml_region(src_right_clad_dimtags, pmlmap, pmldim)
     pml1d_eval_left = find_pml_region(eval_left_clad_dimtags, pmlmap, pmldim)
+    pml1d_eval_right = find_pml_region(eval_right_clad_dimtags, pmlmap, pmldim)
     # since src domains are directly adjacent to the pml, we will have erroneous lines here
     # we know that these lines are immersed in the xm(xp, for right src) attenuating region, so it is easy to exclude them
     pml1d_src_left = {(direction, tag): neigh for (direction, tag),
@@ -266,6 +309,9 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
     pml1d_eval_left = {
         (direction, tag): neigh for (direction, tag),
         neigh in pml1d_eval_left.items() if "xm" not in direction}
+    pml1d_eval_right = {
+        (direction, tag): neigh for (direction, tag),
+        neigh in pml1d_eval_right.items() if "xm" not in direction}
     pml1d_src_right = {
         (direction, tag): neigh for (direction, tag),
         neigh in pml1d_src_right.items() if "xp" not in direction}
@@ -273,11 +319,16 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
     pmlmap1d = {}
     pmlmap1d.update(pml1d_src_left)
     pmlmap1d.update(pml1d_eval_left)
+    pmlmap1d.update(pml1d_eval_right)
     pmlmap1d.update(pml1d_src_right)
     pml1d_src_left_tags = [tag for _, tag in pml1d_src_left.keys()]
     pml1d_src_left_tags.sort()
     pml1d_eval_left_tags = [tag for _, tag in pml1d_eval_left.keys()]
     pml1d_eval_left_tags.sort()
+    pml1d_src_right_tags = [tag for _, tag in pml1d_src_right.keys()]
+    pml1d_src_right_tags.sort()
+    pml1d_eval_right_tags = [tag for _, tag in pml1d_eval_right.keys()]
+    pml1d_eval_right_tags.sort()
     # get boundaries
     dim = 2
     all_domains = gmsh.model.get_entities(dim)
@@ -343,6 +394,15 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
         combined=True, oriented=False, recursive=False)
     source_right_pts = [reg[1] for reg in source_right_pts]
 
+    eval_right_pts = gmsh.model.get_boundary(
+        [(1, tag) for tag in eval_right_clad_tags]
+        +
+        [(1, tag) for tag in eval_right_core_tags]
+        +
+        [(1, tag) for _, tag in pml1d_eval_right.keys()],
+        combined=True, oriented=False, recursive=False)
+    eval_right_pts = [reg[1] for reg in eval_right_pts]
+
     # set element size per region
 
     gmsh.model.mesh.field.add("Distance", 1)
@@ -370,21 +430,24 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
     }
 
     domain_physical_ids_1d = {
-        "source_clad_left": 5,
-        "source_core_left": 6,
-        "source_clad_right": 7,
-        "source_core_right": 8,
-        "eval_clad_left": 9,
-        "eval_core_left": 10,
+        "source_left_clad": 5,
+        "source_left_core": 6,
+        "source_right_clad": 7,
+        "source_right_core": 8,
+        "eval_left_clad": 9,
+        "eval_left_core": 10,
         "scatt_bnd_left": 11,
         "scatt_bnd_right": 12,
         "scatt_bnd_mid": 13,
+        "eval_right_clad": 14,
+        "eval_right_core": 15,
     }
 
     domain_physical_ids_0d = {
         "source_left_bnd": 20,
         "source_right_bnd": 21,
-        "eval_left_bnd": 22
+        "eval_left_bnd": 22,
+        "eval_right_bnd": 23
     }
 
     domain_physical_ids = [domain_physical_ids_0d,
@@ -394,15 +457,18 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
                       "cladding_left": rec_left.tag,
                       "core_right": rec_rcore.tag,
                       "cladding_right": rec_right.tag,
-                      "source_clad_left": src_left_clad_tags,
-                      "source_core_left": src_left_core_tags,
-                      "eval_clad_left": eval_left_clad_tags,
-                      "eval_core_left": eval_left_core_tags,
-                      "source_clad_right": src_right_clad_tags,
-                      "source_core_right": src_right_core_tags,
+                      "source_left_clad": src_left_clad_tags,
+                      "source_left_core": src_left_core_tags,
                       "source_left_bnd": source_left_pts,
+                      "eval_left_clad": eval_left_clad_tags,
+                      "eval_left_core": eval_left_core_tags,
                       "eval_left_bnd": eval_left_pts,
+                      "source_right_clad": src_right_clad_tags,
+                      "source_right_core": src_right_core_tags,
                       "source_right_bnd": source_right_pts,
+                      "eval_right_clad": eval_right_clad_tags,
+                      "eval_right_core": eval_right_core_tags,
+                      "eval_right_bnd": eval_right_pts,
                       "scatt_bnd_left": left_bounds,
                       "scatt_bnd_right": right_bounds,
                       "scatt_bnd_mid": middle_bounds,
@@ -419,11 +485,17 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
     # this can be done since we know that the nodes will match
     # otherwise gmsh throws a weird error
     dim = 1
+    val["dx"] = 0.1*d_src
+    affine[pos["dx"]] = val["dx"]
     for r, l in zip(pml1d_eval_left_tags, pml1d_src_left_tags):
         gmsh.model.mesh.set_periodic(dim, [r], [l], affine)
+    val["dx"] = -0.1*d_src
+    affine[pos["dx"]] = val["dx"]
+    for r, l in zip(pml1d_eval_right_tags, pml1d_src_right_tags):
+        gmsh.model.mesh.set_periodic(dim, [r], [l], affine)
     # we need to check which edges must be inverted
-    lpb = lpb + pml1d_src_left_tags
-    rpb = rpb + pml1d_eval_left_tags
+    lpb = lpb_left+lpb_right + pml1d_src_left_tags + pml1d_src_right_tags
+    rpb = rpb_left+rpb_right + pml1d_eval_left_tags + pml1d_eval_right_tags
     invert = []
     for r, l in zip(rpb, lpb):
         coord = [0]
@@ -448,9 +520,9 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
 
 
 if __name__ == "__main__":
-    # h1 = 0.4
-    # h2 = 1.5
-    h1 = 1.0
-    h2 = 1.0
+    h1 = 0.4
+    h2 = 1.5
+    # h1 = 1.0
+    # h2 = 1.0
     filename = "slab_disc"
     create_slab_mesh(h1, h2, filename)

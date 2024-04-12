@@ -36,6 +36,12 @@ add_pz_target(
   )
 target_link_libraries(pcwg PUBLIC wgma)
 
+
+file(GLOB slab_disc_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "../py/scripts/slab_disc.json")
+foreach(file ${slab_disc_files})
+  get_filename_component(filename ${file} NAME)
+  configure_file(${file} scripts/${filename})
+endforeach(file)
 add_pz_target(
   NAME slab_disc
   SOURCES slab_disc.cpp
