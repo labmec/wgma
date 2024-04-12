@@ -90,10 +90,22 @@ target_link_libraries(acoustic_pcf2 PUBLIC wgma)
 
 file(GLOB meta_surf_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "../py/scripts/meta_surf*json")
 list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_freq_sweep.py)
-list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_indices.py ../py/scripts/data/AZ.dat ../py/scripts/data/Cu1.dat)
+list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_indices.py)
+set(meta_surf_data ../py/scripts/data/AZ.dat ../py/scripts/data/Cu1.dat)
+
+file(GLOB slab_disc_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "../py/scripts/slab_disc.json")
+foreach(file ${meta_surf_files})
+  get_filename_component(filename ${file} NAME)
+  configure_file(${file} scripts/${filename})
+endforeach(file)
+foreach(file ${meta_surf_data})
+  get_filename_component(filename ${file} NAME)
+  configure_file(${file} scripts/data/${filename})
+endforeach(file)
+
 add_pz_target(
   NAME meta_surf_1d
   SOURCES meta_surf_1d.cpp
-  FILES meshes/meta_surf_1d.msh ${meta_surf_files}
+  FILES meshes/meta_surf_1d.msh
 )
 target_link_libraries(meta_surf_1d PUBLIC wgma)
