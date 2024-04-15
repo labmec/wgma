@@ -29,8 +29,8 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
     el_core = 0.06/1.55
     thickness = 2*max(h1, h2)
     el_clad = 0.1
-    d_pmlx = 4
-    d_pmly = 4
+    d_pmlx = 1.5
+    d_pmly = 1.0
     nlayerspml = 10
 
     gmsh.initialize()
