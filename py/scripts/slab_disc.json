@@ -1,24 +1,26 @@
 {
-    "prefix": "res_slab_disc/slab_disc",
+    "prefix": "res_slab_disc_pml/slab_disc_w_pml",
     "meshfile": "meshes/slab_disc.msh",
     "wavelength": 1.55,
     "scale": 0.2466901617924378,
     "n_eigenpairs_left" : 400,
     "n_eigenpairs_right" : 400,
     "source_coeffs":[[0,1]],
-    "compare_pml": false,
+    "compare_pml": true,
     "n_modes_left": [
-        200,300
+        5,100,200,350,400
     ],
     "n_modes_right": [
-        5,200,300,350
+        5,100,200,350,400
     ],
     "ncore" : 1.55,
     "nclad"  : 1.00,
     "mode": "TE",
-    "alpha_pml_x" : [0.8, 0.0],
-    "alpha_pml_y" : [0.8, 0.0],
+    "alpha_pml_x" : [28, 0.0],
+    "alpha_pml_y" : [42, 0.0],
     "porder": 4,
+    "export_csv_modes": true,
+    "export_csv_error": true,
     "export_vtk_modes": false,
     "export_vtk_scatt": true,
     "export_vtk_error": true,
