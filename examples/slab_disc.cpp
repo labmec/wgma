@@ -79,6 +79,10 @@ struct SimData{
   bool print_gmesh{false};
   //!post process modal fields
   bool export_vtk_modes{false};
+  //!export .csv with computed eigenvalues
+  bool export_csv_modes{false};
+  //!export csv file of wpbc comparison
+  bool export_csv_error{false};
   //!post process scatt fields
   bool export_vtk_scatt{false};
   //!post process error of scatt field at waveguide port
@@ -175,6 +179,8 @@ SimData GetSimData()
   data.filter_bnd_eqs = true;
   data.print_gmesh=true;
   data.export_vtk_modes = false;
+  data.export_csv_modes = true;
+  data.export_csv_error = true;
   data.export_vtk_scatt = true;
   data.export_vtk_error = true;
   data.vtk_res=0;
@@ -212,12 +218,13 @@ int main(int argc, char *argv[]) {
    ******************/
 
   // how to sort eigenvalues
-  constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetRealPart};
+  constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetImagPart};
   constexpr bool usingSLEPC {true};
   const int nEigenpairs_left = simdata.n_eigenpairs_left;
   const int nEigenpairs_right = simdata.n_eigenpairs_right;
-  const CSTATE target{simdata.ncore*simdata.ncore*4*M_PI*M_PI/simdata.lambda/simdata.lambda};
 
+  const CSTATE target_left{simdata.ncore*simdata.ncore};
+  const CSTATE target_right{simdata.ncore*simdata.ncore};
   /*********
    * begin *
    *********/
@@ -254,7 +261,7 @@ int main(int argc, char *argv[]) {
     modal_l_an{nullptr};
   {
     modal_l_an =  ComputeModalAnalysis(gmesh,gmshmats,epsilon_clad,
-                                       epsilon_core,simdata,target,
+                                       epsilon_core,simdata,target_left,
                                        nEigenpairs_left,sortingRule,
                                        usingSLEPC,"source_left");
   }
@@ -264,7 +271,7 @@ int main(int argc, char *argv[]) {
     modal_r_an{nullptr};
   {
     modal_r_an =  ComputeModalAnalysis(gmesh,gmshmats,epsilon_clad,
-                                       epsilon_core,simdata,target,
+                                       epsilon_core,simdata,target_right,
                                        nEigenpairs_left,sortingRule,
                                        usingSLEPC,"source_right");
   }
@@ -447,6 +454,18 @@ ComputeModalAnalysis(
     TPZVec<CSTATE> betavec = an->GetEigenvalues();
     for(auto &b : betavec){b = sqrt(b);}
     norm.SetBeta(betavec);
+    if(simdata.export_csv_modes){
+      std::ostringstream eigeninfo;
+      typedef std::numeric_limits< double > dbl;
+      eigeninfo.precision(dbl::max_digits10);
+      for(auto &b : betavec){
+        const auto pos_sign = std::imag(b) > 0 ? "+" : "-";
+        eigeninfo<<std::fixed<<std::real(b)<<pos_sign<<std::abs(std::imag(b))<<"j\n";
+      }
+      std::ofstream eigenfile(simdata.prefix+"_evalues_"+name+".csv",std::ios::trunc);
+      eigenfile<<eigeninfo.str();
+      eigenfile.close();
+    }
     norm.SetWavelength(simdata.lambda/simdata.scale);
     norm.Normalise();
     TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
@@ -498,6 +517,8 @@ SimData ReadSimData(const std::string &dataname){
   for(auto nm : tmpvec_int){sd.n_modes_right.push_back(nm);}
   sd.filter_bnd_eqs = data.value("filter_bnd_eqs",true);
   sd.print_gmesh=data.value("print_gmes",true);
+  sd.export_csv_modes = data.value("export_csv_modes",true);
+  sd.export_csv_error = data.value("export_csv_error",true);
   sd.export_vtk_modes = data.value("export_vtk_modes",false);
   sd.export_vtk_scatt = data.value("export_vtk_scatt",true);
   sd.export_vtk_error = data.value("export_vtk_error",true);
@@ -660,7 +681,11 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   SetupProjMesh(proj_mesh_right,error_mesh_right,bound_connects_right,vtk_proj_right,"right");
 
   std::map<std::pair<int,int>,std::pair<STATE,STATE>> wpbc_error_res;
-  //just to set correct size for these matrices
+
+
+  std::ostringstream errorinfo;
+  errorinfo.precision(std::numeric_limits<STATE>::max_digits10);
+  
   for(int im_left = 0; im_left < nmodes_left.size(); im_left++){
     const int nm_left = nmodes_left[im_left];
     for(int im_right = 0; im_right < nmodes_right.size(); im_right++){
@@ -680,12 +705,23 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                             vtk_proj_right,vtk_error_right,"right",
                             simdata);
       wpbc_error_res.insert({{nm_left,nm_right},{error_left,error_right}});
-      
+
+      if(simdata.export_csv_error){
+        errorinfo<<nm_left<<','<<nm_right<<','
+                 <<std::fixed<<error_left<<','
+                 <<std::fixed<<error_right<<'\n';
+      }
       //removing restrictions
       wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wpbc);
       scatt_mesh_wpbc->ComputeNodElCon();
       scatt_mesh_wpbc->CleanUpUnconnectedNodes();
     }
+  }
+  if(simdata.export_csv_error){
+    std::ofstream errorfile(simdata.prefix+"_error.csv",std::ios::trunc);
+    errorfile<<"nm(left),nm(right),error(left),error(right)"<<std::endl;
+    errorfile<<errorinfo.str();
+    errorinfo.clear();
   }
   std::cout<<"+++++++++++++WPBC COMPARISON+++++++++++++"<<std::endl;
   for(auto [nm,error] : wpbc_error_res){
@@ -824,7 +860,10 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
   TPZFMatrix<CSTATE> sol_wpbc = sol_pml;//just to have the same size
   
   std::map<std::pair<int,int>,STATE> wpbc_error_res;
-  //just to set correct size for these matrices
+
+  std::ostringstream errorinfo;
+  errorinfo.precision(std::numeric_limits<STATE>::max_digits10);
+  
   for(int im_left = 0; im_left < nmodes_left.size(); im_left++){
     const int nm_left = nmodes_left[im_left];
     for(int im_right = 0; im_right < nmodes_right.size(); im_right++){
@@ -846,6 +885,11 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
       std::cout<<"nmodes (left) "<<nm_left<< " nmodes(right) "<<nm_right
                <<" error (pml) "<<error<<std::endl;
       wpbc_error_res.insert({{nm_left,nm_right},error});
+
+      if(simdata.export_csv_error){
+        errorinfo<<nm_left<<','<<nm_right<<','
+                 <<std::fixed<<error<<'\n';
+      }
       
       //removing restrictions
       wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wpbc);
@@ -853,7 +897,14 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
       scatt_mesh_wpbc->CleanUpUnconnectedNodes();
     }
   }
-  std::cout<<"+++++++++++++WPBC COMPARISON+++++++++++++"<<std::endl;
+  if(simdata.export_csv_error){
+    std::ofstream errorfile(simdata.prefix+"_error.csv",std::ios::trunc);
+    errorfile<<"nm(left),nm(right),error"<<std::endl;
+    errorfile<<errorinfo.str();
+    errorinfo.clear();
+  }
+  
+  std::cout<<"+++++++++++++PML COMPARISON+++++++++++++"<<std::endl;
   for(auto [nm,error] : wpbc_error_res){
     std::cout<<"nmodes (left) "<<nm.first<<" nmodes (right) "<<nm.second
              <<" norm error: "<<error <<std::endl;
