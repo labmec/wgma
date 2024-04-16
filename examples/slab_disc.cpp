@@ -451,6 +451,7 @@ ComputeModalAnalysis(
     auto norm =
       wgma::post::WgNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,
                                                             conj,0);
+    norm.SetNThreads(simdata.n_threads);
     TPZVec<CSTATE> betavec = an->GetEigenvalues();
     for(auto &b : betavec){b = sqrt(b);}
     norm.SetBeta(betavec);
@@ -849,6 +850,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
     error_mesh->LoadSolution(sol_pml);
     auto normsol =
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
+    normsol.SetNThreads(simdata.n_threads);
     norm_sol_pml = std::real(normsol.ComputeNorm()[0]);
 
     const std::string error_file = simdata.prefix+"_pml_error";
@@ -879,7 +881,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
       if(simdata.export_vtk_error){vtk_error->Do();}
       auto normsol =
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
-      normsol.SetNThreads(std::thread::hardware_concurrency());
+      normsol.SetNThreads(simdata.n_threads);
       const auto norm = std::real(normsol.ComputeNorm()[0]);
       const auto error = norm/norm_sol_pml;
       std::cout<<"nmodes (left) "<<nm_left<< " nmodes(right) "<<nm_right
@@ -1215,6 +1217,7 @@ void ComputeWpbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
   const int nsol = sol_orig.Cols();
   
   wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(mesh);
+  wgbc.SetNThreads(nthreads);
   const bool is_te = mode == wgma::planarwg::mode::TE;
   TPZManVector<CSTATE,1000> betavec = an.GetEigenvalues();
   for(auto &b : betavec){b = std::sqrt(b);}
@@ -1381,7 +1384,7 @@ TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
         }
       }
     }
-  },1);
+  });
 }
 
 STATE ComputeProjAndError(TPZAutoPointer<TPZCompMesh> proj_mesh,
@@ -1422,6 +1425,7 @@ STATE ComputeProjAndError(TPZAutoPointer<TPZCompMesh> proj_mesh,
     error_mesh->LoadSolution(sol_ref);
     auto normsol =
       wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
+    normsol.SetNThreads(simdata.n_threads);
     norm_sol_wpbc = std::real(normsol.ComputeNorm()[0]);
     constexpr STATE tol = 1000*std::numeric_limits<STATE>::epsilon();
     if(norm_sol_wpbc < tol){norm_sol_wpbc=1.;}
@@ -1444,7 +1448,7 @@ STATE ComputeProjAndError(TPZAutoPointer<TPZCompMesh> proj_mesh,
   auto normsol =
     wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
     
-  normsol.SetNThreads(std::thread::hardware_concurrency());
+  normsol.SetNThreads(simdata.n_threads);
   const auto error = std::real(normsol.ComputeNorm()[0]);
   const auto rel_error = error/norm_sol_wpbc;
   std::cout<<"nmodes ("<<name<<") "<<nm
