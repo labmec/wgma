@@ -37,10 +37,11 @@ namespace wgma::post{
     const int neq = mesh->NEquations();
     //we iterate through the eigenvectors
     for(int iev = 0; iev < nev; iev++){
-      const auto norm = res[iev].real();
+      const auto norm = std::sqrt(res[iev]);
       const int offset = iev * neq;
       TPZFMatrix<CSTATE> ei(neq,1,evectors.Elem() + offset,neq);
-      ei *= 1./norm;
+      //let us avoid nasty divisions
+      if(std::abs(norm) > 1e-12){ei *= M_SQRT1_2/norm;}
     }
     return res;
   }
