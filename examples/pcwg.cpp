@@ -428,7 +428,6 @@ SetupSolver(const CSTATE target,TPZEigenSort sorting, bool usingSLEPC)
     constexpr STATE eps_tol = -1;//PETSC_DECIDE
     constexpr int eps_max_its = -1;//PETSC_DECIDE
     constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_REL;
-    constexpr EPSWhich eps_which = EPSWhich::EPS_TARGET_REAL;
     
     constexpr PC pc = PC::LU;
     constexpr KSPSolver linsolver = KSPSolver::PREONLY;
@@ -449,7 +448,6 @@ SetupSolver(const CSTATE target,TPZEigenSort sorting, bool usingSLEPC)
     eps_solver->SetType(eps_solver_type);
     eps_solver->SetProblemType(eps_prob_type);
     eps_solver->SetEPSDimensions(neigenpairs, krylovDim, eps_mpd);
-    eps_solver->SetWhichEigenpairs(eps_which);
     eps_solver->SetTarget(target);
     eps_solver->SetTolerances(eps_tol,eps_max_its);
     eps_solver->SetConvergenceTest(eps_conv_test);
