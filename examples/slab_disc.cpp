@@ -218,7 +218,7 @@ int main(int argc, char *argv[]) {
    ******************/
 
   // how to sort eigenvalues
-  constexpr TPZEigenSort sortingRule {TPZEigenSort::TargetImagPart};
+  constexpr TPZEigenSort sortingRule {TPZEigenSort::UserDefined};
   constexpr bool usingSLEPC {true};
   const int nEigenpairs_left = simdata.n_eigenpairs_left;
   const int nEigenpairs_right = simdata.n_eigenpairs_right;
@@ -407,6 +407,13 @@ ComputeModalAnalysis(
    * solve(modal analysis left) *
    ******************************/
   auto solver = wgma::wganalysis::SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC);
+  if(sortingRule==TPZEigenSort::UserDefined){
+    solver->SetUserSortingFunc([](CSTATE a, CSTATE b)->bool{
+      const auto sqrt_a_im = std::fabs(std::imag(std::sqrt(a)));
+      const auto sqrt_b_im = std::fabs(std::imag(std::sqrt(b)));
+      return sqrt_a_im < sqrt_b_im;
+    });
+  }
 
   TPZAutoPointer<wgma::wganalysis::WgmaPlanar> an =
     new wgma::wganalysis::WgmaPlanar(modal_cmesh, simdata.n_threads,
