@@ -284,13 +284,6 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-
-
-
-
-TPZAutoPointer<TPZEigenSolver<CSTATE>>
-SetupSolver(const CSTATE target,const int neigenpairs,
-            TPZEigenSort sorting, bool usingSLEPC);
 void
 PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
                  std::string filename,
@@ -413,7 +406,7 @@ ComputeModalAnalysis(
   /******************************
    * solve(modal analysis left) *
    ******************************/
-  auto solver = SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC);
+  auto solver = wgma::wganalysis::SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC);
 
   TPZAutoPointer<wgma::wganalysis::WgmaPlanar> an =
     new wgma::wganalysis::WgmaPlanar(modal_cmesh, simdata.n_threads,
@@ -1058,80 +1051,6 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     return wgma::scattering::CMeshScattering2D(gmesh, mode, pOrder, scatt_data,src_ids,
                                                lambda,scale);
  };
-
-
-TPZAutoPointer<TPZEigenSolver<CSTATE>>
-SetupSolver(const CSTATE target,const int neigenpairs,
-            TPZEigenSort sorting, bool usingSLEPC)
-{
-
-#ifndef WGMA_USING_SLEPC
-  if(usingSLEPC){
-    std::cout<<"wgma was not configured with slepc. defaulting to: "
-             <<"TPZKrylovSolver"<<std::endl;
-    usingSLEPC = false;
-  }
-#endif
-
-  TPZAutoPointer<TPZEigenSolver<CSTATE>> solver{nullptr};
-  const int krylovDim = std::max(5,3*neigenpairs);
-  if (usingSLEPC){
-    using namespace wgma::slepc;
-    /*
-      The following are suggested SLEPc settings.
-      NOTE: -1 stands for PETSC_DECIDE
-    */
-    
-    constexpr STATE eps_tol = 1e-18;//PETSC_DECIDE
-    constexpr int eps_max_its = -1;//PETSC_DECIDE
-    constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_REL;
-    
-    constexpr PC pc = PC::LU;
-    constexpr KSPSolver linsolver = KSPSolver::PREONLY;
-    constexpr STATE ksp_rtol = 1e-12;//PETSC_DECIDE
-    constexpr STATE ksp_atol = -1;//PETSC_DECIDE
-    constexpr STATE ksp_dtol = -1;//PETSC_DECIDE
-    constexpr STATE ksp_max_its = -1;//PETSC_DECIDE
-    constexpr bool eps_true_residual = false;
-    constexpr EPSProblemType eps_prob_type = EPSProblemType::EPS_GNHEP;//do NOT change
-    constexpr EPSType eps_solver_type = EPSType::KRYLOVSCHUR;
-    constexpr bool eps_krylov_locking = true;
-    constexpr STATE eps_krylov_restart = 0.7;
-    constexpr STATE eps_mpd = -1;//PETSC_DECIDE
-    constexpr bool eps_verbosity = true;
-    
-    
-    auto eps_solver = new EPSHandler<CSTATE>;
-    eps_solver->SetType(eps_solver_type);
-    eps_solver->SetProblemType(eps_prob_type);
-    eps_solver->SetEPSDimensions(neigenpairs, krylovDim, eps_mpd);
-    eps_solver->SetTarget(target);
-    eps_solver->SetTolerances(eps_tol,eps_max_its);
-    eps_solver->SetConvergenceTest(eps_conv_test);
-    eps_solver->SetKrylovOptions(eps_krylov_locking,eps_krylov_restart);
-    eps_solver->SetVerbose(eps_verbosity);
-    eps_solver->SetTrueResidual(eps_true_residual);
-    
-    eps_solver->SetLinearSolver(linsolver);
-    eps_solver->SetLinearSolverTol(ksp_rtol,ksp_atol,ksp_dtol,ksp_max_its);
-    eps_solver->SetPrecond(pc, 1e-16);
-
-    solver = eps_solver;
-  }else{
-    auto krylov_solver = new TPZKrylovEigenSolver<CSTATE>;
-    TPZSTShiftAndInvert<CSTATE> st;
-    krylov_solver->SetSpectralTransform(st);
-    krylov_solver->SetTarget(target);
-    krylov_solver->SetKrylovDim(krylovDim);
-    krylov_solver->SetNEigenpairs(neigenpairs);
-    krylov_solver->SetAsGeneralised(true);
-    
-    solver = krylov_solver;
-  }
-  
-  solver->SetEigenSorting(sorting);
-  return solver;
-}
 void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
                       std::string filename,
                       const int vtkres){

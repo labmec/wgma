@@ -27,9 +27,6 @@ and generates dispersion curves
 #include <TPZSimpleTimer.h>              //for TPZSimpleTimer
 #include <TPZVTKGenerator.h>
 
-TPZAutoPointer<TPZEigenSolver<CSTATE>>
-SetupSolver(const int neigenpairs, const CSTATE target,
-            TPZEigenSort sorting, bool usingSLEPC);
 
 //Sets geometric info regarding all the circles in the mesh
 TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(const REAL scale);
@@ -37,7 +34,7 @@ TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(const REAL scale);
 void RunSimulation(const STATE lambda, const int nEigenpairs,
                    const int pOrder, const std::string& prefix,
                    const bool printGMesh, const bool exportVtk,
-                   const bool exportCsv, const bool usingSLEPC);
+                   const bool exportCsv, bool &usingSLEPC);
 
 int main(int argc, char *argv[]) {
   
@@ -89,7 +86,7 @@ int main(int argc, char *argv[]) {
 
 void RunSimulation(const STATE lambda, const int nEigenpairs, const int pOrder, const std::string&prefix,
                    const bool printGMesh, const bool exportVtk,
-                   const bool exportCsv, const bool usingSLEPC){
+                   const bool exportCsv, bool &usingSLEPC){
 
   
   std::map<std::string,std::pair<CSTATE,CSTATE>> matmap;
@@ -190,7 +187,7 @@ void RunSimulation(const STATE lambda, const int nEigenpairs, const int pOrder, 
   wgma::wganalysis::Wgma2D analysis(meshVec,nThreads,
                                             optimizeBandwidth,filterBoundaryEqs);
   
-  auto solver = SetupSolver(nEigenpairs, target, sortingRule, usingSLEPC);
+  auto solver = wgma::wganalysis::SetupSolver(target,nEigenpairs, sortingRule, usingSLEPC);
 
   analysis.SetSolver(*solver);
   analysis.Run(computeVectors);
@@ -228,80 +225,6 @@ void RunSimulation(const STATE lambda, const int nEigenpairs, const int pOrder, 
 }
 
 
-
-TPZAutoPointer<TPZEigenSolver<CSTATE>>
-SetupSolver(const int neigenpairs, const CSTATE target,
-            TPZEigenSort sorting, bool usingSLEPC)
-{
-
-#ifndef WGMA_USING_SLEPC
-  if(usingSLEPC){
-    std::cout<<"wgma was not configured with slepc. defaulting to: "
-             <<"TPZKrylovSolver"<<std::endl;
-    usingSLEPC = false;
-  }
-#endif
-
-  TPZAutoPointer<TPZEigenSolver<CSTATE>> solver{nullptr};
-
-  constexpr int krylovDim{50};
-  if (usingSLEPC){
-    using namespace wgma::slepc;
-    /*
-      The following are suggested SLEPc settings.
-      NOTE: -1 stands for PETSC_DECIDE
-    */
-    
-    constexpr STATE eps_tol = -1;//PETSC_DECIDE
-    constexpr int eps_max_its = -1;//PETSC_DECIDE
-    constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_REL;
-    
-    constexpr PC pc = PC::LU;
-    constexpr KSPSolver linsolver = KSPSolver::PREONLY;
-    constexpr STATE ksp_rtol = -1;//PETSC_DECIDE
-    constexpr STATE ksp_atol = -1;//PETSC_DECIDE
-    constexpr STATE ksp_dtol = -1;//PETSC_DECIDE
-    constexpr STATE ksp_max_its = -1;//PETSC_DECIDE
-    constexpr bool eps_true_residual = false;
-    constexpr EPSProblemType eps_prob_type = EPSProblemType::EPS_GNHEP;//do NOT change
-    constexpr EPSType eps_solver_type = EPSType::KRYLOVSCHUR;
-    constexpr bool eps_krylov_locking = true;
-    constexpr STATE eps_krylov_restart = 0.7;
-    constexpr STATE eps_mpd = -1;//PETSC_DECIDE
-    constexpr bool eps_verbosity = false;
-    
-    
-    auto eps_solver = new EPSHandler<CSTATE>;
-    eps_solver->SetType(eps_solver_type);
-    eps_solver->SetProblemType(eps_prob_type);
-    eps_solver->SetEPSDimensions(neigenpairs, krylovDim, eps_mpd);
-    eps_solver->SetTarget(target);
-    eps_solver->SetTolerances(eps_tol,eps_max_its);
-    eps_solver->SetConvergenceTest(eps_conv_test);
-    eps_solver->SetKrylovOptions(eps_krylov_locking,eps_krylov_restart);
-    eps_solver->SetVerbose(eps_verbosity);
-    eps_solver->SetTrueResidual(eps_true_residual);
-    
-    eps_solver->SetLinearSolver(linsolver);
-    eps_solver->SetLinearSolverTol(ksp_rtol,ksp_atol,ksp_dtol,ksp_max_its);
-    eps_solver->SetPrecond(pc, 1e-25);
-
-    solver = eps_solver;
-  }else{
-    auto krylov_solver = new TPZKrylovEigenSolver<CSTATE>;
-    TPZSTShiftAndInvert<CSTATE> st;
-    krylov_solver->SetSpectralTransform(st);
-    krylov_solver->SetTarget(target);
-    krylov_solver->SetNEigenpairs(neigenpairs);
-    krylov_solver->SetAsGeneralised(true);
-    krylov_solver->SetKrylovDim(krylovDim);
-    
-    solver = krylov_solver;
-  }
-  
-  solver->SetEigenSorting(sorting);
-  return solver;
-}
 
 TPZVec<wgma::gmeshtools::ArcData> SetUpArcData(const REAL scale)
 {
