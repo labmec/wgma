@@ -194,6 +194,14 @@ namespace wgma::slepc{
         std::cout<<"Created!"<<std::endl;
       }
     }
+    /*
+      this std::function is used to pass the TPZEigenSolver<TVar>::UserSortingFunc()
+      to the EPSSetEigenvalueComparison function.
+
+      Due to scope, it needs to be here
+     */
+    std::function<bool(CTVar,CTVar)> stdfunc{nullptr};
+    
     /**
        SET UP PC, KSP, ST and EPS based on user options
      **/
@@ -251,6 +259,23 @@ namespace wgma::slepc{
       ierr = EPSSetConvergenceTest(eps, eps_conv);
       const ::EPSWhich eps_which = ConvertWhich(this->EigenSorting());
       ierr = EPSSetWhichEigenpairs(eps, eps_which);
+      
+      if(eps_which == ::EPSWhich::EPS_WHICH_USER){
+        stdfunc = this->UserSortingFunc();
+        if(stdfunc==nullptr){
+          DebugStop();
+        }
+        ierr = EPSSetEigenvalueComparison(eps,
+                                          [](PetscScalar ar, PetscScalar ai,
+                                             PetscScalar br, PetscScalar bi,
+                                             PetscInt *res, void *ctx){
+                                            auto locfunc
+                                              = *(std::function<bool(CTVar,CTVar)>*)(ctx);
+                                            const bool bool_res = locfunc(ar,br);
+                                            *res = bool_res ? -1 : 1;
+                                            PetscFunctionReturn(PETSC_SUCCESS);
+                                          },&stdfunc);
+      }
       const auto eps_target = this->fTarget;
       ierr = EPSSetTarget(eps, eps_target);
       const PetscBool eps_true_res = fTrueResidual ? PETSC_TRUE : PETSC_FALSE;
@@ -672,6 +697,7 @@ namespace wgma::slepc{
     case TPZEigenSort::TargetMagnitude: return EPS_TARGET_MAGNITUDE;
     case TPZEigenSort::TargetRealPart: return EPS_TARGET_REAL;
     case TPZEigenSort::TargetImagPart: return EPS_TARGET_IMAGINARY;
+    case TPZEigenSort::UserDefined: return EPS_WHICH_USER;
     case TPZEigenSort::Invalid:
       DebugStop();
     }
@@ -690,6 +716,7 @@ namespace wgma::slepc{
     case EPS_TARGET_MAGNITUDE: return TPZEigenSort::TargetMagnitude;
     case EPS_TARGET_REAL: return TPZEigenSort::TargetRealPart;
     case EPS_TARGET_IMAGINARY: return TPZEigenSort::TargetImagPart;
+    case EPS_WHICH_USER: return TPZEigenSort::UserDefined;
     default:
       DebugStop();
     }
