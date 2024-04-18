@@ -362,8 +362,7 @@ namespace wgma::slepc{
     const PetscInt nEigen = this->fNEigenpairs > nconv ? nconv : this->fNEigenpairs;
     w.Resize(nEigen);
 
-    //let us sort the eigenvalues
-    TPZManVector<int,20> indices;
+    //let us get the eigenvalues
     {
       PetscScalar eigr{0}, eigi{0};
       for(int i = 0; i < nEigen; i++){
@@ -375,21 +374,19 @@ namespace wgma::slepc{
         }
         
       }
-      this->SortEigenvalues(w,indices);
     }
 
     if(!calcVectors) return 0;
     
     eigenVectors.Resize(pzA.Rows(),nEigen);
     for (int i = 0; i < nEigen; ++i) {
-      auto il = indices[i];
       if constexpr(std::is_same_v<PetscScalar,STATE>){
         Vec eigVecRe, eigVecIm;
         PetscScalar *eigVecReArray, *eigVecImArray;
         
         MatCreateVecs(petscA,&eigVecRe,nullptr);
         MatCreateVecs(petscA,&eigVecIm,nullptr);
-        EPSGetEigenvector(eps,il,eigVecRe,eigVecIm);
+        EPSGetEigenvector(eps,i,eigVecRe,eigVecIm);
         VecGetArray(eigVecRe,&eigVecReArray);
         VecGetArray(eigVecIm,&eigVecImArray);
         for (int j = 0; j < pzA.Rows(); ++j) {
@@ -401,7 +398,7 @@ namespace wgma::slepc{
         Vec eigVec;
         PetscScalar  *eigVecArray;
         MatCreateVecs(petscA,&eigVec,nullptr);
-        EPSGetEigenvector(eps,il,eigVec,nullptr);
+        EPSGetEigenvector(eps,i,eigVec,nullptr);
         VecGetArray(eigVec,&eigVecArray);
         for (int j = 0; j < pzA.Rows(); ++j) {
           eigenVectors(j,i) = eigVecArray[j];
