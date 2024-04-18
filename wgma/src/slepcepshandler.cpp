@@ -32,8 +32,7 @@ namespace wgma::slepc{
  ::EPSType ConvertType(EPSType);
   EPSType ConvertType(::EPSType);
 
-  ::EPSWhich ConvertWhich(EPSWhich);
-  EPSWhich ConvertWhich(::EPSWhich);
+  ::EPSWhich ConvertWhich(TPZEigenSort);
 
   KSPSolver ConvertKSP(::KSPType in);
 
@@ -250,7 +249,7 @@ namespace wgma::slepc{
       ierr = EPSSetTolerances(eps, eps_tol, eps_max_its);
       const ::EPSConv eps_conv = ConvertConv(fConvTest);
       ierr = EPSSetConvergenceTest(eps, eps_conv);
-      const ::EPSWhich eps_which = ConvertWhich(fWhich);
+      const ::EPSWhich eps_which = ConvertWhich(this->EigenSorting());
       ierr = EPSSetWhichEigenpairs(eps, eps_which);
       const auto eps_target = this->fTarget;
       ierr = EPSSetTarget(eps, eps_target);
@@ -449,16 +448,6 @@ namespace wgma::slepc{
       if(isGeneralised) fProbType = EPSProblemType::EPS_GNHEP;
       else fProbType = EPSProblemType::EPS_NHEP;
     }
-  }
-
-  template<class TVar>
-  void EPSHandler<TVar>::SetWhichEigenpairs (const EPSWhich which){
-    fWhich = which;
-  }
-
-  template<class TVar>
-  EPSWhich EPSHandler<TVar>::GetWhichEigenpairs () const {
-    return fWhich;
   }
 
   template<class TVar>
@@ -671,34 +660,36 @@ namespace wgma::slepc{
     return EPSType::POWER;
   }
 
-  ::EPSWhich ConvertWhich(EPSWhich in)
+  ::EPSWhich ConvertWhich(TPZEigenSort in)
   {
     switch(in){
-    case EPSWhich::EPS_LARGEST_MAGNITUDE: return EPS_LARGEST_MAGNITUDE;
-    case EPSWhich::EPS_SMALLEST_MAGNITUDE: return EPS_SMALLEST_MAGNITUDE;
-    case EPSWhich::EPS_LARGEST_REAL: return EPS_LARGEST_REAL;
-    case EPSWhich::EPS_SMALLEST_REAL: return EPS_SMALLEST_REAL;
-    case EPSWhich::EPS_LARGEST_IMAGINARY: return EPS_LARGEST_IMAGINARY;
-    case EPSWhich::EPS_SMALLEST_IMAGINARY: return EPS_SMALLEST_IMAGINARY;
-    case EPSWhich::EPS_TARGET_MAGNITUDE: return EPS_TARGET_MAGNITUDE;
-    case EPSWhich::EPS_TARGET_REAL: return EPS_TARGET_REAL;
-    case EPSWhich::EPS_TARGET_IMAGINARY: return EPS_TARGET_IMAGINARY;
+    case TPZEigenSort::AbsDescending: return EPS_LARGEST_MAGNITUDE;
+    case TPZEigenSort::AbsAscending: return EPS_SMALLEST_MAGNITUDE;
+    case TPZEigenSort::RealDescending: return EPS_LARGEST_REAL;
+    case TPZEigenSort::RealAscending: return EPS_SMALLEST_REAL;
+    case TPZEigenSort::ImagDescending: return EPS_LARGEST_IMAGINARY;
+    case TPZEigenSort::ImagAscending: return EPS_SMALLEST_IMAGINARY;
+    case TPZEigenSort::TargetMagnitude: return EPS_TARGET_MAGNITUDE;
+    case TPZEigenSort::TargetRealPart: return EPS_TARGET_REAL;
+    case TPZEigenSort::TargetImagPart: return EPS_TARGET_IMAGINARY;
+    case TPZEigenSort::Invalid:
+      DebugStop();
     }
     unreachable();
   }
   
-  EPSWhich ConvertWhich(::EPSWhich in)
+  TPZEigenSort ConvertWhich(::EPSWhich in)
   {
     switch(in){
-    case EPS_LARGEST_MAGNITUDE: return EPSWhich::EPS_LARGEST_MAGNITUDE;
-    case EPS_SMALLEST_MAGNITUDE: return EPSWhich::EPS_SMALLEST_MAGNITUDE;
-    case EPS_LARGEST_REAL: return EPSWhich::EPS_LARGEST_REAL;
-    case EPS_SMALLEST_REAL: return EPSWhich::EPS_SMALLEST_REAL;
-    case EPS_LARGEST_IMAGINARY: return EPSWhich::EPS_LARGEST_IMAGINARY;
-    case EPS_SMALLEST_IMAGINARY: return EPSWhich::EPS_SMALLEST_IMAGINARY;
-    case EPS_TARGET_MAGNITUDE: return EPSWhich::EPS_TARGET_MAGNITUDE;
-    case EPS_TARGET_REAL: return EPSWhich::EPS_TARGET_REAL;
-    case EPS_TARGET_IMAGINARY: return EPSWhich::EPS_TARGET_IMAGINARY;
+    case EPS_LARGEST_MAGNITUDE: return TPZEigenSort::AbsDescending;
+    case EPS_SMALLEST_MAGNITUDE: return TPZEigenSort::AbsAscending;
+    case EPS_LARGEST_REAL: return TPZEigenSort::RealDescending;
+    case EPS_SMALLEST_REAL: return TPZEigenSort::RealAscending;
+    case EPS_LARGEST_IMAGINARY: return TPZEigenSort::ImagDescending;
+    case EPS_SMALLEST_IMAGINARY: return TPZEigenSort::ImagAscending;
+    case EPS_TARGET_MAGNITUDE: return TPZEigenSort::TargetMagnitude;
+    case EPS_TARGET_REAL: return TPZEigenSort::TargetRealPart;
+    case EPS_TARGET_IMAGINARY: return TPZEigenSort::TargetImagPart;
     default:
       DebugStop();
     }

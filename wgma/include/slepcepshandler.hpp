@@ -45,20 +45,6 @@ namespace wgma::slepc{
     GD,///< Generalised Davidson
     JD///< Jacobi-Davidson
   };
-  /**
-     @brief Which eigenvalues are to be sought
-  */
-  enum class EPSWhich{
-    EPS_LARGEST_MAGNITUDE,///< Largest eigenvalues in magnitude
-    EPS_SMALLEST_MAGNITUDE,///< Smallest eigenvalues in magnitude
-    EPS_LARGEST_REAL,///< Largest real parts
-    EPS_SMALLEST_REAL,///< Smallest real parts
-    EPS_LARGEST_IMAGINARY,///< Largest imaginary parts
-    EPS_SMALLEST_IMAGINARY,///< Smallest imaginary parts
-    EPS_TARGET_MAGNITUDE,///< Eigenvalues closest to the target (in magnitude)
-    EPS_TARGET_REAL,///< Eigenvalues with real part closest to target
-    EPS_TARGET_IMAGINARY///< Eigenvalues with imaginary part closest to target
-  };
 
   
 
@@ -185,10 +171,6 @@ namespace wgma::slepc{
     EPSProblemType GetProblemType() const;
     //! It is recommend to call SetProblemType instead
     void SetAsGeneralised(bool isGeneralised) override;
-    //! Sets the portion of the spectrum in which evs are to be sought
-    void SetWhichEigenpairs(const EPSWhich eps_which);
-    //! Gets the portion of the spectrum in which evs are to be sought
-    EPSWhich GetWhichEigenpairs() const;
     /**
        @brief Set options related to Krylov-schur algorithm
        @param lock Whether the locking variant is used
@@ -283,8 +265,6 @@ namespace wgma::slepc{
     bool fVerbose = true;
     //! Problem Type
     EPSProblemType fProbType{EPSProblemType::EPS_NOTSET};
-    //! Which part of the spectrum to solve for
-    EPSWhich fWhich{EPSWhich::EPS_LARGEST_MAGNITUDE};
     //! Whether to use the locking variant if using Krylov algorithm
     bool fLocking{false};
     //! Percentage of eigenvectors kept after restart if using Krylov algorithm
