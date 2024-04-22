@@ -10,6 +10,10 @@
 #include <slepceps.h>
 #include <petsctime.h>
 #include <petscksp.h>
+//PETSC_SUCCESS was introduced in PETSC 3.19
+#ifndef PETSC_SUCCESS
+#define PETSC_SUCCESS 0
+#endif
 #endif
 
 
