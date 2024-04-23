@@ -63,10 +63,10 @@ for rib_copper in [True, False]:
             # create json
             json.dump(data, outfile, indent=4, sort_keys=True)
         # now we check if we are in build or source directory
-        p = subprocess.Popen('test -f ../../examples/meta_surf_1d',
+        p = subprocess.Popen('test -f ../meta_surf_1d',
                              stdout=subprocess.PIPE, shell=True)
         status = p.wait()
         # found executable
         if status == 0:
             # run program
-            os.system('cd ../../examples && ./meta_surf_1d ../py/scripts/'+filename)
+            os.system('cd .. && ./meta_surf_1d scripts/'+filename)
