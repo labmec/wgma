@@ -38,6 +38,7 @@ target_link_libraries(pcwg PUBLIC wgma)
 
 
 file(GLOB slab_disc_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "../py/scripts/slab_disc.json")
+list(APPEND slab_disc_files ../py/scripts/slab_disc_script.py)
 foreach(file ${slab_disc_files})
   get_filename_component(filename ${file} NAME)
   configure_file(${file} scripts/${filename})
