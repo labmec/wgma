@@ -522,7 +522,9 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
 if __name__ == "__main__":
     h1 = 0.4
     h2 = 1.5
-    # h1 = 1.0
-    # h2 = 1.0
     filename = "slab_disc"
+    create_slab_mesh(h1, h2, filename)
+    h1 = 1.0
+    h2 = 1.0
+    filename = "slab_disc_validation"
     create_slab_mesh(h1, h2, filename)

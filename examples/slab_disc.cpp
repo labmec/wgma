@@ -167,18 +167,18 @@ SimData GetSimData()
   data.mode = wgma::planarwg::mode::TE;
   data.ncore = 1.55;
   data.nclad = 1.00;
-  data.alphaPMLx = {0.8, 0.0};
-  data.alphaPMLy = {0.8, 0.0};
-  data.compare_pml=true;
+  data.alphaPMLx = {28, 0.0};
+  data.alphaPMLy = {42, 0.0};
+  data.compare_pml=false;
   data.source_coeffs = {{0,1}};
   data.porder = 4;
   data.n_eigenpairs_left = 400;
   data.n_eigenpairs_right = 400;
-  data.n_modes_left = {200,300};
-  data.n_modes_right = {5,200,300,350};
+  data.n_modes_left = {350};
+  data.n_modes_right = {350};
   data.filter_bnd_eqs = true;
   data.print_gmesh=true;
-  data.export_vtk_modes = false;
+  data.export_vtk_modes = true;
   data.export_csv_modes = true;
   data.export_csv_error = true;
   data.export_vtk_scatt = true;
@@ -436,7 +436,7 @@ ComputeModalAnalysis(
 
     {
       TPZSimpleTimer timer("Ortho",true);
-      constexpr STATE tol{1e-8};
+      constexpr STATE tol{1e-14};
       constexpr bool conj{false};
       const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
       std::cout<<"orthogonalised  "<<n_ortho<<" eigenvectors"<<std::endl;

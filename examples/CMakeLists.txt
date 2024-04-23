@@ -45,7 +45,7 @@ endforeach(file)
 add_pz_target(
   NAME slab_disc
   SOURCES slab_disc.cpp
-  FILES meshes/slab_disc.msh
+  FILES meshes/slab_disc.msh meshes/slab_disc_validation.msh
   )
 target_link_libraries(slab_disc PUBLIC wgma)
 
