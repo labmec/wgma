@@ -25,7 +25,7 @@ namespace wgma::wganalysis{
   //! Default suggestion for setting up the eigensolver for modal analysis.
   TPZAutoPointer<TPZEigenSolver<CSTATE>>
   SetupSolver(const CSTATE target, const int nEigen,
-              TPZEigenSort sorting, bool &usingSLEPC, int krylovDim)
+              TPZEigenSort sorting, bool &usingSLEPC, int krylovDim, bool verbose)
   {
     
 #ifndef WGMA_USING_SLEPC
@@ -61,7 +61,7 @@ namespace wgma::wganalysis{
       constexpr bool eps_krylov_locking = true;
       constexpr STATE eps_krylov_restart = 0.7;
       constexpr STATE eps_mpd = -1;//PETSC_DECIDE
-      constexpr bool eps_verbosity = true;
+      const bool eps_verbosity = verbose;
     
     
       auto eps_solver = new EPSHandler<CSTATE>;
@@ -122,7 +122,7 @@ namespace wgma::wganalysis{
     
   }
   
-  void Wgma::Solve(bool compute_eigenvectors){
+  void Wgma::Solve(bool compute_eigenvectors, bool verbose){
     TPZEigenAnalysisBase::SetComputeEigenvectors(compute_eigenvectors);
     TPZEigenSolver<CSTATE> *solv =
       dynamic_cast<TPZEigenSolver<CSTATE>*>(this->Solver());
@@ -140,15 +140,16 @@ namespace wgma::wganalysis{
     this->Solve();
     std::cout<<"\rSolved!"<<std::endl;
 
-    std::ios cout_state(nullptr);
-    cout_state.copyfmt(std::cout);
+    if(verbose){
+      std::ios cout_state(nullptr);
+      cout_state.copyfmt(std::cout);
     
-    std::cout << std::setprecision(std::numeric_limits<STATE>::max_digits10);
-
-    for(auto &w : this->GetEigenvalues()){
-      std::cout<<w<<std::endl;
+      std::cout << std::setprecision(std::numeric_limits<STATE>::max_digits10);
+      for(auto &w : this->GetEigenvalues()){
+        std::cout<<w<<std::endl;
+      }
+      std::cout.copyfmt(cout_state);
     }
-    std::cout.copyfmt(cout_state);
   }
 
   void Wgma::LoadSolution(const int isol)

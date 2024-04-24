@@ -13,7 +13,7 @@ namespace wgma::wganalysis{
   //! Default suggestion for setting up the eigensolver for modal analysis.
   TPZAutoPointer<TPZEigenSolver<CSTATE>>
   SetupSolver(const CSTATE target, const int nEigen,
-              TPZEigenSort sorting, bool &usingSLEPC, int krylovDim=-1);
+              TPZEigenSort sorting, bool &usingSLEPC, int krylovDim=-1, bool verbose=true);
   
   /**
      @brief  Abstract base class responsible for managing the modal analysis of waveguides
@@ -42,7 +42,7 @@ namespace wgma::wganalysis{
        @brief Solve the eigen problem
        @param [in] compute_eigenvectors whether to compute eigenvectors (or just eigenvalues)
      */
-    void Solve(bool compute_eigenvectors);
+    void Solve(bool compute_eigenvectors, bool verbose=true);
     
 
     /*
