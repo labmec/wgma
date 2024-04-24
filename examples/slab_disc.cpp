@@ -1422,7 +1422,8 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
     }
     scatt_an.Solve();
     scatt_an.LoadSolution();
-    TPZFMatrix<CSTATE> &curr_sol = scatt_an.Solution();
+    TPZFMatrix<CSTATE> &curr_sol = scatt_cmesh->Solution();
     sol+=curr_sol;
   }
+  scatt_an.LoadSolution(sol);
 }
