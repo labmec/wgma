@@ -839,7 +839,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
   STATE norm_sol_pml{1};
   //here we will store the error between pml approx and wgbc approx
   TPZAutoPointer<TPZCompMesh> error_mesh{nullptr};
-  TPZAutoPointer<TPZVTKGenerator> vtk_error{nullptr};
+  TPZAutoPointer<TPZVTKGenerator> vtk_error{nullptr}, vtk_wpbc_eval{nullptr};
   {
     const auto &nclad = simdata.nclad;
     const auto &ncore = simdata.ncore;
@@ -855,8 +855,17 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
 
     const std::string error_file = simdata.prefix+"_pml_error";
     vtk_error = new TPZVTKGenerator(error_mesh, fvars, error_file, simdata.vtk_res);
+    const std::string wpbc_eval_file = simdata.prefix+"_wpbc_eval";
+    vtk_wpbc_eval = new TPZVTKGenerator(error_mesh, fvars, wpbc_eval_file, simdata.vtk_res);
     
     std::cout<<"norm sol pml: "<<norm_sol_pml<<std::endl;
+  }
+
+  //export PML solution at error mesh
+  if(simdata.export_vtk_error){
+    const std::string pml_eval_file = simdata.prefix+"_pml_eval";
+    TPZVTKGenerator vtk_pml_eval(error_mesh, fvars, pml_eval_file, simdata.vtk_res);
+    vtk_pml_eval.Do();
   }
 
   TPZFMatrix<CSTATE> sol_wpbc = sol_pml;//just to have the same size
@@ -876,6 +885,8 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
       if(simdata.export_vtk_scatt){vtk.Do();}
 
       wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh_wpbc, sol_wpbc);
+      error_mesh->LoadSolution(sol_wpbc);
+      if(simdata.export_vtk_error){vtk_wpbc_eval->Do();}
       sol_wpbc -= sol_pml;
       error_mesh->LoadSolution(sol_wpbc);
       if(simdata.export_vtk_error){vtk_error->Do();}
