@@ -55,7 +55,8 @@ namespace wgma::post{
   template<class TSPACE>
   void WaveguidePortBC<TSPACE>::Compute(const ElData &eldata, REAL weight, int index)
   {
-    const STATE sign = m_pos_z ? 1 : -1;
+    constexpr int no_trans{0};
+    constexpr int conj_trans{2};
     const bool is_src = m_coeff.size() != 0;
     if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
       //we expect a TPZPlanarWgma material
@@ -74,66 +75,44 @@ namespace wgma::post{
       const auto detjac = data.detjac;
       const CSTATE cte = weight*fabs(detjac);
 
-      TPZFNMatrix<3000,CSTATE> rot_et(3,nsol,0.);
+      /*
+        rot et is the rotated E_t
+        et_beta is the rotated E_t times j*beta
+       */
+      TPZFNMatrix<3000,CSTATE> rot_et(3,nsol,0.), et_beta(3,nsol,0.);
 
       const auto &sol = data.sol;
       for(auto isol = 0; isol < nsol; isol++){
-        rot_et.Put(1,isol,sol[isol][0]);
+        const auto &solval = sol[isol][0];
+        const auto beta = m_beta[isol];
+        rot_et.Put(1,isol,solval);
+        et_beta.Put(1,isol,1i*beta*solval);
       }
-
-      TPZFNMatrix<3000,CSTATE> tmp;
-
-      TPZFNMatrix<3000,CSTATE> test_func(3,nsol,0.);
       
-      /*
-        the test functions correspond to the tangential field component
-        in the bc, however, we always have 1i*beta*et
-        so we perform this multiplication now, just to avoid
-        yet another loop
-      */
-      {
-        CSTATE *ptr_rot_et = rot_et.Elem();
-        CSTATE *ptr_test_func = test_func.Elem();
-        const auto nelem = 3*nsol;
-        for(int isol = 0; isol < nsol; isol++){
-          const auto beta = m_beta[isol];
-          //first component
-          ptr_test_func++;
-          ptr_rot_et++;
-          //second component
-          *ptr_test_func++ = std::conj(*ptr_rot_et);
-          *ptr_rot_et++ *= 1i*beta;
-          ///third component
-          ptr_test_func++;
-          ptr_rot_et++;
-        }
-      }
-      tmp = rot_et;
+      TPZFNMatrix<3000,CSTATE> tmp(et_beta);
       coeff_mat.Substitution(&tmp);
-      this->m_k_scratch[index].AddContribution(0, 0, test_func, true, tmp, false,cte);
+      this->m_k_scratch[index].AddContribution(0, 0, rot_et, conj_trans, tmp, no_trans,cte);
       //src term
       if(is_src){
         //compute solution
         TPZFNMatrix<3,CSTATE> sol_mat(3,1,0.);
         for(auto is = 0; is < nsol; is++){
           const auto coeff = m_coeff[is];
-          const auto z = data.x[0];
           //only ZERO
           if(coeff == 0.){continue;}
           const auto beta = m_beta[is];
           for(auto x = 0; x < 3; x++){
             const auto val = sol_mat.Get(x,0);
-            const auto src = rot_et.Get(x,is);
-            //let us omit the phase for now
-            const auto phase = 1.;//std::exp(sign*1i*beta*z);
-            sol_mat.Put(x, 0, val + sign*src*coeff*phase);
+            const auto src = et_beta.Get(x,is);
+            sol_mat.Put(x, 0, val + src*coeff);
           }
         }
         coeff_mat.Substitution(&sol_mat);
         TPZFMatrix<CSTATE> fmat(nsol,1,this->m_f_scratch[index].begin(),nsol);
-        fmat.AddContribution(0, 0, test_func, true, sol_mat, false, cte*2.0);
+        fmat.AddContribution(0, 0, rot_et, conj_trans, sol_mat, 0, cte*2.0);
       }
     }else{
+      const STATE sign = m_pos_z ? 1 : -1;
       //we expect a TPZWgma material
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
 
@@ -147,15 +126,20 @@ namespace wgma::post{
       const auto detjac = datavec[0].detjac;
       const CSTATE cte = weight*fabs(detjac);
 
-      TPZFNMatrix<3000,CSTATE> rot_et(3,nsol,0.);
+      TPZFNMatrix<3000,CSTATE> rot_et(3,nsol,0.), et_beta(3,nsol,0.);
 
       TPZFNMatrix<3000,CSTATE> rot_grad_ez(3,nsol,0.);
       TPZFNMatrix<2000,CSTATE> grad_ez_axes(2,nsol,0.);
 
       for(auto isol = 0; isol < nsol; isol++){
         const auto &et_ref = datavec[ TPZWgma::HCurlIndex() ].sol[isol];
-        rot_et.Put(0,isol,et_ref[1]);
-        rot_et.Put(1,isol,-et_ref[0]);
+        const auto &ex = et_ref[0];
+        const auto &ey = et_ref[1];
+        const auto beta = m_beta[isol];
+        rot_et.Put(0,isol,ey);
+        rot_et.Put(1,isol,-ex);
+        et_beta.Put(0,isol,1i*beta*ey);
+        et_beta.Put(1,isol,-1i*beta*ex);
         auto &gradez_ref = datavec[ TPZWgma::H1Index() ].dsol[isol];
         grad_ez_axes.Put(0,isol,gradez_ref[0]);
         grad_ez_axes.Put(1,isol,gradez_ref[1]);
@@ -175,53 +159,32 @@ namespace wgma::post{
         rot_grad_ez.Put(1,isol,-v0);
       }
 
-      TPZFNMatrix<3000,CSTATE> tmp;
-
-      TPZFNMatrix<3000,CSTATE> test_func(3,nsol,0.);
-      
-      /*
-        the test functions correspond to the tangential field component
-        in the bc, however, we always have 1i*beta*et
-        so we perform this multiplication now, just to avoid
-        yet another loop
-       */
-      {
-        CSTATE *ptr_rot_et = rot_et.Elem();
-        CSTATE *ptr_test_func = test_func.Elem();
-        const auto nelem = 3*nsol;
-        for(int isol = 0; isol < nsol; isol++){
-          const auto beta = m_beta[isol];
-          for(int irow = 0; irow < 3; irow++){
-            *ptr_test_func++ = std::conj(*ptr_rot_et);
-            *ptr_rot_et++ *= 1i*beta;
-          }
-        }
+      TPZFNMatrix<3000,CSTATE> tmp(et_beta);
+      if(m_pos_z){
+        tmp += rot_grad_ez;
+      }else{
+        tmp -= rot_grad_ez;
       }
-
-      tmp = rot_grad_ez;
-      tmp *= sign;
-      tmp += rot_et;
       ur.Substitution(&tmp);
-      this->m_k_scratch[index].AddContribution(0, 0, test_func, true, tmp, false,cte);
+      this->m_k_scratch[index].AddContribution(0, 0, rot_et, conj_trans, tmp, no_trans,cte);
       //src term
       if(is_src){
         //compute solution
         TPZFNMatrix<3,CSTATE> sol_mat(3,1,0.);
         for(auto is = 0; is < nsol; is++){
           const auto coeff = m_coeff[is];
-          const auto z = datavec[0].x[2];
           //only ZERO
           if(coeff == 0.){continue;}
           const auto beta = m_beta[is];
           for(auto x = 0; x < 3; x++){
             const auto val = sol_mat.Get(x,0);
-            const auto src = rot_et.Get(x,is)+sign*rot_grad_ez.Get(x,is);
-            sol_mat.Put(x, 0, val + src*coeff*std::exp(sign*1i*beta*z));
+            const auto src = et_beta.Get(x,is)+sign*rot_grad_ez.Get(x,is);
+            sol_mat.Put(x, 0, val + src*coeff);
           }
         }
         ur.Substitution(&sol_mat);
         TPZFMatrix<CSTATE> fmat(nsol,1,this->m_f_scratch[index].begin(),nsol);
-        fmat.AddContribution(0, 0, test_func, true, sol_mat, false, cte*2.0);
+        fmat.AddContribution(0, 0, rot_et, conj_trans, sol_mat, no_trans, cte*2.0);
       }
     }
   }
