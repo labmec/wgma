@@ -406,7 +406,8 @@ ComputeModalAnalysis(
   /******************************
    * solve(modal analysis left) *
    ******************************/
-  auto solver = wgma::wganalysis::SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC);
+  constexpr bool verbose{false};
+  auto solver = wgma::wganalysis::SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC,nEigenpairs*10,verbose);
   if(sortingRule==TPZEigenSort::UserDefined){
     solver->SetUserSortingFunc([](CSTATE a, CSTATE b)->bool{
       const auto sqrt_a_im = std::fabs(std::imag(std::sqrt(a)));
@@ -429,7 +430,7 @@ ComputeModalAnalysis(
     static constexpr bool computeVectors{true};
   
 
-    an->Solve(computeVectors);
+    an->Solve(computeVectors,verbose);
   
     //load all obtained modes into the mesh
     an->LoadAllSolutions();
