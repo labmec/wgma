@@ -837,7 +837,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
 
 
   TPZFMatrix<CSTATE> sol_pml, ref_sol;
-  STATE norm_sol_pml{1}, norm_error_pml{1};
+  STATE norm_sol_pml{1}, norm_error_pml{1}, norm_sol_ref{1};
   //here we will store the error between pml approx and wgbc approx
   TPZAutoPointer<TPZCompMesh> error_mesh{nullptr};
   TPZAutoPointer<TPZVTKGenerator> vtk_error{nullptr}, vtk_wpbc_eval{nullptr}, vtk_proj_eval{nullptr};
@@ -874,13 +874,15 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
       }
     }
 
-    
+    error_mesh->LoadSolution(ref_sol);
+    auto normsol =
+      wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
+    normsol.SetNThreads(simdata.n_threads);
+    norm_sol_ref = std::real(normsol.ComputeNorm()[0]);
+
     
     wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh_pml, sol_pml);
     error_mesh->LoadSolution(sol_pml);
-    auto normsol =
-        wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
-    normsol.SetNThreads(simdata.n_threads);
     norm_sol_pml = std::real(normsol.ComputeNorm()[0]);
 
     //export PML solution at error mesh
@@ -904,7 +906,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
     auto norm_error =
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
     norm_error.SetNThreads(simdata.n_threads);
-    norm_error_pml = std::real(norm_error.ComputeNorm()[0])/norm_sol_pml;
+    norm_error_pml = std::real(norm_error.ComputeNorm()[0])/norm_sol_ref;
     std::cout<<"norm error pml: "<<norm_error_pml<<std::endl;
 
     //export PML solution at error mesh
@@ -943,7 +945,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
       normsol.SetNThreads(simdata.n_threads);
       const auto norm = std::real(normsol.ComputeNorm()[0]);
-      const auto error = norm/norm_sol_pml;
+      const auto error = norm/norm_sol_ref;
       std::cout<<"nmodes (left) "<<nm_left<< " nmodes(right) "<<nm_right
                <<" error "<<error<<std::endl;
       wpbc_error_res.insert({{nm_left,nm_right},error});
