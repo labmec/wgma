@@ -43,7 +43,8 @@ wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::cart::data data,
                                                    boundPosX,boundPosY,boundPosZ);
         if(neigh_mat_res.has_value() == false){
           PZError<<__PRETTY_FUNCTION__
-                 <<"Could not find neighbouring material. Aborting...\n";
+                 <<"Could not find neighbouring material "
+                 <<"for PML with id "<<id<<". Aborting...\n";
           DebugStop();
         }
         return neigh_mat_res.value();
@@ -127,7 +128,8 @@ wgma::cmeshtools::AddCylindricalPMLRegion(const wgma::pml::cyl::data data,
                                                   rMin, boundPosZ);
         if(neigh_mat_res.has_value() == false){
           PZError<<__PRETTY_FUNCTION__
-                 <<"Could not find neighbouring material. Aborting...\n";
+                 <<"Could not find neighbouring material "
+                 <<"for PML with id "<<id<<". Aborting...\n";
           DebugStop();
         }
         return neigh_mat_res.value();
