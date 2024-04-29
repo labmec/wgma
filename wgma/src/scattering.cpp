@@ -551,7 +551,7 @@ namespace wgma::scattering{
                             wgma::cmeshtools::PhysicalData &data,
                             const std::map<int64_t,int64_t> &periodic_els,
                             const std::set<int> src_id_set,
-                            const STATE lambda, const REAL scale)
+                            const STATE lambda, const REAL scale, bool verbose)
   {
     static constexpr bool isComplex{true};
     static constexpr int dim{2};
@@ -566,8 +566,6 @@ namespace wgma::scattering{
     std::set<int> volmats;
     //volumetric mats - pml
     std::set<int> realvolmats;
-    //we keep track of PML neighbours because we might need it for sources
-    std::map<int,int> pml_neighs;
     
     TPZPlanarWgScatt::ModeType matmode;
     switch(mode){
@@ -581,14 +579,19 @@ namespace wgma::scattering{
       DebugStop();
       break;
     }
+    if(verbose && data.matinfovec.size()){std::cout<<"VOLMATS:"<<std::endl;}
     for(auto [id,er,ur] : data.matinfovec){
       auto *mat = new TPZPlanarWgScatt(id,er,ur,lambda,matmode,scale);
       scatt_cmesh->InsertMaterialObject(mat);
+      if(verbose){
+        std::cout<<"\tid "<<id<<" er "<<er<<" ur "<<ur<<std::endl;
+      }
       //for pml
       realvolmats.insert(id);
     }
 
     volmats = realvolmats;
+    if(verbose && data.pmlvec.size()){std::cout<<"PMLs:"<<std::endl;}
     for(auto pml : data.pmlvec){
       //skip PMLs of other dimensions
       if(pml->dim != scatt_cmesh->Dimension()){continue;}
@@ -597,9 +600,26 @@ namespace wgma::scattering{
       if(cart_pml){
         cart_pml->neigh =
           cmeshtools::AddRectangularPMLRegion<TPZPlanarWgScatt>(*cart_pml, realvolmats, gmesh, scatt_cmesh);
+        if(verbose){
+          std::cout<<"\tid:";
+          for(auto [id,neigh]: pml->neigh){std::cout<<' '<<id<<"("<<neigh<<") ";}
+          std::cout<<"type  "<<wgma::pml::cart::to_string(cart_pml->t)
+                   <<" ax "<<cart_pml->alphax
+                   <<" ay "<<cart_pml->alphay
+                   <<" az "<<cart_pml->alphaz
+                   <<std::endl;
+        }
       }else if (cyl_pml){
         cyl_pml->neigh =
           cmeshtools::AddCylindricalPMLRegion<TPZPlanarWgScatt>(*cyl_pml, realvolmats, gmesh, scatt_cmesh);
+        if(verbose){
+          std::cout<<"\tid(neigh):";
+          for(auto [id,neigh]: pml->neigh){std::cout<<' '<<id<<"("<<neigh<<") ";}
+          std::cout<<"type  "<<wgma::pml::cyl::to_string(cyl_pml->t)
+                   <<" ar "<<cyl_pml->alphar
+                   <<" az "<<cyl_pml->alphaz
+                   <<std::endl;
+        }
       }else{
         DebugStop();
       }
@@ -610,12 +630,16 @@ namespace wgma::scattering{
     }
 
     allmats = volmats;
-    
+
+    if(verbose && data.probevec.size()){std::cout<<"PROBES:"<<std::endl;}
     for(auto [id,matdim] : data.probevec){
       static constexpr int nstate{1};
       auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
       scatt_cmesh->InsertMaterialObject(mat);
       allmats.insert(id);
+      if(verbose){
+        std::cout<<"\t id "<<id<<" dim "<<matdim<<std::endl;
+      }
     }
   
     TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
@@ -623,6 +647,7 @@ namespace wgma::scattering{
 
     /**let us associate each boundary with a given material.
        this is important for the source boundary*/
+    if(verbose){std::cout<<"BC:"<<std::endl;}
     for(auto &bc : data.bcvec){
       auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, volmats);
       if(!res.has_value()){
@@ -637,6 +662,10 @@ namespace wgma::scattering{
         dynamic_cast<TPZMaterialT<CSTATE>*> (scatt_cmesh->FindMaterial(volmatid));
       auto *bcmat = volmat->CreateBC(volmat, id, bctype, val1, val2);
       scatt_cmesh->InsertMaterialObject(bcmat);
+      if(verbose){
+        std::cout<<"\tid "<<id<<" bctype "<<wgma::bc::to_string(bc.t)
+                 <<" neigh "<<volmatid<<std::endl;
+      }
       allmats.insert(id);
     }
 
@@ -645,26 +674,24 @@ namespace wgma::scattering{
     scatt_cmesh->AutoBuild(allmats);
     scatt_cmesh->CleanUpUnconnectedNodes();
 
-
+    if(verbose && src_id_set.size()){std::cout<<"SOURCES:"<<std::endl;}
     //we insert all the materials in the computational mesh
     for(auto src_id : src_id_set){
-      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, src_id, volmats);
+      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, src_id, realvolmats);
+      if(!res.has_value()){
+        //if not found, lets include volumetric PML mats in our search
+        res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, src_id, volmats);
+      }
       if(!res.has_value()){
         PZError<<__PRETTY_FUNCTION__
-               <<"\n could not find a material adjacent to the source.\nAborting..."
+               <<"\n could not find a material adjacent to the source "<<src_id
+               <<".\nAborting..."
                <<std::endl;
         DebugStop();
       }
       
-      const auto src_volid = [res,pml_neighs](){
-        if(pml_neighs.count(res.value())){
-          //pmlmat
-          return pml_neighs.at(res.value());
-        }else{
-          //volmat
-          return res.value();
-        }
-      }();
+
+      const auto src_volid = res.value();
 
       bool found{false};
       //search in volumetric materials
@@ -672,20 +699,34 @@ namespace wgma::scattering{
         if(id == src_volid){
           auto srcMat = new TPZPlanarWgScattSrc(src_id,er,ur,lambda,matmode,scale);
           scatt_cmesh->InsertMaterialObject(srcMat);
+          if(verbose){
+            std::cout<<"\tsrc id : "<<src_id<<" neigh "<<src_volid<<std::endl;
+          }
           found = true;
           break;
         }
       }
 
+      if(found){continue;}
       //search in pml
-      for(auto pml : data.pmlvec){
-        if(pml->ids.count(src_volid)){
+      for(auto neigh_pml : data.pmlvec){
+        if(neigh_pml->ids.count(src_volid)){
           //found pml region
-          const int volid = pml->neigh[src_volid];
-          for(auto [id,er,ur] : data.matinfovec){
-            if(id == volid){
-              auto srcMat = new TPZPlanarWgScattSrc(src_id,er,ur,lambda,matmode,scale);
-              scatt_cmesh->InsertMaterialObject(srcMat);
+          const int volid = neigh_pml->neigh[src_volid];
+          if(verbose){
+            std::cout<<"\tsrc id(pml) : "<<src_id<<" neigh "<<volid<<std::endl;
+          }
+          for(auto [neigh_id,er,ur] : data.matinfovec){
+            if(neigh_id == volid){
+              //we found the volumetric neighbour, now we should create the correct PML
+              
+              //dummy material just so we can take the parameters
+              auto src_mat = new TPZPlanarWgScattSrc(src_id,er,ur,lambda,matmode,scale);
+              //the src pml will have the same parameters as its pml neigh
+              auto src_pml_mat =
+                wgma::cmeshtools::ChangeMaterialToPML(src_id,*neigh_pml,src_mat,gmesh);
+              delete src_mat;
+              scatt_cmesh->InsertMaterialObject(src_pml_mat);
               found = true;
               break;
             }
@@ -695,19 +736,24 @@ namespace wgma::scattering{
       }
       //what happened?
       if(!found){
+        std::cout<<"source "<<src_id<<" could not be found"<<std::endl;
         DebugStop();
       }
     }
-    //now we insert the proper material
-    scatt_cmesh->SetAllCreateFunctionsContinuousWithMem();
-    //we want different memory areas for each integration point
-    gSinglePointMemory = false;
-    //create computational elements with memory for the source
-    scatt_cmesh->AutoBuild(src_id_set);
-
+    
+    if(src_id_set.size()){
+      //now we insert the proper material
+      scatt_cmesh->SetAllCreateFunctionsContinuousWithMem();
+      //we want different memory areas for each integration point
+      gSinglePointMemory = false;
+      //create computational elements with memory for the source
+      scatt_cmesh->AutoBuild(src_id_set);
+    }
+    
     if(periodic_els.size()){
       wgma::cmeshtools::SetPeriodic(scatt_cmesh, periodic_els);
     }
+    
     return scatt_cmesh;
   }
 
@@ -741,23 +787,23 @@ namespace wgma::scattering{
 
     {
       TPZSimpleTimer t("Matdata");
-      if(verbose){std::cout<<"materials:"<<std::endl;}
-    for(auto [id,er,ur] : data.matinfovec){
-      auto *mat =  new TPZScattering(id,er,ur,lambda,scale);
-      scatt_cmesh->InsertMaterialObject(mat);
-      if(verbose){
-        std::cout<<"\tid "<<id<<" er "<<er<<" ur "<<ur<<std::endl;
+      if(verbose && data.matinfovec.size()){std::cout<<"VOLMATS:"<<std::endl;}
+      for(auto [id,er,ur] : data.matinfovec){
+        auto *mat =  new TPZScattering(id,er,ur,lambda,scale);
+        scatt_cmesh->InsertMaterialObject(mat);
+        if(verbose){
+          std::cout<<"\tid "<<id<<" er "<<er<<" ur "<<ur<<std::endl;
+        }
+        //for pml
+        realvolmats.insert(id);
       }
-      //for pml
-      realvolmats.insert(id);
-    }
 
     //volumetric mats
     volmats = realvolmats;
 
     {
       TPZSimpleTimer t("PML");
-      if(verbose){std::cout<<"PMLs:"<<std::endl;}
+      if(verbose && data.pmlvec.size()){std::cout<<"PMLs:"<<std::endl;}
       for(auto pml : data.pmlvec){
         //skip PMLs of other dimensions
         if(pml->dim != scatt_cmesh->Dimension()){continue;}
@@ -797,7 +843,7 @@ namespace wgma::scattering{
 
     allmats = volmats;
 
-    if(verbose){std::cout<<"PROBES:"<<std::endl;}
+    if(verbose && data.probevec.size()){std::cout<<"PROBES:"<<std::endl;}
     for(auto [id,matdim] : data.probevec){
       static constexpr int nstate{1};
       auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
@@ -853,11 +899,15 @@ namespace wgma::scattering{
     std::set<int> src_mats, src_pml_mats;
     //we insert all the materials in the computational mesh
     {
-      if(verbose){std::cout<<"SOURCES:"<<std::endl;}
+      if(verbose && src_id_set.size()){std::cout<<"SOURCES:"<<std::endl;}
       TPZSimpleTimer tscatt("SrcMats");
       for(auto src_id : src_id_set){
         bool found_this_src = false;
-        auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, src_id, volmats);
+        auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, src_id, realvolmats);
+        if(!res.has_value()){
+          //if not found, lets include volumetric PML mats in our search
+          res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, src_id, volmats);
+        }
         if(!res.has_value()){
           PZError<<__PRETTY_FUNCTION__
                  <<"\n could not find a material adjacent to the source.\nAborting..."
@@ -865,50 +915,48 @@ namespace wgma::scattering{
           DebugStop();
         }
 
-        const auto src_neigh = res.value();
-        std::cout<<"src id: "<<src_id<<"src neigh: "<<src_neigh<<std::endl;
-        
+        const auto src_neigh_id = res.value();
         
         for(auto [id,er,ur] : data.matinfovec){
-          if(id == src_neigh){
+          if(id == src_neigh_id){
             auto srcMat = new TPZScatteringSrc(src_id,er,ur,lambda,scale);
             scatt_cmesh->InsertMaterialObject(srcMat);
             if(verbose){
-              std::cout<<"\tid : "<<src_id<<" neigh "<<src_neigh<<std::endl;
+              std::cout<<"\tsrc id : "<<src_id<<" neigh "<<src_neigh_id<<std::endl;
             }
             found_this_src = true;
             src_mats.insert(src_id);
             break;
           }
         }
-        if(!found_this_src){
-          //probably a PML material then
-          for(auto &pml : data.pmlvec){
-            if(pml->dim == scatt_cmesh->Dimension()){continue;}
-            if (pml->ids.count(src_id)){
-              if(verbose){
-                std::cout<<"\tid : "<<src_id<<" neigh "<<*pml->ids.begin()<<std::endl;
-              }
-              auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
-              auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
-              if(cart_pml){
-                pml->neigh =
-                  wgma::cmeshtools::AddRectangularPMLRegion<TPZScatteringSrc>
-                  (*cart_pml, src_mats, gmesh, scatt_cmesh);
-              }else if(cyl_pml){
-                pml->neigh =
-                  wgma::cmeshtools::AddCylindricalPMLRegion<TPZScatteringSrc>
-                  (*cyl_pml, src_mats, gmesh, scatt_cmesh);
-              }else{
-                DebugStop();
+        if(found_this_src) {continue;}
+        //probably a PML material then
+        for(auto &pml : data.pmlvec){
+          if (pml->ids.count(src_neigh_id)){
+            //found neighbouring PML region
+            const int volid = pml->neigh[src_neigh_id];
+            if(verbose){
+              std::cout<<"\tsrc id(pml) : "<<src_id<<" neigh "<<volid<<std::endl;
+            }
+            for(auto [neigh_id,er,ur] : data.matinfovec){
+              if(neigh_id == volid){
+                //dummy material just so we can take the parameters
+                auto src_mat = new TPZScatteringSrc(src_id,er,ur,lambda,scale);
+                //the src pml will have the same parameters as its pml neigh
+                auto src_pml_mat =
+                  wgma::cmeshtools::ChangeMaterialToPML(src_id,*pml,src_mat,gmesh);
+                delete src_mat;
+                scatt_cmesh->InsertMaterialObject(src_pml_mat);
+                src_pml_mats.insert(src_id);
+                found_this_src=true;
+                break;
               }
             }
-            src_pml_mats.insert(src_id);
-            found_this_src = true;
           }
         }
         if(!found_this_src){
           std::cout<<"source "<<src_id<<" could not be found"<<std::endl;
+          DebugStop();
         }
       }
     }

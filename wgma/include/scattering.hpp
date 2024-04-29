@@ -140,7 +140,7 @@ namespace wgma::scattering{
                             cmeshtools::PhysicalData &data,
                             const std::map<int64_t,int64_t> &periodic_els,
                             const std::set<int> source_ids,
-                            const STATE lambda, const REAL scale);
+                            const STATE lambda, const REAL scale,bool verbose=false);
 
   /**
      @brief Creates the computational mesh used for the scattering analysis of planar waveguides.
@@ -162,10 +162,11 @@ namespace wgma::scattering{
                     const planarwg::mode mode, int pOrder,
                     cmeshtools::PhysicalData &data,
                     const std::set<int> source_ids,
-                    const STATE lambda, const REAL scale)
+                    const STATE lambda, const REAL scale,
+                    bool verbose=false)
   {
     return CMeshScattering2DPeriodic(gmesh,mode,pOrder,data,
-                                     {},source_ids,lambda,scale);
+                                     {},source_ids,lambda,scale,verbose);
   }
   
   /**
