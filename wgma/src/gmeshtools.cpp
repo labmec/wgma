@@ -675,7 +675,11 @@ wgma::gmeshtools::FindCartPMLNeighbourMaterial(
         break;
       }
     }
-  });
+  }
+#ifdef WGMA_SERIAL
+    ,0
+#endif
+    );
 
   if(!closestEl){
     return std::nullopt;
@@ -736,7 +740,11 @@ wgma::gmeshtools::FindCylPMLNeighbourMaterial(
         break;
       }
     }
-  });
+  }
+#ifdef WGMA_SERIAL
+    ,0
+#endif
+    );
 
   if(!closestEl){
     return std::nullopt;
@@ -802,7 +810,11 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
         }
       }
     }
-  });
+  }
+#ifdef WGMA_SERIAL
+    ,0
+#endif
+    );
 
 
   //now we compute xBegin, yBegin, attx, atty and d for the material ctor
@@ -910,7 +922,11 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
         }
       }
     }
-  });
+  }
+#ifdef WGMA_SERIAL
+    ,0
+#endif
+    );
 
   const bool attz = wgma::pml::cyl::attz(type);
   

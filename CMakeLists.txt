@@ -30,6 +30,14 @@ if(USING_SLEPC)
   enable_slepc(wgma)
 endif()
 
+
+#might be useful for debugging
+#remember to call pzutils::SetNumThreadsLocalMKL(0) as well
+option(WGMA_SERIAL "Whether to run wgma in serial mode" OFF)
+if(WGMA_SERIAL)
+  target_compile_definitions(wgma PRIVATE WGMA_SERIAL)
+endif()
+
 #now we check for json library
 find_package(nlohmann_json 3.11.2 QUIET)
 if(NOT TARGET nlohmann_json::nlohmann_json)

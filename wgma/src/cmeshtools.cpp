@@ -314,7 +314,11 @@ void cmeshtools::ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh> mesh_dest,
       }
         
     }
-  });
+  }
+#ifdef WGMA_SERIAL
+                       ,0
+#endif
+                       );
 }
 
 int64_t
