@@ -175,4 +175,60 @@ wgma::cmeshtools::AddCylindricalPMLRegion(const wgma::pml::cyl::data data,
   }
   return all_neighs;
 }
+
+template<class MATVOL>
+TPZMatPML<MATVOL> *
+wgma::cmeshtools::ChangeMaterialToPML(const int id, const wgma::pml::data &data,
+                                      MATVOL *mat, TPZAutoPointer<TPZGeoMesh> gmesh){
+  auto cart_pml = dynamic_cast<const wgma::pml::cart::data *>(&data);
+  auto cyl_pml = dynamic_cast<const wgma::pml::cyl::data *>(&data);
+  if(!cart_pml && !cyl_pml){
+    DebugStop();
+  }
+    
+  TPZMatPML<MATVOL> *pml_mat{nullptr};
+  if(cart_pml){
+    if constexpr (std::is_base_of_v<TPZMatCombinedSpaces, MATVOL>){
+      pml_mat = new TPZCombinedSpacesCartesianPML<MATVOL>(id, *mat);
+    }else{
+      pml_mat = new TPZSingleSpaceCartesianPML<MATVOL>(id, *mat);
+    }
+
+    REAL boundPosX{0}, boundPosY{0}, boundPosZ{0}, dX{0}, dY{0}, dZ{0};
+
+    wgma::gmeshtools::FindPMLWidth(gmesh, data.ids, cart_pml->t,
+                                   boundPosX, dX,
+                                   boundPosY, dY,
+                                   boundPosZ, dZ);
+        
+    const bool attx = wgma::pml::cart::attx(cart_pml->t);
+    const bool atty = wgma::pml::cart::atty(cart_pml->t);
+    const bool attz = wgma::pml::cart::attz(cart_pml->t);
+
+    auto cart_pml_ptr = dynamic_cast<TPZCartesianPML<MATVOL> *>(pml_mat);
+    if(attx) cart_pml_ptr->SetAttX(boundPosX, cart_pml->alphax, dX);
+    if(atty) cart_pml_ptr->SetAttY(boundPosY, cart_pml->alphay, dY);
+    if(attz) cart_pml_ptr->SetAttZ(boundPosZ, cart_pml->alphaz, dZ);
+        
+  }else{
+    if constexpr (std::is_base_of_v<TPZMatCombinedSpaces, MATVOL>){
+      pml_mat = new TPZCombinedSpacesCylindricalPML<MATVOL>(id, *mat);
+    }else{
+      pml_mat = new TPZSingleSpaceCylindricalPML<MATVOL>(id, *mat);
+    }
+    REAL rMin{0}, rMax{0}, boundPosZ{0}, dZ{0};
+
+    wgma::gmeshtools::FindPMLWidth(gmesh, data.ids, cyl_pml->t,
+                                   rMin, rMax,
+                                   boundPosZ, dZ);
+    const bool attr = wgma::pml::cyl::attr(cyl_pml->t);
+    const bool attz = wgma::pml::cyl::attz(cyl_pml->t);
+
+    auto cyl_pml_ptr = dynamic_cast<TPZCylindricalPML<MATVOL> *>(pml_mat);
+    if(attr) cyl_pml_ptr->SetAttR(rMin, cyl_pml->alphar, rMax-rMin);
+    if(attz) cyl_pml_ptr->SetAttZ(boundPosZ, cyl_pml->alphaz, dZ);
+  }
+  return pml_mat;
+}
+
 #endif

@@ -15,6 +15,8 @@ template<class T>
 class TPZAutoPointer;
 template<class T>
 class TPZFMatrix;
+template<class T>
+class TPZMatPML;
 
 class TPZCompMesh;
 class TPZGeoMesh;
@@ -128,6 +130,20 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
                           const std::set<int> &volmats,
                           TPZAutoPointer<TPZGeoMesh> gmesh,
                           TPZAutoPointer<TPZCompMesh> cmesh);
+
+  /**
+     @brief Replaces a given material for a PML region based  on its constitutive parameters
+     with the PML data given in the data param
+     @note This method does not delete the original material
+     @tparam MATVOL material from which the PML inherits
+     @param[in] id PML region id
+     @param[in] data PML attenuation parameters
+     @param[in] mat material that the PML will replace
+     @param[in] gmesh Geometric mesh
+   */
+  template<class MATVOL>
+  TPZMatPML<MATVOL> * ChangeMaterialToPML(const int id, const wgma::pml::data &data,
+                                          MATVOL *mat, TPZAutoPointer<TPZGeoMesh> gmesh);
 
   /** @brief Finds all connects associated with a dirichlet boundary condition
       @param [in] cmesh Computational mesh
