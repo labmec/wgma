@@ -650,6 +650,7 @@ namespace wgma::wganalysis{
     //number of state variables in the problem
     const int soldim = isH1 ? 1 : 3;
 
+    std::set<int> allmats;
 
     TPZMaterialT<CSTATE> * dummyVolMat = nullptr;
     for(auto matid : volmats){
@@ -657,18 +658,21 @@ namespace wgma::wganalysis{
         new wgma::materials::SolutionProjection<CSTATE>(matid,dim,soldim);
       cmesh->InsertMaterialObject(dummyMat);
       dummyVolMat = dummyMat;
+      allmats.insert(matid);
     }
   
     for(auto id : pmlmats){
       auto *dummyMat =
         new wgma::materials::SolutionProjection<CSTATE>(id,dim,soldim);
         cmesh->InsertMaterialObject(dummyMat);
+        allmats.insert(id);
     }
 
     for(auto [id,matdim] : probevec){
       auto *mat =
         new wgma::materials::SolutionProjection<CSTATE>(id,dim,soldim);
       cmesh->InsertMaterialObject(mat);
+      allmats.insert(id);
     }
 
     TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
@@ -679,6 +683,7 @@ namespace wgma::wganalysis{
       const int volid = bc.volid;
       auto *dummyBC = dummyVolMat->CreateBC(dummyVolMat, id, bctype, val1, val2);
       cmesh->InsertMaterialObject(dummyBC);
+      allmats.insert(id);
     }
 
     if(isH1){
@@ -686,7 +691,7 @@ namespace wgma::wganalysis{
     }else{
       cmesh->SetAllCreateFunctionsHCurl();
     }
-    cmesh->AutoBuild();
+    cmesh->AutoBuild(allmats);
     cmesh->CleanUpUnconnectedNodes();
 
     return cmesh;
@@ -768,6 +773,7 @@ namespace wgma::wganalysis{
       }
     }
 
+    std::set<int> allmats = volmats;
     if(verbose){
       std::cout<<"inserting probes:\n";
     }
@@ -775,6 +781,7 @@ namespace wgma::wganalysis{
       static constexpr int nstate{1};
       auto *mat = new TPZNullMaterialCS<CSTATE>(id,matdim,nstate);
       cmeshMF->InsertMaterialObject(mat);
+      allmats.insert(id);
       if(verbose){
         std::cout<<"\tid "<<id<<" dim "<<matdim<<std::endl;
       }
@@ -801,7 +808,7 @@ namespace wgma::wganalysis{
       }
       auto *bcMat = matWG->CreateBC(matWG, id, bctype, val1, val2);
       cmeshMF->InsertMaterialObject(bcMat);
-
+      allmats.insert(id);
       if(verbose){
         std::cout<<"\tid "<<id<<" vol mat "<<volid<<" type "<<wgma::bc::to_string(bc.t)<<std::endl;
       }
@@ -810,7 +817,7 @@ namespace wgma::wganalysis{
     cmeshMF->SetDimModel(dim);
     cmeshMF->SetAllCreateFunctionsMultiphysicElem();
 
-    cmeshMF->AutoBuild();
+    cmeshMF->AutoBuild(allmats);
     cmeshMF->CleanUpUnconnectedNodes();
 
     return cmeshMF;
@@ -870,7 +877,9 @@ namespace wgma::wganalysis{
       }else{
         DebugStop();
       }
-
+      for(auto id: pml->ids){
+        volmats.insert(id);
+      }
       if(verbose){
         std::cout<<"\tid (neighbour) ";
         for(auto [id, neigh] : pml->neigh){
@@ -889,6 +898,7 @@ namespace wgma::wganalysis{
       }
     }
 
+    std::set<int> allmats = volmats;
     if(verbose){
       std::cout<<"inserting probes:\n";
     }
@@ -896,6 +906,7 @@ namespace wgma::wganalysis{
       static constexpr int nstate{1};
       auto *mat = new TPZNullMaterialCS<CSTATE>(id,matdim,nstate);
       cmeshMF->InsertMaterialObject(mat);
+      allmats.insert(id);
       if(verbose){
         std::cout<<"\tid "<<id<<" dim "<<matdim<<std::endl;
       }
@@ -912,6 +923,8 @@ namespace wgma::wganalysis{
       const int bctype = wgma::bc::to_int(bc.t);
       const int id = bc.id;
       const int volid = bc.volid;
+
+      allmats.insert(id);
       auto *matWG =
         dynamic_cast<TPZMaterialT<CSTATE>*>(cmeshMF->FindMaterial(volid));
       if(!matWG){
@@ -931,7 +944,7 @@ namespace wgma::wganalysis{
     cmeshMF->SetDimModel(dim);
     cmeshMF->SetAllCreateFunctionsMultiphysicElem();
 
-    cmeshMF->AutoBuild();
+    cmeshMF->AutoBuild(allmats);
     cmeshMF->CleanUpUnconnectedNodes();
 
     return cmeshMF;
