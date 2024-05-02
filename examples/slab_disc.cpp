@@ -1466,7 +1466,14 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
   }
   src.modal_cmesh = src_mesh;
 
-  TPZFMatrix<CSTATE> sol(scatt_cmesh->NEquations(),1);
+
+  TPZFMatrix<CSTATE> sol = scatt_cmesh->Solution();
+  
+  {
+    const int neq = sol.Rows();
+    sol.Resize(neq,1);
+  }
+  
   //we will add the components of the solution one by one
   const int nsol = src_coeffs.size();
   bool first_assemble{true};
