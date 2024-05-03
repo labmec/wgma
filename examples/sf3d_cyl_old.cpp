@@ -617,8 +617,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
       probeMats.push_back("src_right_core");
       probeMats.push_back("src_left_clad");
       probeMats.push_back("src_left_core");
-      probeMats.push_back("probe_clad");
-      probeMats.push_back("probe_core");
+      probeMats.push_back("probe_left_clad");
+      probeMats.push_back("probe_left_core");
       //now for 1d pml mats
       for(const auto &pml : scatt_data.pmlvec){
         const std::string pattern_left{"src_left_clad"};
@@ -627,7 +627,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
         const std::string right_pattern{"src_right_clad"};
         const auto rx_right =
           std::regex{right_pattern, std::regex_constants::icase };
-        const std::string pattern_probe{"probe_clad"};
+        const std::string pattern_probe{"probe_left_clad"};
         const auto rx_probe =
           std::regex{pattern_probe, std::regex_constants::icase };
         
