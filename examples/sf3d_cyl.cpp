@@ -1162,9 +1162,13 @@ void TransformModes(wgma::wganalysis::Wgma2D& an)
   }
     
   TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshvec(2);
-  meshvec[0] = h1_mesh;
-  meshvec[1] = hcurl_mesh;    
+  meshvec[TPZWgma::H1Index()] = h1_mesh;
+  meshvec[TPZWgma::HCurlIndex()] = hcurl_mesh;    
   TPZBuildMultiphysicsMesh::TransferFromMeshes(meshvec,mf_mesh);
+  //we update analysis object
+  TPZFMatrix<CSTATE> &mesh_sol=mf_mesh->Solution();
+  an.SetEigenvectors(mesh_sol);
+  an.LoadAllSolutions();
 }
 
 
