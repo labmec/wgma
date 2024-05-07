@@ -12,6 +12,8 @@ using namespace std::string_view_literals;
 
 
 namespace wgma::scattering{
+  //temporary variable (set to false in .cpp)
+  extern bool using_tbb_mat;
   /**
      @brief  Class responsible for managing the scattering analysis of planar waveguides
   */

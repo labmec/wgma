@@ -5,7 +5,7 @@
 
 #include <TPZSpStructMatrix.h>
 #include <TPZSSpStructMatrix.h>
-#include <pzstrmatrixot.h>
+#include <TPZStructMatrixOMPorTBB.h>
 #include <TPZCutHillMcKee.h>
 #include <pzstepsolver.h>
 #include <Electromagnetics/TPZPlanarWgScatt.h>
@@ -23,7 +23,11 @@
 #include <cassert>
 
 
+
 namespace wgma::scattering{
+
+  bool using_tbb_mat{false};
+  
   Analysis::Analysis(TPZAutoPointer<TPZCompMesh> mesh,
                      const int n_threads,
                      const bool reorder_eqs,
@@ -39,9 +43,25 @@ namespace wgma::scattering{
     TPZAutoPointer<TPZStructMatrix> strmtrx = nullptr;
 
     if(m_sym){
-      strmtrx = new TPZSSpStructMatrix<CSTATE,TPZStructMatrixOR<CSTATE>>(m_cmesh);
+      if(using_tbb_mat){
+        auto mtrx = new TPZSSpStructMatrix<CSTATE,TPZStructMatrixOMPorTBB<CSTATE>>(m_cmesh);
+        mtrx->SetTBBorOMP(true);
+        mtrx->SetShouldColor(false);
+        strmtrx = mtrx;
+      }else{
+        auto mtrx = new TPZSSpStructMatrix<CSTATE,TPZStructMatrixOR<CSTATE>>(m_cmesh);
+        strmtrx = mtrx;
+      }
     }else{
-      strmtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOR<CSTATE>>(m_cmesh);
+      if(using_tbb_mat){
+        auto mtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOMPorTBB<CSTATE>>(m_cmesh);
+        mtrx->SetTBBorOMP(true);
+        mtrx->SetShouldColor(false);
+        strmtrx = mtrx;
+      }else{
+        auto mtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOR<CSTATE>>(m_cmesh);
+        strmtrx = mtrx;
+      }
     }
 
     strmtrx->SetNumThreads(n_threads);
