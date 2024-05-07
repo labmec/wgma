@@ -67,7 +67,9 @@ struct SimData{
   int n_eigenpairs_left;
   //!number of eigenvalues computed on right port
   int n_eigenpairs_right;
-  //!if set to true, wpbc is compared against PML for validation
+  //!perform validation test on waveguide cross section (no discontinuity)
+  bool check_mode_propagation;
+  //!if set to true, wpbc is compared against PML in the mode propagation test
   bool compare_pml;
   //!pairs of mode index/coefficient to be used as source
   std::vector<std::pair<int,double>> source_coeffs;
@@ -146,12 +148,12 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                 const std::map<int64_t,int64_t> &periodic_els,
                 const SimData &simdata);
 void
-SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
-                       wgma::wganalysis::Wgma2D &src_an,
-                       wgma::wganalysis::Wgma2D &match_an,
-                       const TPZVec<std::map<std::string, int>> &gmshmats,
-                       const std::map<int64_t,int64_t> &periodic_els,
-                       const SimData &simdata);
+SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
+                     wgma::wganalysis::Wgma2D &src_an,
+                     wgma::wganalysis::Wgma2D &match_an,
+                     const TPZVec<std::map<std::string, int>> &gmshmats,
+                     const std::map<int64_t,int64_t> &periodic_els,
+                     const SimData &simdata);
 
 SimData GetSimData()
 {
@@ -180,7 +182,8 @@ SimData GetSimData()
   data.nclad = 1.4378;
   data.alphaPMLr = {sqrt(0.4*0.4+0.4*0.4), 0.0};
   data.alphaPMLz = {1.0, 0.0};
-  data.compare_pml=true;
+  data.check_mode_propagation=true;
+  data.compare_pml=false;
   data.source_coeffs = {{0,1}};
   data.porder = 2;
   data.n_eigenpairs_left = 5;
@@ -304,10 +307,10 @@ int main(int argc, char *argv[]) {
                                        usingSLEPC,"src_right");
   }
 
-  if(!simdata.compare_pml){
+  if(!simdata.check_mode_propagation){
     SolveScattering(gmesh, modal_l_an,  modal_r_an, gmshmats, periodic_els, simdata);
   }else{
-    SolveScatteringWithPML(gmesh, modal_l_an,  modal_r_an, gmshmats, periodic_els, simdata);
+    SolveModePropagation(gmesh, modal_l_an,  modal_r_an, gmshmats, periodic_els, simdata);
   }
   return 0;
 }
@@ -601,6 +604,7 @@ SimData ReadSimData(const std::string &dataname){
   sd.scale = data["scale"];
   sd.ncore = data["ncore"];
   sd.nclad = data["nclad"];
+  sd.check_mode_propagation = data["check_mode_propagation"];
   sd.compare_pml = data["compare_pml"];
   std::vector<double> tmpvec_double;
   tmpvec_double = data["alpha_pml_r"].get<std::vector<double>>();
@@ -846,12 +850,12 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   
 }
 
-void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
-                            wgma::wganalysis::Wgma2D &src_an,
-                            wgma::wganalysis::Wgma2D &match_an,
-                            const TPZVec<std::map<std::string, int>> &gmshmats,
-                            const std::map<int64_t,int64_t> &periodic_els,
-                            const SimData &simdata)
+void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
+                          wgma::wganalysis::Wgma2D &src_an,
+                          wgma::wganalysis::Wgma2D &match_an,
+                          const TPZVec<std::map<std::string, int>> &gmshmats,
+                          const std::map<int64_t,int64_t> &periodic_els,
+                          const SimData &simdata)
 {
   /*********************
    * solve(scattering) *  
@@ -899,60 +903,22 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
     }
   }
 
-  //set up post processing vars
-  TPZVec<std::string> fvars = {
-    "Field_real",
-    "Field_imag",
-    "Field_abs"};
+  /*
+    first thing is to compute the propagation of the waveguide mode in the
+    error mesh
+   */
+  TPZFMatrix<CSTATE> ref_sol;
+  STATE norm_sol_ref{1};
   
-  //ok first we solve with a PML
-  TPZAutoPointer<TPZCompMesh> scatt_mesh_pml =
-    CreateScattMesh(gmesh,gmshmats,simdata,true);
-  {
-    const std::string suffix = "pml";
-    const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
-    SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
-    if(simdata.export_vtk_scatt){
-      auto vtk = TPZVTKGenerator(scatt_mesh_pml, fvars, scatt_file, simdata.vtk_res);
-      vtk.SetNThreads(simdata.n_threads);
-      vtk.Do();
-    }
-  }
-
-  TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc =
-    CreateScattMesh(gmesh,gmshmats,simdata,false);
-
-
-  const std::string suffix = "wpbc";
-  const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
-  auto vtk = TPZVTKGenerator(scatt_mesh_wpbc, fvars, scatt_file, simdata.vtk_res);
-  vtk.SetNThreads(simdata.n_threads);
-  
-  src_an.LoadAllSolutions();
-  match_an.LoadAllSolutions();
-
-  
-
-  //compute wgbc coefficients
-  WpbcData src_data;
-  src_data.cmesh = src_an.GetHCurlMesh();
-  ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
-                    src_data.wgbc_f, false, src_coeffs,
-                    simdata.n_threads);
-
-  WpbcData match_data;
-  match_data.cmesh = match_an.GetHCurlMesh();
-  ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
-                    match_data.wgbc_f,true, {},
-                    simdata.n_threads);
-    
-
-
-  TPZFMatrix<CSTATE> sol_pml, ref_sol;
-  STATE norm_sol_pml{1}, norm_error_pml{1}, norm_sol_ref{1};
-  //here we will store the error between pml approx and wgbc approx
   TPZAutoPointer<TPZCompMesh> error_mesh{nullptr};
-  TPZAutoPointer<TPZVTKGenerator> vtk_error{nullptr}, vtk_wpbc_eval{nullptr}, vtk_proj_eval{nullptr};
+  TPZAutoPointer<TPZVTKGenerator> vtk_proj_eval{nullptr};
+
+  //set up post processing vars
+  TPZVec<std::string> fvars_2d = {
+    "Solution_abs",
+    "Solution_real",
+    "Solution_imag"};
+
   {
     const auto &nclad = simdata.nclad;
     const auto &ncore = simdata.ncore;
@@ -961,9 +927,10 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
       auto meshvec =
         CreateModalAnalysisMesh(gmesh, gmshmats, simdata, nclad*nclad, ncore*ncore, "probe_left");
       error_mesh = meshvec[1+TPZWgma::HCurlIndex()];
+      ReplaceMaterialsForProjection(error_mesh);
     }
     //just to set size
-    sol_pml = error_mesh->Solution();
+    ref_sol = error_mesh->Solution();
 
     //now error mesh will contain all the modes
     TransferSolutionBetweenPeriodicMeshes(error_mesh, src_an.GetHCurlMesh(), periodic_els);
@@ -972,7 +939,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
       error_mesh->Element(0)->Reference()->Node(0).Coord(2)-
       src_an.GetHCurlMesh()->Element(0)->Reference()->Node(0).Coord(2);
     //now we compute the expected (propagated) solution
-    ref_sol.Redim(sol_pml.Rows(),1);
+    ref_sol.Redim(ref_sol.Rows(),1);
 
     
     for(int i = 0; i < src_coeffs.size();i++){
@@ -996,54 +963,116 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
       wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
     normsol.SetNThreads(simdata.n_threads);
     norm_sol_ref = std::real(normsol.ComputeNorm()[0]);
-
-    
-    wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh_pml, sol_pml);
-    error_mesh->LoadSolution(sol_pml);
-    norm_sol_pml = std::real(normsol.ComputeNorm()[0]);
-
-    //export PML solution at error mesh
     if(simdata.export_vtk_error){
-      const std::string pml_eval_file = simdata.prefix+"_pml_eval";
-      TPZVTKGenerator vtk_pml_eval(error_mesh, fvars, pml_eval_file, simdata.vtk_res);
-      vtk_pml_eval.SetNThreads(simdata.n_threads);
-      vtk_pml_eval.Do();
-    }
-    
-
-    const std::string error_file = simdata.prefix+"_pml_error";
-    vtk_error = new TPZVTKGenerator(error_mesh, fvars, error_file, simdata.vtk_res);
-    const std::string wpbc_eval_file = simdata.prefix+"_wpbc_eval";
-    vtk_wpbc_eval = new TPZVTKGenerator(error_mesh, fvars, wpbc_eval_file, simdata.vtk_res);
-    
-    std::cout<<"norm sol pml: "<<norm_sol_pml<<std::endl;
-
-    TPZFMatrix<CSTATE> diff_sol(sol_pml);
-    diff_sol-=ref_sol;
-    error_mesh->LoadSolution(diff_sol);
-    auto norm_error =
-        wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
-    norm_error.SetNThreads(simdata.n_threads);
-    norm_error_pml = std::real(norm_error.ComputeNorm()[0])/norm_sol_ref;
-    std::cout<<"norm error pml: "<<norm_error_pml<<std::endl;
-
-    //export PML solution at error mesh
-    if(simdata.export_vtk_error){
-      error_mesh->LoadSolution(ref_sol);
       const std::string proj_eval_file = simdata.prefix+"_proj_eval";
-      TPZVTKGenerator vtk_proj_eval(error_mesh, fvars, proj_eval_file, simdata.vtk_res);
+      TPZVTKGenerator vtk_proj_eval(error_mesh, fvars_2d, proj_eval_file, simdata.vtk_res);
       vtk_proj_eval.SetNThreads(simdata.n_threads);
       vtk_proj_eval.Do();
     }
     
   }
 
-  TPZFMatrix<CSTATE> sol_wpbc = sol_pml;//just to have the same size
+  
+  //set up post processing vars
+  TPZVec<std::string> fvars_3d = {
+    "Field_real",
+    "Field_imag",
+    "Field_abs"};
+
+  TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc =
+    CreateScattMesh(gmesh,gmshmats,simdata,false);
+
+
+  const std::string suffix = "wpbc";
+  const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
+  auto vtk = TPZVTKGenerator(scatt_mesh_wpbc, fvars_3d, scatt_file, simdata.vtk_res);
+  vtk.SetNThreads(simdata.n_threads);
+  
+  src_an.LoadAllSolutions();
+  match_an.LoadAllSolutions();
+
+  
+
+  //compute wgbc coefficients
+  WpbcData src_data;
+  src_data.cmesh = src_an.GetHCurlMesh();
+  ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
+                    src_data.wgbc_f, false, src_coeffs,
+                    simdata.n_threads);
+
+  WpbcData match_data;
+  match_data.cmesh = match_an.GetHCurlMesh();
+  ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
+                    match_data.wgbc_f,true, {},
+                    simdata.n_threads);
+    
+
+
+  TPZFMatrix<CSTATE> sol_pml;
+  STATE norm_sol_pml{1}, norm_error_pml{1};
+  if(simdata.compare_pml){
+    //ok first we solve with a PML
+    TPZAutoPointer<TPZCompMesh> scatt_mesh_pml =
+      CreateScattMesh(gmesh,gmshmats,simdata,true);
+    const std::string suffix = "pml";
+    const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
+    SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
+    //now we load back all the solutions into the src mesh
+    src_an.LoadAllSolutions();
+    if(simdata.export_vtk_scatt){
+      auto vtk = TPZVTKGenerator(scatt_mesh_pml, fvars_3d, scatt_file, simdata.vtk_res);
+      vtk.SetNThreads(simdata.n_threads);
+      vtk.Do();
+    }
+    //just to set size
+    sol_pml = error_mesh->Solution();
+
+    wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh_pml, sol_pml);
+    error_mesh->LoadSolution(sol_pml);
+    
+    auto normsol =
+      wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
+    normsol.SetNThreads(simdata.n_threads);
+    norm_sol_pml = std::real(normsol.ComputeNorm()[0]);
+    std::cout<<"norm sol pml: "<<norm_sol_pml<<std::endl;
+
+    //export PML solution at error mesh
+    if(simdata.export_vtk_error){
+      const std::string pml_eval_file = simdata.prefix+"_pml_eval";
+      TPZVTKGenerator vtk_pml_eval(error_mesh, fvars_2d, pml_eval_file, simdata.vtk_res);
+      vtk_pml_eval.SetNThreads(simdata.n_threads);
+      vtk_pml_eval.Do();
+    }
+    auto norm_error =
+        wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
+    norm_error.SetNThreads(simdata.n_threads);
+    norm_error_pml = std::real(norm_error.ComputeNorm()[0])/norm_sol_ref;
+    std::cout<<"norm error pml: "<<norm_error_pml<<std::endl;
+    
+    if(simdata.export_vtk_error){
+      sol_pml-=ref_sol;
+      const std::string error_file = simdata.prefix+"_pml_error";
+      TPZVTKGenerator vtk_error(error_mesh, fvars_2d, error_file, simdata.vtk_res);
+      vtk_error.SetNThreads(simdata.n_threads);
+      vtk_error.Do();
+    }
+  }
+
+  TPZFMatrix<CSTATE> sol_wpbc = ref_sol;//just to have the same size
   
   std::map<std::pair<int,int>,STATE> wpbc_error_res;
 
   std::ostringstream errorinfo;
   errorinfo.precision(std::numeric_limits<STATE>::max_digits10);
+
+
+  TPZAutoPointer<TPZVTKGenerator> vtk_wpbc_eval{nullptr}, vtk_wpbc_error{nullptr};
+  if(simdata.export_vtk_error){
+    const std::string wpbc_eval_file = simdata.prefix+"_wpbc_eval";
+    vtk_wpbc_eval = new TPZVTKGenerator(error_mesh, fvars_2d, wpbc_eval_file, simdata.vtk_res);
+    const std::string wpbc_error_file = simdata.prefix+"_wpbc_error";
+    vtk_wpbc_error = new TPZVTKGenerator(error_mesh, fvars_2d, wpbc_error_file, simdata.vtk_res);
+  }
   
   for(int im_left = 0; im_left < nmodes_left.size(); im_left++){
     const int nm_left = nmodes_left[im_left];
@@ -1059,7 +1088,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
       if(simdata.export_vtk_error){vtk_wpbc_eval->Do();}
       sol_wpbc -= ref_sol;
       error_mesh->LoadSolution(sol_wpbc);
-      if(simdata.export_vtk_error){vtk_error->Do();}
+      if(simdata.export_vtk_error){vtk_wpbc_error->Do();}
       auto normsol =
         wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
       normsol.SetNThreads(simdata.n_threads);
@@ -1086,13 +1115,15 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
     errorfile<<errorinfo.str();
     errorinfo.clear();
   }
-  
-  std::cout<<"+++++++++++++PML COMPARISON+++++++++++++"<<std::endl;
-  for(auto [nm,error] : wpbc_error_res){
-    std::cout<<"nmodes (left) "<<nm.first<<" nmodes (right) "<<nm.second
-             <<" norm rel error: "<<error <<" percentage PML error: "<<(error/norm_error_pml)*100<<std::endl;
+
+  if(simdata.compare_pml){
+    std::cout<<"+++++++++++++PML COMPARISON+++++++++++++"<<std::endl;
+    for(auto [nm,error] : wpbc_error_res){
+      std::cout<<"nmodes (left) "<<nm.first<<" nmodes (right) "<<nm.second
+               <<" norm rel error: "<<error <<" percentage PML error: "<<(error/norm_error_pml)*100<<std::endl;
+    }
+    std::cout<<"+++++++++++++++++++++++++++++++++++++++++"<<std::endl;
   }
-  std::cout<<"+++++++++++++++++++++++++++++++++++++++++"<<std::endl;
   
   
 }
@@ -1444,19 +1475,29 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
   std::cout<<"nmodes on source boundary: "<<nmodes_src<<std::endl;
   std::cout<<"nmodes on outgoing boundary: "<<nmodes_match<<std::endl;
-    
-  scatt_an.Assemble();
-  //now we must add the waveguide port terms
-  AddWaveguidePortContribution(scatt_an, indep_con_id_match,
-                               nmodes_match, match_data.wgbc_k, match_data.wgbc_f);
-  AddWaveguidePortContribution(scatt_an, indep_con_id_src,
-                               nmodes_src, src_data.wgbc_k, src_data.wgbc_f);
 
-
-  TPZSimpleTimer tscatt("SetupPrecond",true);
   {
+    TPZSimpleTimer tassemble("Assemble",true);
+    scatt_an.Assemble();
+  }
+
+  {
+    TPZSimpleTimer twpbc("AddWPBC",true);
+    //now we must add the waveguide port terms
+    AddWaveguidePortContribution(scatt_an, indep_con_id_match,
+                                 nmodes_match, match_data.wgbc_k, match_data.wgbc_f);
+    AddWaveguidePortContribution(scatt_an, indep_con_id_src,
+                                 nmodes_src, src_data.wgbc_k, src_data.wgbc_f);
+  }
+  
+
+
+  
+  {
+    TPZSimpleTimer tscatt("SetupPrecond",true);
     SetupPrecond(scatt_an, {indep_con_id_src, indep_con_id_match});
   }
+  TPZSimpleTimer tsolve("Solve",true);
   scatt_an.Solve();
 }
 
