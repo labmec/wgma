@@ -222,6 +222,9 @@ namespace wgma::scattering{
                             )
   {
 
+    PZError<<__PRETTY_FUNCTION__
+           <<"\nNot yet implemented! Must also take grad_ez!"<<std::endl;
+    DebugStop();
     auto *gel = cel->Reference();
     //number of integration points
     const auto npts = mem_indices.size();
@@ -233,7 +236,7 @@ namespace wgma::scattering{
         TPZScatteredSol3D ptsol;
         intrule.Point(ipt, pt_qsi, w);
         gel->X(pt_qsi, pt_x);
-        src.func(pt_x, ptsol.sol);
+        src.func(pt_x, ptsol.et);
         ptsol.x = pt_x;
         (*(mat->GetMemory()))[mem_indices[ipt]] = ptsol;
       }
@@ -331,8 +334,18 @@ namespace wgma::scattering{
           we are only interested in the tangential component of the solution
          */
         const auto &hcurl_sol = datavec[TPZWgma::HCurlIndex()].sol[0];
-        ptsol.sol[0] = coeff*hcurl_sol[0];
-        ptsol.sol[1] = coeff*hcurl_sol[1];
+        const auto &h1_dsol = datavec[TPZWgma::H1Index()].dsol[0];
+
+        TPZFNMatrix<3,CSTATE> dsol(celdim, 1, 0.);
+        for(auto ix = 0; ix < celdim; ix++){dsol(ix,0) = h1_dsol.GetVal(ix,0);}
+        TPZFNMatrix<3,CSTATE> h1_grad_sol(3, 1, 0.);
+      
+        TPZAxesTools<CSTATE>::Axes2XYZ(h1_dsol, h1_grad_sol, datavec[0].axes);
+        
+        ptsol.et[0] = coeff*hcurl_sol[0];
+        ptsol.et[1] = coeff*hcurl_sol[1];
+        ptsol.grad_ez[0] = -coeff*h1_grad_sol.GetVal(0,0);
+        ptsol.grad_ez[1] = -coeff*h1_grad_sol.GetVal(1,0);
         (*(mat->GetMemory()))[mem_indices[ipt]] = ptsol;
       }
   }
