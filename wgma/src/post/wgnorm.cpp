@@ -2,7 +2,9 @@
 #include <TPZBndCond.h>
 #include <TPZMaterialDataT.h>
 #include <Electromagnetics/TPZScalarField.h>
+#include <Electromagnetics/TPZWgma.h>
 #include <pzvec_extras.h>
+#include <pzaxestools.h>
 using namespace std::complex_literals;
 
 namespace wgma::post{
@@ -84,7 +86,7 @@ namespace wgma::post{
       //speed of light times \mu_0
       const auto c_uo = 120*M_PI;
       const auto omega_uo = (2*M_PI/m_wl)*c_uo;
-      const auto cte = 0.5*weight*fabs(detjac);
+      const auto cte = weight*fabs(detjac);
       const int nsol = data.sol.size();
       TPZFNMatrix<3000,CSTATE> rot_e_field(3,nsol,0.), h_field(3,nsol,0.);
       for(int isol = 0; isol < nsol; isol++){
@@ -113,20 +115,53 @@ namespace wgma::post{
       }
     }else{
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
-      const auto nspace = datavec.size();
-      for(int is = 0; is < nspace; is++){
-        const auto &data = datavec[is];
-        const int nsol = data.sol.size();
-        for(int isol = 0; isol < nsol; isol++){
-          const auto &cursol =  data.sol[isol];
-          const auto solsize = cursol.size();
-          CSTATE val = 0;
-          for(auto ix = 0; ix < solsize; ix++){
-            val += m_conj ?
-              cursol[ix] * std::conj(cursol[ix]) : cursol[ix] * cursol[ix];
-          }
-          this->m_res[index][isol] += weight * fabs(data.detjac) * val;
-        }
+
+      const auto nsol = datavec[0].sol.size();
+      TPZFNMatrix<3000,CSTATE> rot_et(3,nsol,0.), rot_et_beta(3,nsol,0.),rot_grad_ez(3,nsol,0.);
+      TPZFNMatrix<2000,CSTATE> grad_ez_axes(2,nsol,0.);
+
+      for(auto isol = 0; isol < nsol; isol++){
+        const auto &et_ref = datavec[ TPZWgma::HCurlIndex() ].sol[isol];
+        const auto &ex = et_ref[0];
+        const auto &ey = et_ref[1];
+        const auto beta = m_beta[isol];
+        rot_et.Put(0,isol,ey);
+        rot_et.Put(1,isol,-ex);
+        rot_et_beta.Put(0,isol,1i*beta*ey);
+        rot_et_beta.Put(1,isol,-1i*beta*ex);
+        auto &gradez_ref = datavec[ TPZWgma::H1Index() ].dsol[isol];
+        grad_ez_axes.Put(0,isol,gradez_ref[0]);
+        grad_ez_axes.Put(1,isol,gradez_ref[1]);
+      }
+
+      const auto &axes = datavec[0].axes;
+      TPZAxesTools<CSTATE>::Axes2XYZ(grad_ez_axes, rot_grad_ez, axes);
+
+      TPZFNMatrix<3000,CSTATE> h_field;
+      h_field = rot_et_beta;
+      h_field+= rot_grad_ez;
+
+      auto mat = dynamic_cast<const TPZWgma*>(eldata.GetMaterial());
+      TPZFNMatrix<9,CSTATE> ur;
+      mat->GetPermeability(datavec[0].x, ur);
+      ur.Decompose(ELU);
+      ur.Substitution(&h_field);
+
+      const auto c_uo = 120*M_PI;
+      const auto omega_uo = (2*M_PI/m_wl)*c_uo;
+      h_field *= 1i/omega_uo;
+
+      TPZFMatrix<CSTATE> solmat(nsol,1,this->m_res[index].begin(),nsol);
+      
+      constexpr int no_trans{0};
+      constexpr int conj_trans{2};
+      const auto detjac = datavec[0].detjac;
+      const CSTATE cte = weight*fabs(detjac);
+      for(int is = 0; is < nsol; is++){
+        const auto offset = 3*is;
+        TPZFMatrix<CSTATE> my_e(3,1,rot_et.Elem()+offset,3);
+        TPZFMatrix<CSTATE> my_h(3,1,h_field.Elem()+offset,3);
+        solmat.AddContribution(is,0,my_h,conj_trans,my_e,no_trans,cte);
       }
     }
   }
