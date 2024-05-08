@@ -530,6 +530,21 @@ ComputeModalAnalysis(
     //load all obtained modes into the mesh
     an->LoadAllSolutions();
 
+    TPZVec<CSTATE> betavec = an->GetEigenvalues();
+    for(auto &b : betavec){b = sqrt(-b);}
+    if(simdata.export_csv_modes){
+      std::ostringstream eigeninfo;
+      typedef std::numeric_limits< double > dbl;
+      eigeninfo.precision(dbl::max_digits10);
+      for(auto &b : betavec){
+        const auto pos_sign = std::imag(b) > 0 ? "+" : "-";
+        eigeninfo<<std::fixed<<std::real(b)<<pos_sign<<std::abs(std::imag(b))<<"j\n";
+      }
+      std::ofstream eigenfile(simdata.prefix+"_evalues_"+name+".csv",std::ios::trunc);
+      eigenfile<<eigeninfo.str();
+      eigenfile.close();
+    }
+    
     {
       TPZSimpleTimer timer("Ortho",true);
       constexpr STATE tol{1e-14};
@@ -547,6 +562,12 @@ ComputeModalAnalysis(
       ComputeCouplingMat(*an,couplingfile,simdata.n_threads,true);
     }
 
+    /*
+      in the modal analysis we perform a change of variables
+      now we transform back the solutions
+    */
+    TransformModes(*an);
+    
     //now we normalise them
     auto cmesh = an->GetMesh();
     //leave empty for all valid matids
@@ -555,22 +576,8 @@ ComputeModalAnalysis(
     auto norm =
       wgma::post::WgNorm<wgma::post::MultiphysicsIntegrator>(cmesh,matids,
                                                    conj,simdata.n_threads);
-    norm.SetNThreads(simdata.n_threads);
-    TPZVec<CSTATE> betavec = an->GetEigenvalues();
-    for(auto &b : betavec){b = sqrt(-b);}
+    norm.SetNThreads(simdata.n_threads);    
     norm.SetBeta(betavec);
-    if(simdata.export_csv_modes){
-      std::ostringstream eigeninfo;
-      typedef std::numeric_limits< double > dbl;
-      eigeninfo.precision(dbl::max_digits10);
-      for(auto &b : betavec){
-        const auto pos_sign = std::imag(b) > 0 ? "+" : "-";
-        eigeninfo<<std::fixed<<std::real(b)<<pos_sign<<std::abs(std::imag(b))<<"j\n";
-      }
-      std::ofstream eigenfile(simdata.prefix+"_evalues_"+name+".csv",std::ios::trunc);
-      eigenfile<<eigeninfo.str();
-      eigenfile.close();
-    }
     norm.SetWavelength(simdata.lambda/simdata.scale);
     norm.Normalise();
     TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
@@ -582,12 +589,6 @@ ComputeModalAnalysis(
   if(simdata.export_vtk_modes){
     PostProcessModes(*an, modalfile, simdata.vtk_res,simdata.n_threads);
   }
-
-  /*
-    in the modal analysis we perform a change of variables
-    now we transform back the solutions
-   */
-  TransformModes(*an);
   
   return an;
 }
