@@ -37,7 +37,8 @@ def cut_vol_with_plane(vols, surfs, elsize):
     remap_tags(vols+surfs, domain_map)
 
 
-def create_sf3d_mesh(r_core_left: float, r_core_right: float, filename: str):
+def create_sf3d_mesh(
+        r_core_left: float, r_core_right: float, filename: str, nel_l: int):
     wl = 4.0  # wavelength (in microns)
 
     # refractive indices
@@ -48,7 +49,6 @@ def create_sf3d_mesh(r_core_left: float, r_core_right: float, filename: str):
     l_domain = 0.5*wl
     d_pml_r = 1.75*wl/nclad  # pml width
     d_pml_z = 1*wl/nclad  # pml width
-    nel_l = 5  # number of elements / wavelength
     # element sizes are different in cladding or core
     el_clad = (wl/nclad)/nel_l  # el size in cladding
     el_core = (wl/ncore)/nel_l  # el size in core
@@ -271,15 +271,17 @@ def create_sf3d_mesh(r_core_left: float, r_core_right: float, filename: str):
     affine[pos["dx"]] = val["dx"]
     affine[pos["dy"]] = val["dy"]
     affine[pos["dz"]] = val["dz"]
-    rpb_left = probe_left_domains
-    lpb_left = src_left_domains
+    dep_left = probe_left_domains
+    indep_left = src_left_domains
     dim = 2
-    gmsh.model.mesh.set_periodic(dim, rpb_left, lpb_left, affine)
+    gmsh.model.mesh.set_periodic(dim, dep_left, indep_left, affine)
 
-    rpb_right = src_right_domains
-    lpb_right = probe_right_domains
     dim = 2
-    gmsh.model.mesh.set_periodic(dim, rpb_right, lpb_right, affine)
+    val["dz"] = -l_domain/4
+    affine[pos["dz"]] = val["dz"]
+    indep_right = src_right_domains
+    dep_right = probe_right_domains
+    gmsh.model.mesh.set_periodic(dim, dep_right, indep_right, affine)
 
     # let us find the tag of all cylindrical surfaces
 
@@ -413,13 +415,19 @@ def create_sf3d_mesh(r_core_left: float, r_core_right: float, filename: str):
     # this can be done since we know that the nodes will match
     # otherwise gmsh throws a weird error
     dim = 2
-    for r, l in zip(probe_left_pml, src_left_pml):
-        gmsh.model.mesh.set_periodic(dim, [r], [l], affine)
+    val["dz"] = l_domain/4
+    affine[pos["dz"]] = val["dz"]
+    for dep, indep in zip(probe_left_pml, src_left_pml):
+        gmsh.model.mesh.set_periodic(dim, [dep], [indep], affine)
+    val["dz"] = -l_domain/4
+    affine[pos["dz"]] = val["dz"]
+    for dep, indep in zip(probe_right_pml, src_right_pml):
+        gmsh.model.mesh.set_periodic(dim, [dep], [indep], affine)
     # now we check if any faces must be reversed
-    lpb = lpb_left+src_left_pml + lpb_right + probe_right_pml
-    rpb = rpb_left+probe_left_pml + rpb_right + src_right_pml
+    dep = dep_left+src_left_pml + dep_right + probe_right_pml
+    indep = indep_left+probe_left_pml + indep_right + src_right_pml
     invert = []
-    for r, l in zip(rpb, lpb):
+    for r, l in zip(dep, indep):
         coord = [0, 0]
         n_l = gmsh.model.get_normal(l, coord)
         n_r = gmsh.model.get_normal(r, coord)
@@ -431,7 +439,6 @@ def create_sf3d_mesh(r_core_left: float, r_core_right: float, filename: str):
 
     gmsh.model.mesh.reverse([(dim, t) for t in invert])
 
-    gmsh.model.mesh.optimize("Netgen")
     if len(filename) > 0:
         abspath = os.path.abspath(__file__)
         dname = os.path.dirname(abspath)
@@ -452,6 +459,12 @@ def create_sf3d_mesh(r_core_left: float, r_core_right: float, filename: str):
 
 
 if __name__ == "__main__":
+    nel = 8  # number of elements/wavelength
+    r_left = 4  # core radius
+    r_right = 6  # core radius
+    create_sf3d_mesh(
+        r_left, r_right, "../../build/examples/meshes/sf3d_disc", nel)
     r_left = 8  # core radius
     r_right = 8  # core radius
-    create_sf3d_mesh(r_left, r_right, "sf3d_cyl")
+    create_sf3d_mesh(
+        r_left, r_right, "../../build/examples/meshes/sf3d_validation", nel)
