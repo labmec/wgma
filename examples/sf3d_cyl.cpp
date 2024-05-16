@@ -202,6 +202,8 @@ SimData GetSimData()
 
 int main(int argc, char *argv[]) {
 
+  wgma::wganalysis::using_tbb_mat=true;
+  wgma::scattering::using_tbb_mat=true;
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
    * the log should be initialised as:*/
