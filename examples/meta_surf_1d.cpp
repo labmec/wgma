@@ -293,8 +293,12 @@ int main(int argc, char *argv[]) {
                   epsilon_air,
                   simdata);
   //otherwise it will crash on destructor
-  wgma::cmeshtools::RemovePeriodicity(modal_top_an->GetMesh());
-  if(modal_bottom_an){wgma::cmeshtools::RemovePeriodicity(modal_bottom_an->GetMesh());}
+  auto top_cmesh = modal_top_an->GetMesh();
+  wgma::cmeshtools::RemovePeriodicity(top_cmesh);
+  if(modal_bottom_an){
+    auto bottom_cmesh = modal_bottom_an->GetMesh();
+    wgma::cmeshtools::RemovePeriodicity(bottom_cmesh);
+  }
   return 0;
 }
 
