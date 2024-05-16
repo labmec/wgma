@@ -81,7 +81,7 @@ struct SimData{
   bool couplingmat{false};
   //!whether to filter dirichlet eqs
   bool filter_bnd_eqs{true};
-  //!renumber equations
+  //!renumber equations (for modal analysis, scattering is always false)
   bool optimize_bandwidth{true};
   //!output geometric mesh in .txt and .vtk files
   bool print_gmesh{false};
@@ -118,21 +118,16 @@ struct WpbcData{
 TPZVec<wgma::gmeshtools::CylinderData> SetUpCylData(std::string_view filename,
                                                     const REAL scale);
 
-TPZVec<TPZAutoPointer<TPZCompMesh>>
-CreateModalAnalysisMesh(
-  TPZAutoPointer<TPZGeoMesh> gmesh,
-  const TPZVec<std::map<std::string, int>> &gmshmats,
-  const SimData& simdata,
-  const CSTATE epsilon_clad,
-  const CSTATE epsilon_core,
-  const std::string &name);
+wgma::cmeshtools::PhysicalData
+FillDataForModalAnalysis(TPZAutoPointer<TPZGeoMesh> gmesh,
+                         const TPZVec<std::map<std::string, int>> &gmshmats,
+                         const SimData& simdata,
+                         const std::string &name);
 
 TPZAutoPointer<wgma::wganalysis::Wgma2D>
 ComputeModalAnalysis(
   TPZAutoPointer<TPZGeoMesh> gmesh,
   const TPZVec<std::map<std::string, int>> &gmshmats,
-  const CSTATE epsilon_clad,
-  const CSTATE epsilon_core,
   const SimData& simdata,
   const CSTATE target,
   const int nEigenpairs,
@@ -180,7 +175,8 @@ SimData GetSimData()
   
   data.ncore = 1.4457;
   data.nclad = 1.4378;
-  data.alphaPMLr = {sqrt(0.4*0.4+0.4*0.4), 0.0};
+  constexpr REAL pmlval=0.4;
+  data.alphaPMLr = {sqrt(pmlval*pmlval+pmlval*pmlval), 0.0};
   data.alphaPMLz = {1.0, 0.0};
   data.check_mode_propagation=true;
   data.compare_pml=false;
@@ -291,8 +287,7 @@ int main(int argc, char *argv[]) {
   TPZAutoPointer<wgma::wganalysis::Wgma2D>
     modal_l_an{nullptr};
   {
-    modal_l_an =  ComputeModalAnalysis(gmesh,gmshmats,epsilon_clad,
-                                       epsilon_core,simdata,target_left,
+    modal_l_an =  ComputeModalAnalysis(gmesh,gmshmats,simdata,target_left,
                                        nEigenpairs_left,sortingRule,
                                        usingSLEPC,"src_left");
   }
@@ -301,8 +296,7 @@ int main(int argc, char *argv[]) {
   TPZAutoPointer<wgma::wganalysis::Wgma2D>
     modal_r_an{nullptr};
   {
-    modal_r_an =  ComputeModalAnalysis(gmesh,gmshmats,epsilon_clad,
-                                       epsilon_core,simdata,target_right,
+    modal_r_an =  ComputeModalAnalysis(gmesh,gmshmats,simdata,target_right,
                                        nEigenpairs_left,sortingRule,
                                        usingSLEPC,"src_right");
   }
@@ -437,28 +431,21 @@ TPZVec<wgma::gmeshtools::CylinderData> SetUpCylData(std::string_view filename,
   return cyls;
 }
 
-
-TPZVec<TPZAutoPointer<TPZCompMesh>>
-CreateModalAnalysisMesh(
-  TPZAutoPointer<TPZGeoMesh> gmesh,
-  const TPZVec<std::map<std::string, int>> &gmshmats,
-  const SimData& simdata,
-  const CSTATE epsilon_clad,
-  const CSTATE epsilon_core,
-  const std::string &name)
+wgma::cmeshtools::PhysicalData
+FillDataForModalAnalysis(TPZAutoPointer<TPZGeoMesh> gmesh,
+                         const TPZVec<std::map<std::string, int>> &gmshmats,
+                         const SimData& simdata,
+                         const std::string &name)
 {
   // setting up cmesh data
   const auto &nclad = simdata.nclad;
   const auto &ncore = simdata.ncore;
   const auto &alphaPMLr = simdata.alphaPMLr;
-  const auto &pOrder = simdata.porder;
-  const auto &lambda = simdata.lambda;
-  const auto &scale = simdata.scale;
     
   wgma::cmeshtools::PhysicalData modal_data;
   std::map<std::string, std::pair<CSTATE, CSTATE>> modal_mats;
-  modal_mats[name+"_clad"] = std::pair<CSTATE, CSTATE>(epsilon_clad, 1.);
-  modal_mats[name+"_core"] = std::pair<CSTATE, CSTATE>(epsilon_core, 1.);
+  modal_mats[name+"_clad"] = std::pair<CSTATE, CSTATE>(nclad*nclad, 1.);
+  modal_mats[name+"_core"] = std::pair<CSTATE, CSTATE>(ncore*ncore, 1.);
   std::map<std::string, wgma::bc::type> modal_bcs;
   modal_bcs[name+"_bnd"] = wgma::bc::type::PEC;
   //dimension of the modal analysis 
@@ -475,16 +462,13 @@ CreateModalAnalysisMesh(
     if(found_pattern){pmlvec.push_back(pml);}
   }
   modal_data.pmlvec = pmlvec;
-  return wgma::wganalysis::CMeshWgma2D(gmesh,pOrder,modal_data,
-                                       lambda, scale);
+  return modal_data;
 }
 
 TPZAutoPointer<wgma::wganalysis::Wgma2D>
 ComputeModalAnalysis(
   TPZAutoPointer<TPZGeoMesh> gmesh,
   const TPZVec<std::map<std::string, int>> &gmshmats,
-  const CSTATE epsilon_clad,
-  const CSTATE epsilon_core,
   const SimData& simdata,
   const CSTATE target,
   const int nEigenpairs,
@@ -492,12 +476,15 @@ ComputeModalAnalysis(
   bool usingSLEPC,
   const std::string &name)
 {
+  auto modal_data = FillDataForModalAnalysis(gmesh,gmshmats,
+                                       simdata,name);
 
-
-  auto modal_cmesh =
-    CreateModalAnalysisMesh(gmesh,gmshmats,simdata,
-                            epsilon_clad,epsilon_core,
-                            name);
+  const auto &pOrder = simdata.porder;
+  const auto &lambda = simdata.lambda;
+  const auto &scale = simdata.scale;
+  
+  auto modal_cmesh = wgma::wganalysis::CMeshWgma2D(gmesh,pOrder,modal_data,
+                                       lambda, scale);
   /******************************
    * solve(modal analysis left) *
    ******************************/
@@ -600,6 +587,7 @@ SimData ReadSimData(const std::string &dataname){
   json data = json::parse(f);
   SimData sd;
   sd.meshfile = data["meshfile"];
+  sd.cylfile = data["cylfile"];
   sd.prefix =  data["prefix"];
   sd.lambda =  data["wavelength"];
   sd.scale = data["scale"];
@@ -629,6 +617,7 @@ SimData ReadSimData(const std::string &dataname){
   for(auto nm : tmpvec_int){sd.n_modes_right.push_back(nm);}
   sd.filter_bnd_eqs = data.value("filter_bnd_eqs",true);
   sd.print_gmesh=data.value("print_gmes",true);
+  sd.optimize_bandwidth = data.value("optimize_bandwidth",true);
   sd.export_csv_modes = data.value("export_csv_modes",true);
   sd.export_csv_error = data.value("export_csv_error",true);
   sd.export_vtk_modes = data.value("export_vtk_modes",false);
@@ -738,13 +727,15 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                                          TPZAutoPointer<TPZVTKGenerator> &vtk_error,
                                          const std::string &name)
   {
-    const auto &nclad = simdata.nclad;
-    const auto &ncore = simdata.ncore;
+    auto modal_data = FillDataForModalAnalysis(gmesh, gmshmats, simdata, name);
+    std::set<int> volmats, pmlmats;
+    wgma::wganalysis::SetupModalAnalysisMaterials(gmesh,modal_data,volmats,pmlmats);
 
-    auto meshvec =
-        CreateModalAnalysisMesh(gmesh, gmshmats, simdata, nclad*nclad, ncore*ncore, name);
-    
-    error_mesh = meshvec[1+TPZWgma::HCurlIndex()];
+    //we want hcurl mesh
+    constexpr bool is_h1{false};
+    error_mesh =
+      wgma::wganalysis::CreateAtomicWgma2D(gmesh,is_h1,simdata.porder,volmats,pmlmats,
+                                           modal_data.bcvec, modal_data.probevec);
     //now we transfer the modal solution from the WPBC to the error mesh and store it
     TransferSolutionBetweenPeriodicMeshes(error_mesh, modal_an.GetHCurlMesh(), periodic_els);
     projected_modes = error_mesh->Solution();
@@ -921,13 +912,17 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
     "Solution_imag"};
 
   {
-    const auto &nclad = simdata.nclad;
-    const auto &ncore = simdata.ncore;
 
     {
-      auto meshvec =
-        CreateModalAnalysisMesh(gmesh, gmshmats, simdata, nclad*nclad, ncore*ncore, "probe_left");
-      error_mesh = meshvec[1+TPZWgma::HCurlIndex()];
+      auto modal_data = FillDataForModalAnalysis(gmesh, gmshmats, simdata, "probe_left");
+      std::set<int> volmats, pmlmats;
+      wgma::wganalysis::SetupModalAnalysisMaterials(gmesh,modal_data,volmats,pmlmats);
+
+      //we want hcurl mesh
+      constexpr bool is_h1{false};
+      error_mesh =
+        wgma::wganalysis::CreateAtomicWgma2D(gmesh,is_h1,simdata.porder,volmats,pmlmats,
+                                             modal_data.bcvec, modal_data.probevec);
       ReplaceMaterialsForProjection(error_mesh);
     }
     //just to set size
@@ -1188,7 +1183,7 @@ void TransformModes(wgma::wganalysis::Wgma2D& an)
     for(int isol = 0; isol < nsol; isol++){
       for(int irow = 0; irow < nrow; irow++){
         const auto val = h1_sol.Get(irow,isol);
-        h1_sol.Put(irow,isol,(CSTATE)1i*val);
+        h1_sol.Put(irow,isol,1i*val);
       }
     }
   }
@@ -1468,8 +1463,10 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     wgma::cmeshtools::RestrictDofs(scatt_mesh, src_mesh, nmodes_src, boundConnects);
 
   constexpr bool sym{false};
+  //either we solve by iterative method or we send it to pardiso to order, so...
+  constexpr bool optimize_bandwidth{false};
   auto scatt_an = wgma::scattering::Analysis(scatt_mesh, simdata.n_threads,
-                                             simdata.optimize_bandwidth,
+                                             optimize_bandwidth,
                                              simdata.filter_bnd_eqs,
                                              sym);
 
