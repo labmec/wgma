@@ -163,8 +163,8 @@ SimData GetSimData()
   const std::string prefix{path+basisName};
   
   SimData data;
-  data.meshfile="meshes/sf3d_cyl.msh";
-  data.cylfile="meshes/sf3d_cyl_cyldata.csv";
+  data.meshfile="meshes/sf3d_validation.msh";
+  data.cylfile="meshes/sf3d_validation_cyldata.csv";
   data.lambda = 4.0;
   /*
     Given the small dimensions of the domain, scaling it can help in
