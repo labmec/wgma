@@ -976,23 +976,17 @@ namespace wgma::wganalysis{
 
     return cmeshMF;
   }
-  
-  TPZVec<TPZAutoPointer<TPZCompMesh>>
-  CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
-              cmeshtools::PhysicalData &data,
-              const STATE lambda, const REAL &scale,
-              bool verbose)
-  {
-    TPZSimpleTimer timer ("Create cmesh");
 
+
+  void SetupModalAnalysisMaterials(TPZAutoPointer<TPZGeoMesh> &gmesh, cmeshtools::PhysicalData& data,
+                                   std::set<int>&volmats, std::set<int>&pmlmats)
+  {
     constexpr int dim{2};
 
     // let us setup data for atomic meshes
-    std::set<int> volmats;
     for(auto [matid, _, __] : data.matinfovec){
       volmats.insert(matid);
     }
-    std::set<int> pmlmats;
     for(auto &pml : data.pmlvec){
       //skip PMLs of other dimensions
       if(pml->dim != dim){continue;}
@@ -1015,6 +1009,19 @@ namespace wgma::wganalysis{
       }
       bc.volid = res.value();
     }
+  }
+  
+  TPZVec<TPZAutoPointer<TPZCompMesh>>
+  CMeshWgma2D(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
+              cmeshtools::PhysicalData &data,
+              const STATE lambda, const REAL &scale,
+              bool verbose)
+  {
+    TPZSimpleTimer timer ("Create cmesh");
+
+    std::set<int> volmats, pmlmats;
+
+    SetupModalAnalysisMaterials(gmesh,data,volmats,pmlmats);
     /*
       First we create the computational mesh associated with the H1 space
       (ez component)
@@ -1069,32 +1076,9 @@ namespace wgma::wganalysis{
 
     // let us setup data for atomic meshes
     std::set<int> volmats;
-    for(auto [matid, _, __] : data.matinfovec){
-      volmats.insert(matid);
-    }
     std::set<int> pmlmats;
-    for(auto &pml : data.pmlvec){
-      //skip PMLs of other dimensions
-      if(pml->dim != dim){continue;}
-      for(auto id : pml->ids){
-        pmlmats.insert(id);
-      }
-    }
-    std::set<int> allmats;
 
-    std::set_union(volmats.begin(), volmats.end(),
-                   pmlmats.begin(), pmlmats.end(),
-                   std::inserter(allmats, allmats.begin()));
-    /**let us associate each boundary with a given material.
-       this is important for any non-homogeneous BCs*/
-    for(auto &bc : data.bcvec){
-      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, allmats);
-      if(!res.has_value()){
-        std::cout<<__PRETTY_FUNCTION__
-                 <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
-      }
-      bc.volid = res.value();
-    }
+    SetupModalAnalysisMaterials(gmesh, data, volmats, pmlmats);
     /*
       First we create the computational mesh associated with the H1 space
       (ez component)
@@ -1147,37 +1131,9 @@ namespace wgma::wganalysis{
   {
     TPZSimpleTimer timer ("Create cmesh");
 
-    constexpr int dim{2};
+    std::set<int> volmats,pmlmats;
 
-    // let us setup data for atomic meshes
-    std::set<int> volmats;
-    for(auto [matid, _, __] : data.matinfovec){
-      volmats.insert(matid);
-    }
-    std::set<int> pmlmats;
-    for(auto &pml : data.pmlvec){
-      //skip PMLs of other dimensions
-      if(pml->dim != dim){continue;}
-      for(auto id : pml->ids){
-        pmlmats.insert(id);
-      }
-    }
-
-    std::set<int> allmats;
-    std::set_union(volmats.begin(), volmats.end(),
-                   pmlmats.begin(), pmlmats.end(),
-                   std::inserter(allmats, allmats.begin()));
-    
-    /**let us associate each boundary with a given material.
-       this is important for any non-homogeneous BCs*/
-    for(auto &bc : data.bcvec){
-      auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, allmats);
-      if(!res.has_value()){
-        std::cout<<__PRETTY_FUNCTION__
-                 <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
-      }
-      bc.volid = res.value();
-    }
+    SetupModalAnalysisMaterials(gmesh, data, volmats, pmlmats);
 
     
     /*

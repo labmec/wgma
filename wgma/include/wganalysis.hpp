@@ -325,6 +325,16 @@ namespace wgma::wganalysis{
     //! Current value of propagation constant
     CSTATE m_beta{0};
   };
+
+  /**
+     @brief Split materials between volumetric/pml materials and find BC neighbours
+     @param [in] gmesh geometrical mesh
+     @param [in/out] data information regarding domain's reginos
+     @param [out] volmats mat ids of volumetric materials
+     @param [out] pmlmats mat ids of pml materials
+   */
+  void SetupModalAnalysisMaterials(TPZAutoPointer<TPZGeoMesh> &gmesh, cmeshtools::PhysicalData& data,
+                                   std::set<int>&volmats, std::set<int>&pmlmats);
   
   /**
      @brief Creates the computational meshes used for approximating the waveguide EVP in two dimensions.
