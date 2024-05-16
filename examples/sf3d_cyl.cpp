@@ -38,7 +38,7 @@ It consists of a "shrinked" version on slab_disc.cpp.
 #include <pzfmatrix.h>             // for TPZFMatrix
 #include <pzgmesh.h>               // for TPZGeoMesh
 #include <pzlog.h>                 // for TPZLogger
-
+#include <TPZPardisoSolver.h>
 #include <regex>                   // for regex_search, match_results<>::_Un...
 
 
@@ -71,6 +71,8 @@ struct SimData{
   bool check_mode_propagation;
   //!if set to true, wpbc is compared against PML in the mode propagation test
   bool compare_pml;
+  //! whether to use direct solver
+  bool direct_solver;
   //!pairs of mode index/coefficient to be used as source
   std::vector<std::pair<int,double>> source_coeffs;
   //!index of the number of modes to be used to restrict the dofs on the wpbc(in)
@@ -188,6 +190,7 @@ SimData GetSimData()
   data.n_modes_right = {5};
   data.filter_bnd_eqs = true;
   data.print_gmesh=false;
+  data.direct_solver = false;
   data.export_vtk_modes = false;
   data.export_csv_modes = true;
   data.export_csv_error = true;
@@ -595,6 +598,7 @@ SimData ReadSimData(const std::string &dataname){
   sd.nclad = data["nclad"];
   sd.check_mode_propagation = data["check_mode_propagation"];
   sd.compare_pml = data["compare_pml"];
+  sd.direct_solver = data.value("direct_solver",false);
   std::vector<double> tmpvec_double;
   tmpvec_double = data["alpha_pml_r"].get<std::vector<double>>();
   if(tmpvec_double.size()!=2){
@@ -1434,6 +1438,7 @@ void ComputeWpbcCoeffs(wgma::wganalysis::Wgma2D& an,
   wgbc.ComputeContribution();
   wgbc.GetContribution(wgbc_k,wgbc_f);
 }
+
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WpbcData& src_data,
                           WpbcData& match_data,
@@ -1488,10 +1493,16 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                                  nmodes_src, src_data.wgbc_k, src_data.wgbc_f);
   }
   
-
-
   
-  {
+  if(simdata.direct_solver){
+    auto *pardiso = scatt_an.GetSolver().GetPardisoControl();
+    pardiso->SetMatrixType(SymProp::NonSym, TPZPardisoSolver<CSTATE>::MProperty::EIndefinite);
+    auto param = pardiso->GetParam();
+    param[4] = 2;
+    param[9] = 15;
+    pardiso->SetParam(param);
+  }
+  else{
     TPZSimpleTimer tscatt("SetupPrecond",true);
     SetupPrecond(scatt_an, {indep_con_id_src, indep_con_id_match});
   }
@@ -1717,7 +1728,9 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
     if(first_assemble){
       first_assemble = false;
       scatt_an.Assemble();
-      SetupPrecond(scatt_an, {});
+      if(!simdata.direct_solver){
+        SetupPrecond(scatt_an, {});
+      }
     }else{
       scatt_an.AssembleRhs(src.id);
     }
@@ -1772,8 +1785,8 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                                               colors, numc,
                                               sparse_blocks);
   }
-  const int64_t n_iter = {300};
-  const int n_vecs = {30};
+  const int64_t n_iter = {500};
+  const int n_vecs = {50};
   constexpr int64_t from_current{0};
   solver.SetGMRES(n_iter, n_vecs, *precond, tol, from_current);
 }
