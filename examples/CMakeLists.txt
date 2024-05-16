@@ -56,6 +56,11 @@ add_pz_target(
   )
   target_link_libraries(sf3d PUBLIC wgma)
 
+list(APPEND sf3d_files ../py/scripts/sf3d_validation.py) # ../py/scripts/sf3d_nmodes.py)
+foreach(file ${sf3d_files})
+  get_filename_component(filename ${file} NAME)
+  configure_file(${file} scripts/${filename})
+endforeach(file)
 add_pz_target(
   NAME sf3d_cyl
   SOURCES sf3d_cyl.cpp
