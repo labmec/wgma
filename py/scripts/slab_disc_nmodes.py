@@ -46,8 +46,8 @@ scriptname = "slab_disc.json"
 prefix = "res_slab_disc/slab_disc"
 data["meshfile"] = "meshes/slab_disc.msh"
 data["compare_pml"] = False
-data["n_eigenpairs_left"] = 700
-data["n_eigenpairs_right"] = 700
+data["n_eigenpairs_left"] = 500
+data["n_eigenpairs_right"] = 500
 data["n_modes_left"] = [3, 50, 100, 200, 300]
 data["n_modes_right"] = [3, 50, 100, 200, 300]
 

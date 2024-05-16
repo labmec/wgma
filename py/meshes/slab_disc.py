@@ -26,9 +26,16 @@ def create_slab_mesh(h1: float, h2: float, filename: str):
 
     h_domain = 6
     d_src = 1
-    el_core = 0.06/1.55
     thickness = 2*max(h1, h2)
-    el_clad = 0.1
+
+    wl = 1.55
+    nclad = 1
+    ncore = 1.55
+    nel_l = 12
+
+    el_clad = (wl/nclad)/nel_l  # el size in cladding
+    el_core = (wl/ncore)/nel_l  # el size in core
+
     d_pmlx = 1.5
     d_pmly = 1.0
     nlayerspml = 10
