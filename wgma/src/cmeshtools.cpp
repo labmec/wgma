@@ -15,7 +15,7 @@
 
 using namespace wgma;
 
-void wgma::cmeshtools::PrintCompMesh(TPZAutoPointer<TPZCompMesh> cmesh,
+void wgma::cmeshtools::PrintCompMesh(TPZAutoPointer<TPZCompMesh>& cmesh,
                                      std::string filename)
 {
   const std::string cmeshFileNameTxt{filename+".txt"};
@@ -141,7 +141,7 @@ cmeshtools::SetupGmshMaterialData(
 }
 
 void
-cmeshtools::FindDirichletConnects(TPZAutoPointer<TPZCompMesh> cmesh,
+cmeshtools::FindDirichletConnects(TPZAutoPointer<TPZCompMesh>& cmesh,
                                   std::set<int64_t> &boundConnects,
                                   const std::set<int> & matIds)
 {
@@ -177,7 +177,7 @@ cmeshtools::FindDirichletConnects(TPZAutoPointer<TPZCompMesh> cmesh,
 }
 
 void
-cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
+cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh>& cmesh,
                                     TPZVec<int64_t> &activeEquations,
                                     std::set<int64_t> &boundConnects)
 {
@@ -267,15 +267,15 @@ void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
   cmesh->ExpandSolution();
 }
 
-void cmeshtools::RemovePeriodicity(TPZAutoPointer<TPZCompMesh> cmesh)
+void cmeshtools::RemovePeriodicity(TPZAutoPointer<TPZCompMesh>& cmesh)
 {
   for(auto &con : cmesh->ConnectVec()){
     con.RemoveDepend();
   }
 }
 
-void cmeshtools::ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh> mesh_dest,
-                                    TPZAutoPointer<TPZCompMesh> mesh_orig,
+void cmeshtools::ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh>& mesh_dest,
+                                    TPZAutoPointer<TPZCompMesh>& mesh_orig,
                                     TPZFMatrix<CSTATE> &sol_dest)
 {
   sol_dest.Zero();
@@ -322,8 +322,8 @@ void cmeshtools::ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh> mesh_dest,
 }
 
 int64_t
-cmeshtools::RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
-                         TPZAutoPointer<TPZCompMesh> modal_mesh,
+cmeshtools::RestrictDofs(TPZAutoPointer<TPZCompMesh>& scatt_mesh,
+                         TPZAutoPointer<TPZCompMesh>& modal_mesh,
                          const int nm,
                          const std::set<int64_t> &dirichlet_connects)
 {

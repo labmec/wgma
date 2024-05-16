@@ -50,7 +50,7 @@ namespace wgma::cmeshtools{
      @param [in] cmesh Computational mesh
      @param [in] file name (no extension)
    */
-  void PrintCompMesh(TPZAutoPointer<TPZCompMesh> cmesh,
+  void PrintCompMesh(TPZAutoPointer<TPZCompMesh>& cmesh,
                      std::string filename);
   
   /**
@@ -104,8 +104,8 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
   std::map<int,int>
   AddRectangularPMLRegion(const wgma::pml::cart::data data,
                           const std::set<int> &volmats,
-                          TPZAutoPointer<TPZGeoMesh> gmesh,
-                          TPZAutoPointer<TPZCompMesh> cmesh);
+                          TPZAutoPointer<TPZGeoMesh>& gmesh,
+                          TPZAutoPointer<TPZCompMesh>& cmesh);
 
   /**
      @brief Adds a cylindrical PML region to a computational mesh.
@@ -128,8 +128,8 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
   std::map<int,int>
   AddCylindricalPMLRegion(const wgma::pml::cyl::data data,
                           const std::set<int> &volmats,
-                          TPZAutoPointer<TPZGeoMesh> gmesh,
-                          TPZAutoPointer<TPZCompMesh> cmesh);
+                          TPZAutoPointer<TPZGeoMesh>& gmesh,
+                          TPZAutoPointer<TPZCompMesh>& cmesh);
 
   /**
      @brief Replaces a given material for a PML region based  on its constitutive parameters
@@ -143,34 +143,34 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
    */
   template<class MATVOL>
   TPZMatPML<MATVOL> * ChangeMaterialToPML(const int id, const wgma::pml::data &data,
-                                          MATVOL *mat, TPZAutoPointer<TPZGeoMesh> gmesh);
+                                          MATVOL *mat, TPZAutoPointer<TPZGeoMesh>& gmesh);
 
   /** @brief Finds all connects associated with a dirichlet boundary condition
       @param [in] cmesh Computational mesh
       @param [out] boundConnects boundary connects
       @praam [in] matIds if non-null, only gets connects matching these material identifiers
    */
-  void FindDirichletConnects(TPZAutoPointer<TPZCompMesh> cmesh,
+  void FindDirichletConnects(TPZAutoPointer<TPZCompMesh>& cmesh,
                              std::set<int64_t> &boundConnects,
                              const std::set<int> & matIds = {});
   
   /** @brief Gets the indices of the equations associated with dirichlet homogeneous BCs
       so they can be filtered out of the global system*/
-  void FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh> cmesh,
+  void FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh>& cmesh,
                                TPZVec<int64_t> &activeEquations,
                                std::set<int64_t>  &boundConnects);
 
   /**
      @brief Sets given elements as periodic
    */
-  void SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
+  void SetPeriodic(TPZAutoPointer<TPZCompMesh>& cmesh,
                    const std::map<int64_t,int64_t> &periodic_els);
   /**
      @brief Ensures correct destruction of a periodic computational mesh.
      This routine should be called before destroying a periodic mesh in
      order to avoid run-time errors.
    */
-  void RemovePeriodicity(TPZAutoPointer<TPZCompMesh> cmesh);
+  void RemovePeriodicity(TPZAutoPointer<TPZCompMesh>& cmesh);
 
   /**
      @brief Extract solution from the intersection between two meshes
@@ -183,8 +183,8 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
      @param [in] mesh_orig Mesh from which the solution is being extracted
      @param [out] sol_dest Solution vector
    */
-  void ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh> mesh_dest,
-                          TPZAutoPointer<TPZCompMesh> mesh_orig,
+  void ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh>& mesh_dest,
+                          TPZAutoPointer<TPZCompMesh>& mesh_orig,
                           TPZFMatrix<CSTATE> &sol_dest);
 
   /**
@@ -200,8 +200,8 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
      @note Since dirichlet connects cannot be restricted, it is crucial to call
      FindDirichletConnects before this function
    */
-  int64_t RestrictDofs(TPZAutoPointer<TPZCompMesh> scatt_mesh,
-                       TPZAutoPointer<TPZCompMesh> modal_mesh,
+  int64_t RestrictDofs(TPZAutoPointer<TPZCompMesh>& scatt_mesh,
+                       TPZAutoPointer<TPZCompMesh>& modal_mesh,
                        const int nm,
                        const std::set<int64_t> &dirichlet_connects);
 };

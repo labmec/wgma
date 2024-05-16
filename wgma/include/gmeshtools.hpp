@@ -12,7 +12,7 @@ namespace wgma::gmeshtools{
 
   enum class ElType {Tri, Quad};
   //! Prints a geometric mesh in .txt and .vtk format
-  void PrintGeoMesh(TPZAutoPointer<TPZGeoMesh> gmesh, std::string filename);
+  void PrintGeoMesh(TPZAutoPointer<TPZGeoMesh>& gmesh, std::string filename);
 
   /** @brief Parametric map of a circunference arc
 
@@ -122,7 +122,7 @@ namespace wgma::gmeshtools{
      @param[in] boundPosZ z-coordinate of the pml with the inner domain
   */
   [[nodiscard]] std::optional<int>
-  FindCartPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,
+  FindCartPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh>& gmesh,
                                const int pmlDim,
                                const int pmlId,
                                const std::set<int> &volmats,
@@ -138,7 +138,7 @@ namespace wgma::gmeshtools{
      @param[in] boundPosZ z-coordinate of the pml with the inner domain
   */
   [[nodiscard]] std::optional<int>
-  FindCylPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh> gmesh,
+  FindCylPMLNeighbourMaterial(TPZAutoPointer<TPZGeoMesh>& gmesh,
                               const int pmlDim,
                               const int pmlId,
                               const std::set<int> &volmats,
@@ -158,7 +158,7 @@ namespace wgma::gmeshtools{
      @param[out] pmlWidthZ PML width in the Z direction (only for relevant types)
   */
   void
-  FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
+  FindPMLWidth(TPZAutoPointer<TPZGeoMesh>& gmesh,
                const std::set<int> pmlId, const wgma::pml::cart::type type,
                REAL &boundPosX, REAL &pmlWidthX,
                REAL &boundPosY, REAL &pmlWidthY,
@@ -175,7 +175,7 @@ namespace wgma::gmeshtools{
      @param[out] pmlWidthZ PML width in the Z direction (only for relevant types)
   */
   void
-  FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
+  FindPMLWidth(TPZAutoPointer<TPZGeoMesh>& gmesh,
                const std::set<int> pmlId, const wgma::pml::cyl::type type,
                REAL &rmin, REAL &rmax,
                REAL &boundPosZ, REAL &pmlWidthZ);
@@ -187,7 +187,7 @@ namespace wgma::gmeshtools{
      @param[in] mat material whose neighbour we are looking for
      @param[in] volmats possible ids for neighbour candidates
   */
-  [[nodiscard]] std::optional<int> FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh> gmesh,
+  [[nodiscard]] std::optional<int> FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh>& gmesh,
                                                       const int mat,
                                                       const std::set<int> &volmats);
 
@@ -219,7 +219,7 @@ namespace wgma::gmeshtools{
      @param [in] circles data of all circumference arcs.
      @note TPZGeoMesh::BuildConnectivity should have been called beforehand.
    */
-  void SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
+  void SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
                                  const TPZVec<ArcData> &circles);
 
   /**
@@ -231,7 +231,7 @@ namespace wgma::gmeshtools{
      @param [in] cylinders data of all cylinders
      @note TPZGeoMesh::BuildConnectivity should have been called beforehand.
    */
-  void SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
+  void SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
                                       const TPZVec<CylinderData> &cylinders);
   
   /**
@@ -243,7 +243,7 @@ namespace wgma::gmeshtools{
      @param matids elements will be refined towards materials with these identifiers
      @param nrefs number of refinement stages
   **/
-void DirectionalRefinement(TPZAutoPointer<TPZGeoMesh> gmesh,
+void DirectionalRefinement(TPZAutoPointer<TPZGeoMesh>& gmesh,
                            std::set<int> matids,const int nrefs);
   /**
      @brief Rotates all node-coordinates in the mesh around a given axis
@@ -251,7 +251,7 @@ void DirectionalRefinement(TPZAutoPointer<TPZGeoMesh> gmesh,
      @param axis rotation axis
      @param theta rotation angle
    */
-void RotateMesh(TPZAutoPointer<TPZGeoMesh> &gmesh,
+void RotateMesh(TPZAutoPointer<TPZGeoMesh>& gmesh,
                 const TPZVec<REAL> &axis, const REAL theta);
 };
 

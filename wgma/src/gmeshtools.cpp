@@ -12,7 +12,7 @@
 #include <TPZParallelUtils.h>
 #include <fstream>
 
-void wgma::gmeshtools::PrintGeoMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
+void wgma::gmeshtools::PrintGeoMesh(TPZAutoPointer<TPZGeoMesh>& gmesh,
                                     std::string filename)
 {
   const std::string gmeshFileNameTxt{filename+".txt"};
@@ -50,7 +50,7 @@ TPZVec<REAL> LinMapFace(const TPZVec<REAL> &coord1, const TPZVec<REAL> &coord2,
 /**Insert in the geometric mesh all points along the edges*/
 void CreateEdgePts(const TPZVec<TPZVec<REAL>> &pointsVec,
                    const TPZVec<wgma::gmeshtools::EdgeData> &edgesVec,
-                   TPZAutoPointer<TPZGeoMesh> gmesh,
+                   TPZAutoPointer<TPZGeoMesh>& gmesh,
                    TPZVec<TPZVec<int>> &edgePts,
                    int &nodeid);
 
@@ -62,7 +62,7 @@ void CreateQuadPts(const TPZVec<wgma::gmeshtools::QuadData> &quadsVec,
                    const TPZVec<wgma::gmeshtools::EdgeData> &edgesVec,
                    const TPZVec<TPZVec<REAL>>& pointsVec,
                    const TPZVec<TPZVec<int>> &edgePts,
-                   TPZAutoPointer<TPZGeoMesh> gmesh,
+                   TPZAutoPointer<TPZGeoMesh>& gmesh,
                    TPZVec<TPZVec<int>> &quadPts,
                    int &nodeid);
 
@@ -377,7 +377,7 @@ TPZVec<REAL> LinMapFace(const TPZVec<REAL> &coord1, const TPZVec<REAL> &coord2,
 
 void CreateEdgePts(const TPZVec<TPZVec<REAL>> &pointsVec,
                    const TPZVec<wgma::gmeshtools::EdgeData> &edgesVec,
-                   TPZAutoPointer<TPZGeoMesh> gmesh,
+                   TPZAutoPointer<TPZGeoMesh>& gmesh,
                    TPZVec<TPZVec<int>> &edgePts,
                    int &nodeid)
 {
@@ -444,7 +444,7 @@ void CreateQuadPts(const TPZVec<wgma::gmeshtools::QuadData> &quadsVec,
                    const TPZVec<wgma::gmeshtools::EdgeData> &edgesVec,
                    const TPZVec<TPZVec<REAL>>& pointsVec,
                    const TPZVec<TPZVec<int>> &edgePts,
-                   TPZAutoPointer<TPZGeoMesh> gmesh,
+                   TPZAutoPointer<TPZGeoMesh>& gmesh,
                    TPZVec<TPZVec<int>> &quadPts,
                    int &nodeid)
 {
@@ -624,7 +624,7 @@ wgma::gmeshtools::ReadPeriodicGmshMesh(const std::string filename,
 
 std::optional<int>
 wgma::gmeshtools::FindCartPMLNeighbourMaterial(
-  TPZAutoPointer<TPZGeoMesh> gmesh,
+  TPZAutoPointer<TPZGeoMesh> &gmesh,
   const int pmlDim,
   const int pmlId,
   const std::set<int> &volmats,
@@ -689,7 +689,7 @@ wgma::gmeshtools::FindCartPMLNeighbourMaterial(
 
 std::optional<int>
 wgma::gmeshtools::FindCylPMLNeighbourMaterial(
-  TPZAutoPointer<TPZGeoMesh> gmesh,
+  TPZAutoPointer<TPZGeoMesh>& gmesh,
   const int pmlDim,
   const int pmlId,
   const std::set<int> &volmats,
@@ -754,7 +754,7 @@ wgma::gmeshtools::FindCylPMLNeighbourMaterial(
 
 
 void
-wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
+wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh>& gmesh,
                                const std::set<int> pmlId,
                                const wgma::pml::cart::type type,
                                REAL &boundPosX, REAL &dX,
@@ -874,7 +874,7 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
 }
 
 void
-wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
+wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh>& gmesh,
                                const std::set<int> pmlId, const wgma::pml::cyl::type type,
                                REAL &rMin, REAL &rMax,
                                REAL &boundPosZ, REAL &dZ)
@@ -940,7 +940,7 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh> gmesh,
 }
 
 std::optional<int>
-wgma::gmeshtools::FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh> gmesh,
+wgma::gmeshtools::FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh>& gmesh,
                                      const int mat,
                                      const std::set<int> &volmats)
 {
@@ -965,7 +965,7 @@ wgma::gmeshtools::FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh> gmesh,
   return std::nullopt;
 }
 
-void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
+void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
                                                  const TPZVec<ArcData> &circles)
 {
   std::map<int,int> arc_ids;
@@ -1031,7 +1031,7 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh> gmes
   }
 }
 
-void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh> gmesh,
+void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
                                                       const TPZVec<CylinderData> &cylinders)
 {
 
@@ -1117,7 +1117,7 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
   }
 }
 
-void wgma::gmeshtools::DirectionalRefinement(TPZAutoPointer<TPZGeoMesh> gmesh,
+void wgma::gmeshtools::DirectionalRefinement(TPZAutoPointer<TPZGeoMesh>& gmesh,
                            std::set<int> matids, const int nrefs)
 {
   /*

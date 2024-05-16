@@ -16,8 +16,8 @@ template<class MATVOL>
 std::map<int,int>
 wgma::cmeshtools::AddRectangularPMLRegion(const wgma::pml::cart::data data,
                                           const std::set<int> &volmats,
-                                          TPZAutoPointer<TPZGeoMesh> gmesh,
-                                          TPZAutoPointer<TPZCompMesh> cmesh)
+                                          TPZAutoPointer<TPZGeoMesh>& gmesh,
+                                          TPZAutoPointer<TPZCompMesh>& cmesh)
 {
 
   REAL boundPosX{0}, boundPosY{0}, boundPosZ{0}, dX{0}, dY{0}, dZ{0};
@@ -104,8 +104,8 @@ template<class MATVOL>
 std::map<int,int>
 wgma::cmeshtools::AddCylindricalPMLRegion(const wgma::pml::cyl::data data,
                                           const std::set<int> &volmats,
-                                          TPZAutoPointer<TPZGeoMesh> gmesh,
-                                          TPZAutoPointer<TPZCompMesh> cmesh)
+                                          TPZAutoPointer<TPZGeoMesh>& gmesh,
+                                          TPZAutoPointer<TPZCompMesh>& cmesh)
 {
 
   REAL rMin{0}, rMax{0}, boundPosZ{0}, dZ{0};
@@ -179,7 +179,7 @@ wgma::cmeshtools::AddCylindricalPMLRegion(const wgma::pml::cyl::data data,
 template<class MATVOL>
 TPZMatPML<MATVOL> *
 wgma::cmeshtools::ChangeMaterialToPML(const int id, const wgma::pml::data &data,
-                                      MATVOL *mat, TPZAutoPointer<TPZGeoMesh> gmesh){
+                                      MATVOL *mat, TPZAutoPointer<TPZGeoMesh>& gmesh){
   auto cart_pml = dynamic_cast<const wgma::pml::cart::data *>(&data);
   auto cyl_pml = dynamic_cast<const wgma::pml::cyl::data *>(&data);
   if(!cart_pml && !cyl_pml){
