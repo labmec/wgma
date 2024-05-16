@@ -59,7 +59,6 @@ add_pz_target(
 add_pz_target(
   NAME sf3d_cyl
   SOURCES sf3d_cyl.cpp
-  FILES meshes/sf3d_cyl.msh meshes/sf3d_cyl_cyldata.csv
   )
 target_link_libraries(sf3d_cyl PUBLIC wgma)  
 
@@ -99,7 +98,6 @@ list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_freq_sweep.py)
 list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_indices.py)
 set(meta_surf_data ../py/scripts/data/AZ.dat ../py/scripts/data/Cu1.dat)
 
-file(GLOB slab_disc_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "../py/scripts/slab_disc.json")
 foreach(file ${meta_surf_files})
   get_filename_component(filename ${file} NAME)
   configure_file(${file} scripts/${filename})
