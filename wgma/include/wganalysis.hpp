@@ -9,7 +9,8 @@
 #include <TPZQuadEigenAnalysis.h>
 
 namespace wgma::wganalysis{
-
+  //temporary variable (set to false in .cpp)
+  extern bool using_tbb_mat;
   //! Default suggestion for setting up the eigensolver for modal analysis.
   TPZAutoPointer<TPZEigenSolver<CSTATE>>
   SetupSolver(const CSTATE target, const int nEigen,

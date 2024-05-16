@@ -6,6 +6,7 @@
 
 #include <TPZCutHillMcKee.h>
 #include <TPZSpStructMatrix.h>
+#include <TPZStructMatrixOMPorTBB.h>
 #include <TPZKrylovEigenSolver.h>
 #include <TPZQuadEigenSolver.h>
 #include <Electromagnetics/TPZWgma.h>
@@ -21,7 +22,7 @@
 #include <cassert>
 
 namespace wgma::wganalysis{
-
+  bool using_tbb_mat{false};
   //! Default suggestion for setting up the eigensolver for modal analysis.
   TPZAutoPointer<TPZEigenSolver<CSTATE>>
   SetupSolver(const CSTATE target, const int nEigen,
@@ -199,8 +200,16 @@ namespace wgma::wganalysis{
     this->SetRenumber(new TPZCutHillMcKee());
     this->SetCompMeshInit(m_cmesh_mf.operator->(), reorder_eqs);
 
-    TPZAutoPointer<TPZStructMatrix> strmtrx =
-      new TPZSpStructMatrix<CSTATE>(m_cmesh_mf);
+    TPZAutoPointer<TPZStructMatrix> strmtrx{nullptr};
+    if(using_tbb_mat){
+      auto mtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOMPorTBB<CSTATE>>(m_cmesh_mf);
+      mtrx->SetShouldColor(false);
+      mtrx->SetTBBorOMP(true);
+      strmtrx = mtrx;
+    }else{
+      auto mtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOR<CSTATE>>(m_cmesh_mf);
+      strmtrx = mtrx;
+    }
 
     strmtrx->SetNumThreads(n_threads);
     
@@ -379,8 +388,17 @@ namespace wgma::wganalysis{
     this->SetRenumber(new TPZCutHillMcKee());
     this->SetCompMeshInit(m_cmesh_mf.operator->(), reorder_eqs);
 
-    TPZAutoPointer<TPZStructMatrix> strmtrx =
-      new TPZSpStructMatrix<CSTATE>(m_cmesh_mf);
+    TPZAutoPointer<TPZStructMatrix> strmtrx{nullptr};
+    if(using_tbb_mat){
+      auto mtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOMPorTBB<CSTATE>>(m_cmesh_mf);
+      mtrx->SetShouldColor(false);
+      mtrx->SetTBBorOMP(true);
+      strmtrx = mtrx;
+    }else{
+      auto mtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOR<CSTATE>>(m_cmesh_mf);
+      strmtrx = mtrx;
+    }
+    
 
     strmtrx->SetNumThreads(n_threads);
     
@@ -551,8 +569,17 @@ namespace wgma::wganalysis{
     this->SetRenumber(new TPZCutHillMcKee());
     this->SetCompMeshInit(m_cmesh.operator->(),reorder_eqs);
 
-    TPZAutoPointer<TPZStructMatrix> strmtrx =
-      new TPZSpStructMatrix<CSTATE>(m_cmesh);
+    TPZAutoPointer<TPZStructMatrix> strmtrx{nullptr};
+    if(using_tbb_mat){
+      auto mtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOMPorTBB<CSTATE>>(m_cmesh);
+      mtrx->SetShouldColor(false);
+      mtrx->SetTBBorOMP(true);
+      strmtrx=mtrx;
+    }else{
+      auto mtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOR<CSTATE>>(m_cmesh);
+      strmtrx=mtrx;
+    }
+    
 
     strmtrx->SetNumThreads(n_threads);
     auto ndofs = m_cmesh->NEquations();
