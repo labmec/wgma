@@ -691,14 +691,14 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   }
   
   //set up post processing
-  TPZVec<std::string> fvars = {
+  TPZVec<std::string> fvars_3d = {
     "Field_real",
     "Field_imag",
     "Field_abs"};
 
   const std::string suffix = "wpbc";
   const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
-  auto vtk = TPZVTKGenerator(scatt_mesh_wpbc, fvars, scatt_file, simdata.vtk_res);
+  auto vtk = TPZVTKGenerator(scatt_mesh_wpbc, fvars_3d, scatt_file, simdata.vtk_res);
   vtk.SetNThreads(simdata.n_threads);
   
   
@@ -721,10 +721,14 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                     simdata.n_threads);
     
 
-
+  //set up post processing vars
+  TPZVec<std::string> fvars_2d = {
+    "Solution_abs",
+    "Solution_real",
+    "Solution_imag"};
   
 
-  auto CreateErrorMesh = [&simdata, &gmesh, &gmshmats, &fvars,
+  auto CreateErrorMesh = [&simdata, &gmesh, &gmshmats, &fvars_2d,
                           &periodic_els](TPZAutoPointer<TPZCompMesh> &error_mesh,
                                          TPZFMatrix<CSTATE> &projected_modes,
                                          wgma::wganalysis::Wgma2D &modal_an,
@@ -745,9 +749,10 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     projected_modes = error_mesh->Solution();
     const int neq = error_mesh->Solution().Rows();
     error_mesh->Solution().Resize(neq, 1);
+    ReplaceMaterialsForProjection(error_mesh);
     if(simdata.export_vtk_error){
       const std::string error_file = simdata.prefix+"_error_"+name;
-      vtk_error = new TPZVTKGenerator(error_mesh, fvars, error_file, simdata.vtk_res);
+      vtk_error = new TPZVTKGenerator(error_mesh, fvars_2d, error_file, simdata.vtk_res);
       vtk_error->SetNThreads(simdata.n_threads);
     }
   };
@@ -765,18 +770,17 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   
   
 
-  auto SetupProjMesh = [&simdata, &fvars](TPZAutoPointer<TPZCompMesh> &proj_mesh,
+  auto SetupProjMesh = [&simdata, &fvars_2d](TPZAutoPointer<TPZCompMesh> &proj_mesh,
                                           TPZAutoPointer<TPZCompMesh> &error_mesh,
                                           std::set<int64_t> &bound_connects,
                                           TPZAutoPointer<TPZVTKGenerator> &vtk_proj,
                                           const std::string &name){
     // this will be the restricted mesh close to the wg port
     proj_mesh = error_mesh->Clone();
-    ReplaceMaterialsForProjection(proj_mesh);
     wgma::cmeshtools::FindDirichletConnects(proj_mesh, bound_connects);
     if(simdata.export_vtk_error){
       const std::string proj_file = simdata.prefix+"_proj_"+name;
-      vtk_proj = new TPZVTKGenerator(proj_mesh, {"Solution"}, proj_file, simdata.vtk_res);
+      vtk_proj = new TPZVTKGenerator(proj_mesh,fvars_2d, proj_file, simdata.vtk_res);
       vtk_proj->SetNThreads(simdata.n_threads);
     }
   };
@@ -1481,6 +1485,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
   {
     TPZSimpleTimer tassemble("Assemble",true);
+    std::cout<<"Assembling..."<<std::endl;
     scatt_an.Assemble();
   }
 
@@ -1503,7 +1508,6 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     pardiso->SetParam(param);
   }
   else{
-    TPZSimpleTimer tscatt("SetupPrecond",true);
     SetupPrecond(scatt_an, {indep_con_id_src, indep_con_id_match});
   }
   TPZSimpleTimer tsolve("Solve",true);
@@ -1751,7 +1755,6 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
 
   TPZAutoPointer<TPZMatrixSolver<CSTATE>> precond;
   {
-    TPZSimpleTimer pre("precond",true);
     const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
     auto scatt_cmesh = scatt_an.GetMesh();
     //we must filter out the dirichlet BCs
