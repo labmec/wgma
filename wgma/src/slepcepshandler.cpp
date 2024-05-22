@@ -306,7 +306,8 @@ namespace wgma::slepc{
 
     {
       TPZSimpleTimer setup("EPSSetUp");
-      EPSSetUp(eps);
+      ierr = EPSSetUp(eps);
+      CHKERRQ(ierr);
     }
 
     if(fVerbose){
