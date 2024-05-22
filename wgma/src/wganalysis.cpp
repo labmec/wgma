@@ -38,7 +38,6 @@ namespace wgma::wganalysis{
 #endif
 
     TPZAutoPointer<TPZEigenSolver<CSTATE>> solver{nullptr};
-    krylovDim = krylovDim < nEigen ? 5*nEigen : krylovDim;
     if (usingSLEPC){
       using namespace ::wgma::slepc;
       /*
@@ -46,7 +45,7 @@ namespace wgma::wganalysis{
         NOTE: -1 stands for PETSC_DECIDE
       */
     
-      constexpr STATE eps_tol = 1e-18;//PETSC_DECIDE
+      constexpr STATE eps_tol = 1e-13;//PETSC_DECIDE
       constexpr int eps_max_its = -1;//PETSC_DECIDE
       constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_REL;
     
@@ -82,6 +81,7 @@ namespace wgma::wganalysis{
 
       solver = eps_solver;
     }else{
+      krylovDim = krylovDim < nEigen ? 5*nEigen : krylovDim;
       auto krylov_solver = new TPZKrylovEigenSolver<CSTATE>;
       TPZSTShiftAndInvert<CSTATE> st;
       krylov_solver->SetSpectralTransform(st);
