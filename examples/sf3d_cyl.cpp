@@ -39,6 +39,7 @@ It consists of a "shrinked" version on slab_disc.cpp.
 #include <pzgmesh.h>               // for TPZGeoMesh
 #include <pzlog.h>                 // for TPZLogger
 #include <TPZPardisoSolver.h>
+#include <pzintel.h>
 #include <regex>                   // for regex_search, match_results<>::_Un...
 
 
@@ -1343,9 +1344,22 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
       scatt_data.pmlvec = pmlvec;
     }
 
-    return wgma::scattering::CMeshScattering3D(gmesh, pOrder, scatt_data,src_ids,
-                                               lambda,scale,true);
+    auto cmesh =
+      wgma::scattering::CMeshScattering3D(gmesh, pOrder, scatt_data,src_ids,
+                                          lambda,scale,true);
+    constexpr int scatt_dim{3};
+    for(auto cel : cmesh->ElementVec()){
+      if(cel->Dimension() != scatt_dim){continue;}
+      auto intel =
+        dynamic_cast<TPZInterpolatedElement*>(cel);
+      if(!intel){continue;}
+      const auto ns = intel->Reference()->NSides();
+      intel->ForceSideOrder(ns-1,pOrder+1);
+    }
+    cmesh->ExpandSolution();
+    return cmesh;
  };
+
 void PostProcessModes(wgma::wganalysis::Wgma2D &an,
                       std::string filename,
                       const int vtkres,
