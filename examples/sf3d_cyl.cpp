@@ -1537,7 +1537,7 @@ ReplaceMaterialsForProjection(TPZAutoPointer<TPZCompMesh> proj_mesh)
     auto bnd = dynamic_cast<TPZBndCond*>(mat);
     if(!bnd){
       constexpr int dim{2};
-      constexpr int soldim{2};
+      constexpr int soldim{3};
       auto newmat = new wgma::materials::SolutionProjection<CSTATE>(id,dim,soldim);
       delete mat;
       proj_mesh->MaterialVec()[id]=newmat;
