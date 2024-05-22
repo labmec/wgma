@@ -48,9 +48,11 @@ void SolutionProjection<TVar>::Contribute(const TPZMaterialDataT<TVar> &data,
 
   const int sz = data.sol[0].size();
   if(sz!=nc || sz != fSolDim){
-    PZError<<__PRETTY_FUNCTION__
-           <<"Incompatible dimensions!\n"
-           <<"sz:"<<sz<<" nc: "<<nc<<" sol dim: "<<fSolDim<<std::endl;
+    std::ostringstream sout;
+    sout<<__PRETTY_FUNCTION__
+	<<"Incompatible dimensions!\n"
+	<<"sz:"<<sz<<" nc: "<<nc<<" sol dim: "<<fSolDim;
+    PZError<<sout.str()<<std::endl;
     DebugStop();
   }
   TPZFNMatrix<3,TVar> sol(sz,1,0);
