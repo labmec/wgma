@@ -621,7 +621,7 @@ SimData ReadSimData(const std::string &dataname){
   tmpvec_int = data["n_modes_right"].get<std::vector<int>>();
   for(auto nm : tmpvec_int){sd.n_modes_right.push_back(nm);}
   sd.filter_bnd_eqs = data.value("filter_bnd_eqs",true);
-  sd.print_gmesh=data.value("print_gmes",true);
+  sd.print_gmesh=data.value("print_gmesh",true);
   sd.optimize_bandwidth = data.value("optimize_bandwidth",true);
   sd.export_csv_modes = data.value("export_csv_modes",true);
   sd.export_csv_error = data.value("export_csv_error",true);
