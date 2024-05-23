@@ -45,7 +45,7 @@ def create_sf3d_mesh(
     nclad = 1.4378
     ncore = 1.4457
     # distance from center to end of cladding region(inner box)
-    r_box = max(r_core_left, r_core_right) + 3.5 * wl/nclad
+    r_box = max(r_core_left, r_core_right) + 4.5 * wl/nclad
     l_domain = 0.5*wl
     d_pml_r = 1.75*wl/nclad  # pml width
     d_pml_z = 1*wl/nclad  # pml width
@@ -464,7 +464,7 @@ if __name__ == "__main__":
     r_right = 6  # core radius
     create_sf3d_mesh(
         r_left, r_right, "../../build/examples/meshes/sf3d_disc", nel)
-    r_left = 8  # core radius
-    r_right = 8  # core radius
+    r_left = 6  # core radius
+    r_right = 6  # core radius
     create_sf3d_mesh(
         r_left, r_right, "../../build/examples/meshes/sf3d_validation", nel)
