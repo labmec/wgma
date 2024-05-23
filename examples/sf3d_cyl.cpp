@@ -39,6 +39,7 @@ It consists of a "shrinked" version on slab_disc.cpp.
 #include <pzgmesh.h>               // for TPZGeoMesh
 #include <pzlog.h>                 // for TPZLogger
 #include <TPZPardisoSolver.h>
+#include <TPZNullMaterial.h>
 #include <pzintel.h>
 #include <regex>                   // for regex_search, match_results<>::_Un...
 
@@ -1498,6 +1499,15 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   std::cout<<"nmodes on outgoing boundary: "<<nmodes_match<<std::endl;
 
   {
+    //we precomputed it already
+    scatt_an.StructMatrix()->SetComputeRhs(false);
+    std::set<int> mat_ids;
+    for(auto [id,mat]: scatt_mesh->MaterialVec()){
+      auto nullmat = dynamic_cast<TPZNullMaterial<CSTATE>*>(mat);
+      if(!nullmat){
+        mat_ids.insert(id);
+      }
+    }
     TPZSimpleTimer tassemble("Assemble",true);
     std::cout<<"Assembling..."<<std::endl;
     scatt_an.Assemble();
