@@ -123,8 +123,7 @@ TPZVec<wgma::gmeshtools::CylinderData> SetUpCylData(std::string_view filename,
                                                     const REAL scale);
 
 wgma::cmeshtools::PhysicalData
-FillDataForModalAnalysis(TPZAutoPointer<TPZGeoMesh> gmesh,
-                         const TPZVec<std::map<std::string, int>> &gmshmats,
+FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
                          const SimData& simdata,
                          const std::string &name);
 
@@ -437,8 +436,7 @@ TPZVec<wgma::gmeshtools::CylinderData> SetUpCylData(std::string_view filename,
 }
 
 wgma::cmeshtools::PhysicalData
-FillDataForModalAnalysis(TPZAutoPointer<TPZGeoMesh> gmesh,
-                         const TPZVec<std::map<std::string, int>> &gmshmats,
+FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
                          const SimData& simdata,
                          const std::string &name)
 {
@@ -481,8 +479,8 @@ ComputeModalAnalysis(
   bool usingSLEPC,
   const std::string &name)
 {
-  auto modal_data = FillDataForModalAnalysis(gmesh,gmshmats,
-                                       simdata,name);
+  auto modal_data =
+    FillDataForModalAnalysis(gmshmats,simdata,name);
 
   const auto &pOrder = simdata.porder;
   const auto &lambda = simdata.lambda;
@@ -737,7 +735,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                                          TPZAutoPointer<TPZVTKGenerator> &vtk_error,
                                          const std::string &name)
   {
-    auto modal_data = FillDataForModalAnalysis(gmesh, gmshmats, simdata, name);
+    auto modal_data = FillDataForModalAnalysis(gmshmats, simdata, name);
     std::set<int> volmats, pmlmats;
     wgma::wganalysis::SetupModalAnalysisMaterials(gmesh,modal_data,volmats,pmlmats);
 
@@ -924,7 +922,7 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
   {
 
     {
-      auto modal_data = FillDataForModalAnalysis(gmesh, gmshmats, simdata, "probe_left");
+      auto modal_data = FillDataForModalAnalysis(gmshmats, simdata, "probe_left");
       std::set<int> volmats, pmlmats;
       wgma::wganalysis::SetupModalAnalysisMaterials(gmesh,modal_data,volmats,pmlmats);
 
