@@ -1802,8 +1802,8 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                                               colors, numc,
                                               sparse_blocks);
   }
-  const int64_t n_iter = {500};
-  const int n_vecs = {50};
+  const int64_t n_iter = {300};
+  const int n_vecs = {30};
   constexpr int64_t from_current{0};
   solver.SetGMRES(n_iter, n_vecs, *precond, tol, from_current);
 }
