@@ -388,13 +388,15 @@ namespace wgma::slepc{
     }
     PetscInt nconv;
     EPSGetConverged(eps, &nconv);
-    const PetscInt nEigen = this->fNEigenpairs > nconv ? nconv : this->fNEigenpairs;
-    w.Resize(nEigen);
+    if(nconv < this->fNEigenpairs){
+      this->fNEigenpairs = nconv;
+    }
+    w.Resize(this->fNEigenpairs);
 
     //let us get the eigenvalues
     {
       PetscScalar eigr{0}, eigi{0};
-      for(int i = 0; i < nEigen; i++){
+      for(int i = 0; i < this->fNEigenpairs; i++){
         EPSGetEigenvalue(eps,i, &eigr, &eigi);
         if constexpr(std::is_same_v<PetscScalar,STATE>){
           w[i] = eigr + 1i * eigi;
@@ -407,8 +409,8 @@ namespace wgma::slepc{
 
     if(!calcVectors) return 0;
     
-    eigenVectors.Resize(pzA.Rows(),nEigen);
-    for (int i = 0; i < nEigen; ++i) {
+    eigenVectors.Resize(pzA.Rows(),this->fNEigenpairs);
+    for (int i = 0; i < this->fNEigenpairs; ++i) {
       if constexpr(std::is_same_v<PetscScalar,STATE>){
         Vec eigVecRe, eigVecIm;
         PetscScalar *eigVecReArray, *eigVecImArray;
@@ -581,6 +583,7 @@ namespace wgma::slepc{
   void EPSHandler<TVar>::GetLinearSolverTol(RTVar &rtol, RTVar &atol,
                                             RTVar &dtol, int &max_its){
     rtol = fKspRtol;
+
     atol = fKspAtol;
     dtol = fKspDtol;
     max_its = fKspMaxIts;
