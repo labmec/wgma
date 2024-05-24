@@ -118,7 +118,6 @@ namespace wgma::wganalysis{
       exit(-1);
     }
 
-    AdjustSolver(solv);
     Solve(compute_eigenvectors);
     
   }
@@ -138,6 +137,7 @@ namespace wgma::wganalysis{
 
     TPZSimpleTimer tsolv("Solve");
     std::cout<<"Solving..."<<std::flush;
+    AdjustSolver(solv);
     this->Solve();
     std::cout<<"\rSolved!"<<std::endl;
 
@@ -233,8 +233,12 @@ namespace wgma::wganalysis{
 
   void Wgma2D::AdjustSolver(TPZEigenSolver<CSTATE> *solver){
     auto *krylov_solver =
-      dynamic_cast<TPZKrylovEigenSolver<CSTATE>*> (solver);      
-    if(krylov_solver && krylov_solver->KrylovInitialVector().Rows() == 0){
+      dynamic_cast<TPZKrylovEigenSolver<CSTATE>*> (solver);
+    auto *eps_solver =
+      dynamic_cast<slepc::EPSHandler<CSTATE>*>(solver);
+    if(
+      (krylov_solver && krylov_solver->KrylovInitialVector().Rows() == 0) ||
+       eps_solver){
       /**this is to ensure that the eigenvector subspace is orthogonal to
          the spurious solutions associated with et = 0 ez != 0*/
       TPZFMatrix<CSTATE> initVec(m_n_dofs_mf, 1, 0.);
@@ -242,7 +246,11 @@ namespace wgma::wganalysis{
       for (int i = 0; i < m_n_dofs_hcurl; i++) {
         initVec(firstHCurl + i, 0) = 1;
       }
-      krylov_solver->SetKrylovInitialVector(initVec);
+      if(krylov_solver){
+        krylov_solver->SetKrylovInitialVector(initVec);
+      }else{
+        eps_solver->SetKrylovInitialVector(initVec);
+      }
     }
   }
   
