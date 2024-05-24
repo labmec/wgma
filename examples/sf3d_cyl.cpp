@@ -531,7 +531,9 @@ ComputeModalAnalysis(
    * solve(modal analysis left) *
    ******************************/
   constexpr bool verbose{true};
-  auto solver = wgma::wganalysis::SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC,nEigenpairs*10,verbose);
+  const int krylovDim =
+    nEigenpairs < 20 ? nEigenpairs*5 : (int)std::ceil(1.25*nEigenpairs);
+  auto solver = wgma::wganalysis::SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC,krylovDim,verbose);
   if(sortingRule==TPZEigenSort::UserDefined){
     solver->SetUserSortingFunc([](CSTATE a, CSTATE b)->bool{
       const auto sqrt_a_im = std::fabs(std::imag(std::sqrt(-a)));
