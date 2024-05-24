@@ -138,11 +138,15 @@ ComputeModalAnalysis(
   bool usingSLEPC,
   const std::string &name);
 
+std::map<int,int>
+SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &modal_mesh,
+                       std::set<int> &all_matids);
 void
 SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                 wgma::wganalysis::Wgma2D &src_an,
                 wgma::wganalysis::Wgma2D &match_an,
                 const TPZVec<std::map<std::string, int>> &gmshmats,
+                const std::map<int,int> &split_mats,
                 const std::map<int64_t,int64_t> &periodic_els,
                 const SimData &simdata);
 void
@@ -150,6 +154,7 @@ SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
                      wgma::wganalysis::Wgma2D &src_an,
                      wgma::wganalysis::Wgma2D &match_an,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
+                     const std::map<int,int> &split_mats,
                      const std::map<int64_t,int64_t> &periodic_els,
                      const SimData &simdata);
 
@@ -305,10 +310,33 @@ int main(int argc, char *argv[]) {
                                        usingSLEPC,"src_right");
   }
 
+  std::set<int> all_matids;
+  for(auto &mats : gmshmats){//dim
+    for(auto &[name,id] : mats){//name,matid
+      all_matids.insert(id);
+    }
+  }
+  
+  auto modal_l_map =
+    SplitMaterialsNearWpbc(modal_l_an->GetMesh(),all_matids);
+  auto modal_r_map =
+    SplitMaterialsNearWpbc(modal_r_an->GetMesh(),all_matids);
+
+  //now we combine the maps but inverting key->value, so we have new_mat->old_mat
+  std::map<int,int> split_mats;
+  for(auto [old_mat,new_mat] : modal_l_map){
+    split_mats[new_mat] = old_mat;
+  }
+  for(auto [old_mat,new_mat] : modal_r_map){
+    split_mats[new_mat] = old_mat;
+  }
+  
   if(!simdata.check_mode_propagation){
-    SolveScattering(gmesh, modal_l_an,  modal_r_an, gmshmats, periodic_els, simdata);
+    SolveScattering(gmesh, modal_l_an,  modal_r_an, gmshmats,
+                    split_mats,periodic_els, simdata);
   }else{
-    SolveModePropagation(gmesh, modal_l_an,  modal_r_an, gmshmats, periodic_els, simdata);
+    SolveModePropagation(gmesh, modal_l_an,  modal_r_an, gmshmats,
+                         split_mats,periodic_els, simdata);
   }
   return 0;
 }
@@ -331,7 +359,17 @@ TransformModes(wgma::wganalysis::Wgma2D& an);
 TPZAutoPointer<TPZCompMesh>
 CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
                 const TPZVec<std::map<std::string, int>> &gmshmats,
+                const std::map<int,int> &split_mats,
+                std::set<int> &new_mats,
                 const SimData &simdata, bool usingPML);
+
+[[nodiscard]] std::set<int>
+UpdatePhysicalDataSplittedMats(TPZAutoPointer<TPZGeoMesh> &gmesh,
+                               wgma::cmeshtools::PhysicalData& data,
+                               const std::map<int,int> &matid_map,
+                               const std::set<int> &volids,
+                               const int dim);
+
 
 void ComputeWpbcCoeffs(wgma::wganalysis::Wgma2D& an,
                        TPZFMatrix<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
@@ -357,6 +395,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           const TPZVec<CSTATE> &source_coeffs,
                           const int nmodes_src,
                           const int nmodes_match,
+                          const std::set<int> &mats_near_wpbc,
                           const SimData &simdata);
 
 void
@@ -637,6 +676,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      wgma::wganalysis::Wgma2D &src_an,
                      wgma::wganalysis::Wgma2D &match_an,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
+                     const std::map<int,int> &split_mats,
                      const std::map<int64_t,int64_t> &periodic_els,
                      const SimData &simdata)
 {
@@ -646,8 +686,9 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
    *********************/  
   TPZSimpleTimer tscatt("Scattering");
 
+  std::set<int> mats_near_wpbc;
   TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc =
-    CreateScattMesh(gmesh,gmshmats,simdata,false);
+    CreateScattMesh(gmesh,gmshmats,split_mats,mats_near_wpbc,simdata,false);
 
   const auto n_eigenpairs_left = src_an.GetEigenvalues().size();
   /*
@@ -808,7 +849,9 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     for(int im_right = 0; im_right < nmodes_right.size(); im_right++){
       const int nm_right = nmodes_right[im_right];
       RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
-                           src_coeffs, nm_left,nm_right,simdata);
+                           src_coeffs, nm_left,nm_right,
+                           mats_near_wpbc,simdata);
+
       //plot
       if(simdata.export_vtk_scatt){vtk.Do();}
       const auto error_left =
@@ -854,6 +897,7 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
                           wgma::wganalysis::Wgma2D &src_an,
                           wgma::wganalysis::Wgma2D &match_an,
                           const TPZVec<std::map<std::string, int>> &gmshmats,
+                          const std::map<int,int> &split_mats,
                           const std::map<int64_t,int64_t> &periodic_els,
                           const SimData &simdata)
 {
@@ -983,8 +1027,9 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
     "Field_imag",
     "Field_abs"};
 
+  std::set<int> mats_near_wpbc;
   TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc =
-    CreateScattMesh(gmesh,gmshmats,simdata,false);
+    CreateScattMesh(gmesh,gmshmats,split_mats,mats_near_wpbc,simdata,false);
 
 
   const std::string suffix = "wpbc";
@@ -1016,8 +1061,9 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
   STATE norm_sol_pml{1}, norm_error_pml{1};
   if(simdata.compare_pml){
     //ok first we solve with a PML
+    std::set<int> mats_near_wpbc;
     TPZAutoPointer<TPZCompMesh> scatt_mesh_pml =
-      CreateScattMesh(gmesh,gmshmats,simdata,true);
+      CreateScattMesh(gmesh,gmshmats,split_mats,mats_near_wpbc,simdata,true);
     const std::string suffix = "pml";
     const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
     SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
@@ -1083,7 +1129,9 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
     for(int im_right = 0; im_right < nmodes_right.size(); im_right++){
       const int nm_right = nmodes_right[im_right];
       RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
-                           src_coeffs, nm_left,nm_right,simdata);
+                           src_coeffs, nm_left,nm_right,
+                           mats_near_wpbc,simdata);
+
       //plot
       if(simdata.export_vtk_scatt){vtk.Do();}
 
@@ -1210,6 +1258,8 @@ void TransformModes(wgma::wganalysis::Wgma2D& an)
 TPZAutoPointer<TPZCompMesh>
 CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
                 const TPZVec<std::map<std::string, int>> &gmshmats,
+                const std::map<int,int> &split_mats,
+                std::set<int> &mats_near_wpbc,
                 const SimData &simdata, bool usingPML)
 {
 
@@ -1343,6 +1393,15 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
       scatt_data.pmlvec = pmlvec;
     }
 
+    constexpr int dim{3};
+    std::set<int> volids;
+    for(auto [id,dummy1,dummy2] : scatt_data.matinfovec){
+      volids.insert(id);
+    }
+    
+    mats_near_wpbc =
+      UpdatePhysicalDataSplittedMats(gmesh, scatt_data, split_mats,
+                                     volids, dim);
     auto cmesh =
       wgma::scattering::CMeshScattering3D(gmesh, pOrder, scatt_data,src_ids,
                                           lambda,scale,true);
@@ -1455,13 +1514,14 @@ void ComputeWpbcCoeffs(wgma::wganalysis::Wgma2D& an,
   wgbc.ComputeContribution();
   wgbc.GetContribution(wgbc_k,wgbc_f);
 }
-
+#include <TPZSpStructMatrix.h>
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WpbcData& src_data,
                           WpbcData& match_data,
                           const TPZVec<CSTATE> &source_coeffs,
                           const int nmodes_src,
                           const int nmodes_match,
+                          const std::set<int> &mats_near_wpbc,
                           const SimData &simdata)
 {
 
@@ -1496,9 +1556,37 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   std::cout<<"nmodes on source boundary: "<<nmodes_src<<std::endl;
   std::cout<<"nmodes on outgoing boundary: "<<nmodes_match<<std::endl;
 
-  {
-    //we precomputed it already
-    scatt_an.StructMatrix()->SetComputeRhs(false);
+  //we precomputed it already
+  scatt_an.StructMatrix()->SetComputeRhs(false);
+
+  std::cout<<"Assembling..."<<std::endl;
+  constexpr bool split_assemble{false};
+  if(split_assemble){
+    TPZSimpleTimer timer("Assemble",true);
+    
+    std::set<int> volids;
+    for(auto [id,mat] : scatt_mesh->MaterialVec()){
+      if(mats_near_wpbc.count(id)==0){
+        volids.insert(id);
+      }
+    }
+    scatt_an.StructMatrix()->SetMaterialIds(volids);
+    {
+      TPZSimpleTimer timer_1("interior");
+      scatt_an.Assemble();
+    }
+    //new struct matrix for the rest
+    TPZSimpleTimer timer_2("near wpbc");
+    TPZSpStructMatrix<CSTATE> strmtrx = TPZSpStructMatrix<CSTATE>(scatt_mesh);
+    strmtrx.SetNumThreads(simdata.n_threads);
+    strmtrx.SetMaterialIds(mats_near_wpbc);
+    strmtrx.EquationFilter() = scatt_an.StructMatrix()->EquationFilter();
+    strmtrx.SetComputeRhs(false);
+    //it wont be resized or anything.
+    TPZFMatrix<CSTATE> dummyRhs;
+    strmtrx.Assemble(*scatt_an.GetSolver().Matrix(), dummyRhs);
+  }
+  else{
     std::set<int> mat_ids;
     for(auto [id,mat]: scatt_mesh->MaterialVec()){
       auto nullmat = dynamic_cast<TPZNullMaterial<CSTATE>*>(mat);
@@ -1507,7 +1595,6 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
       }
     }
     TPZSimpleTimer tassemble("Assemble",true);
-    std::cout<<"Assembling..."<<std::endl;
     scatt_an.Assemble();
   }
 
@@ -1814,4 +1901,153 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
   const int n_vecs = {30};
   constexpr int64_t from_current{0};
   solver.SetGMRES(n_iter, n_vecs, *precond, tol, from_current);
+}
+
+std::set<int> UpdatePhysicalDataSplittedMats(TPZAutoPointer<TPZGeoMesh> &gmesh,
+                                             wgma::cmeshtools::PhysicalData& data,
+                                             const std::map<int,int> &matid_map,
+                                             const std::set<int> &orig_volids,
+                                             const int dim){
+
+  std::set<int> mats_not_found;
+  std::set<int> mats_found;
+  std::set<int> volids = orig_volids;
+  //first we need to find all the volumetric materials
+  for(auto [new_id,old_id] : matid_map){
+    bool found{false};
+    for(auto [vol_id,er,ur] :data.matinfovec){
+      if(vol_id == old_id){
+        found=true;
+        mats_found.insert(new_id);
+	volids.insert(new_id);
+        data.matinfovec.push_back({new_id,er,ur});
+        break;
+      }
+    }
+  }
+
+  //now we search for pmls
+  for(auto [new_id,old_id] : matid_map){
+    bool found{false};
+    if(mats_found.find(new_id)!=mats_found.end()){continue;}
+    for(auto &pmldata : data.pmlvec){
+      if(pmldata->ids.find(old_id)!=pmldata->ids.end()){
+	const auto pml_old_ids = pmldata->ids;
+	pmldata->ids.insert(new_id);
+	auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pmldata);
+	std::optional<int> neigh_mat_res;
+	if(cart_pml){
+	  REAL boundPosX{0}, boundPosY{0}, boundPosZ{0}, dX{0}, dY{0}, dZ{0};
+	  wgma::gmeshtools::FindPMLWidth(gmesh, cart_pml->ids, cart_pml->t,
+					 boundPosX, dX,
+					 boundPosY, dY,
+					 boundPosZ, dZ);
+	  neigh_mat_res =
+	    wgma::gmeshtools::FindCartPMLNeighbourMaterial(gmesh, dim, new_id, volids,
+							   boundPosX,boundPosY,boundPosZ);
+	}else{
+	  auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pmldata);
+	  if(!cyl_pml){
+	    DebugStop();
+	  }
+	  REAL rMin{0}, rMax{0}, boundPosZ{0}, dZ{0};
+	  wgma::gmeshtools::FindPMLWidth(gmesh, cyl_pml->ids, cyl_pml->t,
+					 rMin, rMax,
+					 boundPosZ, dZ);
+	  neigh_mat_res =
+	    wgma::gmeshtools::FindCylPMLNeighbourMaterial(gmesh, dim, new_id, volids, rMin, boundPosZ);
+            
+	}
+	//i hope we found it...
+	if(neigh_mat_res.has_value()==false){
+	  std::cout<<"Could not find neighbour of material "<<old_id<<" new id "<<new_id<<std::endl;
+	  DebugStop();
+	}
+	const int neigh_id = neigh_mat_res.value();
+	pmldata->neigh[new_id] = neigh_id;
+	for(auto id : pml_old_ids){
+	  pmldata->neigh[id] = neigh_id;
+	}
+	mats_found.insert(new_id);
+	found=true;
+	break;
+      }
+    }
+    if(!found){ mats_not_found.insert(old_id);}
+  }
+  if(mats_not_found.size()){
+    std::cout<<__PRETTY_FUNCTION__
+             <<"\nCould not find the following mats:\n";
+    for(auto m : mats_not_found){std::cout<<m<<' ';}
+    std::cout<<"\nso they were skipped."<<std::endl;
+  }
+  return mats_found;
+}
+  
+  
+std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &modal_mesh,
+                                         std::set<int> &all_matids){
+  //auxiliary function to create a unique matid
+  auto FindFreeMatId = [](const std::set<int> &mat_ids) -> int{
+    //sets are always sorted, so we know it is the minimum value
+    const int minval = * mat_ids.begin();
+    const int maxval = * (mat_ids.end()--);
+    for(int i = minval; i < maxval; i++){
+      if(mat_ids.count(i)==0){
+        return i;
+      }
+    }
+    return maxval+1;
+  };
+  
+  //first we get all the 2d materials from the modal analysis
+  std::set<int> modalmats;
+  const int modaldim = modal_mesh->Dimension();
+  for(auto [id,mat] : modal_mesh->MaterialVec()){
+    if(mat->Dimension() == modaldim){
+      modalmats.insert(id);
+    }
+  }
+  
+  auto gmesh = modal_mesh->Reference();
+
+
+  //original mat id -> new mat id
+  std::map<int,int> matid_map;
+  std::set<int> new_ids;
+  
+  
+  for(auto gel_2d : gmesh->ElementVec()){
+    if(gel_2d->Dimension()!=modaldim){continue;}
+    const int modalid = gel_2d->MaterialId();
+    if(modalmats.find(modalid)==modalmats.end()){continue;}
+    //now we know it is a modal element
+    const int nsides = gel_2d->NSides();
+    const int nnodes = gel_2d->NCornerNodes();
+    for(int is = nnodes; is < nsides; is++){
+      TPZGeoElSide gelside(gel_2d,is);
+      TPZGeoElSide neigh = gelside.Neighbour();
+      while(neigh!=gelside){
+	auto gel_3d = neigh.Element();
+	if(gel_3d && gel_3d->Dimension()==modaldim+1){
+	  const int matid = gel_3d->MaterialId();
+	  if(new_ids.find(matid) == new_ids.end()){
+	    if(matid_map.find(matid) == matid_map.end()){
+	      //we need to insert it into the map
+	      const int new_id = FindFreeMatId(all_matids);
+	      //it is no longer free
+	      all_matids.insert(new_id);
+	      new_ids.insert(new_id);
+	      matid_map[matid]=new_id;
+	    }
+	    //already in the map
+	    const int new_id = matid_map.at(matid);
+	    gel_3d->SetMaterialId(new_id);
+	  }
+	}
+	neigh=neigh.Neighbour();
+      }
+    }
+  }
+  return matid_map;
 }
