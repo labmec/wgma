@@ -45,9 +45,9 @@ namespace wgma::wganalysis{
         NOTE: -1 stands for PETSC_DECIDE
       */
     
-      constexpr STATE eps_tol = 1e-13;//PETSC_DECIDE
+      constexpr STATE eps_tol = 1e-10;//PETSC_DECIDE
       constexpr int eps_max_its = -1;//PETSC_DECIDE
-      constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_REL;
+      constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_ABS;
     
       constexpr PC pc = PC::LU;
       constexpr KSPSolver linsolver = KSPSolver::PREONLY;
