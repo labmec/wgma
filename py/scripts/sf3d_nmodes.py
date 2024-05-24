@@ -52,6 +52,6 @@ data["compare_pml"] = False
 data["direct_solver"] = False
 data["n_eigenpairs_left"] = 300
 data["n_eigenpairs_right"] = 300
-data["n_modes_left"] = 300,
-data["n_modes_right"] = 300,
+data["n_modes_left"] = [300]
+data["n_modes_right"] = [300]
 gen_script_and_run(data, scriptname, prefix)
