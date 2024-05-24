@@ -186,6 +186,11 @@ namespace wgma::slepc{
      */
     void GetKrylovOptions(bool &lock , RTVar &restart) const;
     /**
+       @brief Set initial subspace for the iterative solver
+       @param sub Initial subspace
+     */
+    void SetKrylovInitialVector(const TPZFMatrix<TVar> &sub){fInitVec=sub;}
+    /**
        @brief Sets tolerances for the eigenvalue solver
        @param tol tolerance of the eigensolver
        @param max_its Maximum iterations of the eigensolver
@@ -297,6 +302,8 @@ namespace wgma::slepc{
     PC fPc{PC::LU};
     //! Zero pivot tolerance for the preconditioner
     RTVar fPcZero{std::numeric_limits<RTVar>::epsilon()};
+    //! Initial vector for krylov methods
+    TPZFMatrix<TVar> fInitVec;
     //! Whether SLEPc has been initialized
     static bool fSlepcInit;
   };
