@@ -184,8 +184,6 @@ namespace wgma::slepc{
       return 0;
     };
     Mat petscA{nullptr}, petscB{nullptr};
-    Vec *initVecArray{nullptr};
-    PetscInt nInitVec{0};
     PetscInt *iaP{nullptr}, *jaP{nullptr}, *ibP{nullptr}, *jbP{nullptr};
     PetscScalar *aaP{nullptr}, *abP{nullptr};
     {
@@ -197,23 +195,6 @@ namespace wgma::slepc{
       if(this->fIsGeneralised){
         std::cout<<"Creating PETSc Bmat...";
         CreatePetscMat(pzB,petscB, ibP, jbP, abP);
-        std::cout<<"Created!"<<std::endl;
-      }
-      if(this->fInitVec.Rows()>0){
-        std::cout<<"Creating PETSc initial vector...";
-        const int neq = pzA.Rows();
-        if(neq!=this->fInitVec.Rows()){
-          DebugStop();
-        }
-        constexpr PetscInt blocksize{1};
-        nInitVec = this->fInitVec.Cols();
-        initVecArray = new Vec[nInitVec];
-        for(int i = 0; i < nInitVec; i++){
-          initVecArray[i] = Vec{};
-          
-          VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize, neq,
-                                fInitVec.Elem()+neq*i, &initVecArray[i]);
-        }
         std::cout<<"Created!"<<std::endl;
       }
     }
@@ -283,9 +264,6 @@ namespace wgma::slepc{
       const ::EPSWhich eps_which = ConvertWhich(this->EigenSorting());
       ierr = EPSSetWhichEigenpairs(eps, eps_which);
 
-      if(nInitVec>0){
-        ierr = EPSSetInitialSpace(eps,nInitVec,initVecArray);
-      }
       if(eps_which == ::EPSWhich::EPS_WHICH_USER){
         stdfunc = this->UserSortingFunc();
         if(stdfunc==nullptr){
@@ -330,6 +308,42 @@ namespace wgma::slepc{
       TPZSimpleTimer setup("EPSSetUp");
       ierr = EPSSetUp(eps);
       CHKERRQ(ierr);
+    }
+
+    Vec *initVecArray{nullptr};
+    PetscScalar **initVecMem{nullptr};
+    PetscInt nInitVec = this->fInitVec.Rows();
+    {
+      TPZSimpleTimer initvecs("Computing initial vectors");
+      if(nInitVec>0){
+        PetscBool is_computed;
+        STGetTransform(st,&is_computed);
+        if(!is_computed){
+          DebugStop();
+        }
+        std::cout<<"Creating PETSc initial vector...";
+        const int neq = pzA.Rows();
+        if(neq!=this->fInitVec.Rows()){
+          DebugStop();
+        }
+        initVecMem = new PetscScalar *[nInitVec];
+        constexpr PetscInt blocksize{1};
+        nInitVec = this->fInitVec.Cols();
+        initVecArray = new Vec[nInitVec];
+        for(int i = 0; i < nInitVec; i++){
+          PetscMalloc1(neq,&initVecMem[i]);
+          Vec x;
+          VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize, neq,
+                                fInitVec.Elem()+neq*i, &x);
+          initVecArray[i] = Vec{};
+          VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize,neq,
+                                initVecMem[i], &initVecArray[i]);
+          STMatSolve(st,x,initVecArray[i]);
+          VecDestroy(&x);
+        }
+        std::cout<<"Created!"<<std::endl;
+        ierr = EPSSetInitialSpace(eps,nInitVec,initVecArray);
+      }
     }
 
     if(fVerbose){
@@ -473,6 +487,12 @@ namespace wgma::slepc{
     if(jbP) PetscFree(jbP);
     if(abP) PetscFree(abP);
     if(nInitVec){
+      for(int i = 0; i < nInitVec; i++){
+        VecDestroy(&initVecArray[i]);
+        PetscFree(initVecMem[i]);
+        initVecMem[i] = nullptr;
+      }
+      delete [] initVecMem;
       delete [] initVecArray;
     }
     return 0;
