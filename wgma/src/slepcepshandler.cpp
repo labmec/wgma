@@ -428,25 +428,40 @@ namespace wgma::slepc{
       this->fNEigenpairs = nconv;
     }
     w.Resize(this->fNEigenpairs);
-
+    std::set<int> skipped;
     //let us get the eigenvalues
     {
       PetscScalar eigr{0}, eigi{0};
-      for(int i = 0; i < this->fNEigenpairs; i++){
+      int count{0};
+      for(int i = 0; i < nconv; i++){
+        if(count>=this->fNEigenpairs){break;}
         EPSGetEigenvalue(eps,i, &eigr, &eigi);
+        CSTATE val{0};
         if constexpr(std::is_same_v<PetscScalar,STATE>){
-          w[i] = eigr + 1i * eigi;
+          val = eigr + 1i * eigi;
         }else{
-          w[i] = eigr;
+          val = eigr;
         }
-        
+        if(std::abs(val)>1e-10){
+          w[count] = val;
+          count++;
+        }else{
+          skipped.insert(i);
+        }
       }
+      w.Resize(count);
+      this->fNEigenpairs = count;
     }
 
     if(!calcVectors) return 0;
     
     eigenVectors.Resize(pzA.Rows(),this->fNEigenpairs);
-    for (int i = 0; i < this->fNEigenpairs; ++i) {
+    int count{0};
+    for (int i = 0; i < nconv; ++i) {
+      //found everyone already
+      if(count >= this->fNEigenpairs){break;}
+      //small spurious ev
+      if(skipped.find(i)!=skipped.end()){continue;}
       if constexpr(std::is_same_v<PetscScalar,STATE>){
         Vec eigVecRe, eigVecIm;
         PetscScalar *eigVecReArray, *eigVecImArray;
@@ -457,7 +472,7 @@ namespace wgma::slepc{
         VecGetArray(eigVecRe,&eigVecReArray);
         VecGetArray(eigVecIm,&eigVecImArray);
         for (int j = 0; j < pzA.Rows(); ++j) {
-          eigenVectors(j,i) = eigVecReArray[j] + 1i * eigVecImArray[j];
+          eigenVectors(j,count) = eigVecReArray[j] + 1i * eigVecImArray[j];
         }
         VecRestoreArray(eigVecRe,&eigVecReArray);
         VecRestoreArray(eigVecIm,&eigVecImArray);
@@ -468,10 +483,11 @@ namespace wgma::slepc{
         EPSGetEigenvector(eps,i,eigVec,nullptr);
         VecGetArray(eigVec,&eigVecArray);
         for (int j = 0; j < pzA.Rows(); ++j) {
-          eigenVectors(j,i) = eigVecArray[j];
+          eigenVectors(j,count) = eigVecArray[j];
         }
         VecRestoreArray(eigVec,&eigVecArray);
       }
+      count++;
     }
 
     EPSDestroy(&eps);
