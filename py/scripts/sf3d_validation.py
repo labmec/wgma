@@ -26,6 +26,7 @@ data = {
     "export_vtk_modes": False,
     "export_vtk_scatt": True,
     "export_vtk_error": True,
+    "export_coupling_mat": True,
     "print_gmesh": False,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,

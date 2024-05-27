@@ -26,6 +26,7 @@ data = {
     "export_vtk_modes": False,
     "export_vtk_scatt": True,
     "export_vtk_error": True,
+    "export_coupling_mat": True,
     "print_gmesh": False,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
@@ -50,8 +51,8 @@ data["cylfile"] = "meshes/sf3d_disc_cyldata.csv"
 data["check_mode_propagation"] = False
 data["compare_pml"] = False
 data["direct_solver"] = False
-data["n_eigenpairs_left"] = 300
-data["n_eigenpairs_right"] = 300
-data["n_modes_left"] = [300]
-data["n_modes_right"] = [300]
+data["n_eigenpairs_left"] = 200
+data["n_eigenpairs_right"] = 200
+data["n_modes_left"] = [3, 50, 200]
+data["n_modes_right"] = [3, 50, 200]
 gen_script_and_run(data, scriptname, prefix)
