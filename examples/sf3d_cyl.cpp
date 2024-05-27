@@ -637,6 +637,7 @@ SimData ReadSimData(const std::string &dataname){
   sd.scale = data["scale"];
   sd.ncore = data["ncore"];
   sd.nclad = data["nclad"];
+  sd.couplingmat = data["export_coupling_mat"];
   sd.check_mode_propagation = data["check_mode_propagation"];
   sd.compare_pml = data["compare_pml"];
   sd.direct_solver = data.value("direct_solver",false);
@@ -688,10 +689,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
    *********************/  
   TPZSimpleTimer tscatt("Scattering");
 
-  std::set<int> mats_near_wpbc;
-  TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc =
-    CreateScattMesh(gmesh,gmshmats,split_mats,mats_near_wpbc,simdata,false);
-
   const auto n_eigenpairs_left = src_an.GetEigenvalues().size();
   /*
     the source is written as a linear combination of the modes
@@ -732,12 +729,38 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       nmodes_left.push_back(im);
     }
   }
+
   
+  src_an.LoadAllSolutions();
+  match_an.LoadAllSolutions();
+
   //set up post processing
   TPZVec<std::string> fvars_3d = {
     "Field_real",
     "Field_imag",
     "Field_abs"};
+  
+  if(simdata.compare_pml){
+    std::set<int> mats_near_wpbc;
+    TPZAutoPointer<TPZCompMesh> scatt_mesh_pml =
+      CreateScattMesh(gmesh,gmshmats,split_mats,mats_near_wpbc,simdata,true);
+    const std::string suffix = "pml";
+    const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
+    SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
+    //now we load back all the solutions into the src mesh
+    src_an.LoadAllSolutions();
+    if(simdata.export_vtk_scatt){
+      auto vtk = TPZVTKGenerator(scatt_mesh_pml, fvars_3d, scatt_file, simdata.vtk_res);
+      vtk.SetNThreads(simdata.n_threads);
+      vtk.Do();
+    }
+  }
+
+
+
+  std::set<int> mats_near_wpbc;
+  TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc =
+    CreateScattMesh(gmesh,gmshmats,split_mats,mats_near_wpbc,simdata,false);
 
   const std::string suffix = "wpbc";
   const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
@@ -745,11 +768,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   vtk.SetNThreads(simdata.n_threads);
   
   
-  src_an.LoadAllSolutions();
-  match_an.LoadAllSolutions();
-
-  
-
   //compute wgbc coefficients
   WpbcData src_data;
   src_data.cmesh = src_an.GetHCurlMesh();
@@ -1562,6 +1580,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   scatt_an.StructMatrix()->SetComputeRhs(false);
 
   std::cout<<"Assembling..."<<std::endl;
+  TPZSimpleTimer timer("WPBC:Assemble+solve",true);
   constexpr bool split_assemble{false};
   if(split_assemble){
     TPZSimpleTimer timer("Assemble",true);
@@ -1834,6 +1853,7 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
   //we will add the components of the solution one by one
   const int nsol = src_coeffs.size();
   bool first_assemble{true};
+  TPZSimpleTimer timer("PML:Assemble+solve",true);
   for(int isol = 0; isol < nsol; isol++){
     if(src_coeffs[isol]==(CSTATE)0){continue;}
     src_an.LoadSolution(isol);
