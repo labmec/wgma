@@ -210,7 +210,7 @@ SimData GetSimData()
 
 int main(int argc, char *argv[]) {
 
-  wgma::wganalysis::using_tbb_mat=true;
+  wgma::wganalysis::using_tbb_mat=false;
   wgma::scattering::using_tbb_mat=true;
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
@@ -871,7 +871,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
                            src_coeffs, nm_left,nm_right,
                            mats_near_wpbc,simdata);
-
+      /*
       //plot
       if(simdata.export_vtk_scatt){vtk.Do();}
       const auto error_left =
@@ -891,6 +891,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                  <<std::fixed<<error_left<<','
                  <<std::fixed<<error_right<<'\n';
       }
+      */
       //removing restrictions
       wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wpbc);
       scatt_mesh_wpbc->ComputeNodElCon();
@@ -1151,7 +1152,7 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
       RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
                            src_coeffs, nm_left,nm_right,
                            mats_near_wpbc,simdata);
-
+      /*
       //plot
       if(simdata.export_vtk_scatt){vtk.Do();}
 
@@ -1174,7 +1175,7 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
         errorinfo<<nm_left<<','<<nm_right<<','
                  <<std::fixed<<error<<'\n';
       }
-      
+      */
       //removing restrictions
       wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wpbc);
       scatt_mesh_wpbc->ComputeNodElCon();
@@ -1627,6 +1628,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     AddWaveguidePortContribution(scatt_an, indep_con_id_src,
                                  nmodes_src, src_data.wgbc_k, src_data.wgbc_f);
   }
+  return;
   
   
   if(simdata.direct_solver){
