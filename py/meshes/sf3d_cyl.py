@@ -52,7 +52,7 @@ def create_sf3d_mesh(
     # element sizes are different in cladding or core
     el_clad = (wl/nclad)/nel_l  # el size in cladding
     el_core = (wl/ncore)/nel_l  # el size in core
-
+    probe_dist = 0.5
     # pml width
     nlayerspml = ceil(d_pml_z/el_clad)
     # all cylinders in the mesh
@@ -122,7 +122,7 @@ def create_sf3d_mesh(
     probe_left = CircleData()
     probe_left.xc = 0
     probe_left.yc = 0
-    probe_left.zc = -l_domain/4
+    probe_left.zc = -l_domain/2+probe_dist
     probe_left.radius = r_box+d_pml_r
 
     create_circle(probe_left, el_clad)
@@ -133,7 +133,7 @@ def create_sf3d_mesh(
     probe_right = CircleData()
     probe_right.xc = 0
     probe_right.yc = 0
-    probe_right.zc = l_domain/4
+    probe_right.zc = l_domain/2-probe_dist
     probe_right.radius = r_box+d_pml_r
 
     create_circle(probe_right, el_clad)
@@ -267,7 +267,7 @@ def create_sf3d_mesh(
     # now we make the eval line periodic regarding the src left line
     affine = [1.0 if i == j else 0 for i in range(4) for j in range(4)]
     pos = {"dx": 3, "dy": 7, "dz": 11}
-    val = {"dx": 0, "dy": 0, "dz": l_domain/4}
+    val = {"dx": 0, "dy": 0, "dz": probe_dist}
     affine[pos["dx"]] = val["dx"]
     affine[pos["dy"]] = val["dy"]
     affine[pos["dz"]] = val["dz"]
@@ -277,7 +277,7 @@ def create_sf3d_mesh(
     gmsh.model.mesh.set_periodic(dim, dep_left, indep_left, affine)
 
     dim = 2
-    val["dz"] = -l_domain/4
+    val["dz"] = -probe_dist
     affine[pos["dz"]] = val["dz"]
     indep_right = src_right_domains
     dep_right = probe_right_domains
@@ -415,11 +415,11 @@ def create_sf3d_mesh(
     # this can be done since we know that the nodes will match
     # otherwise gmsh throws a weird error
     dim = 2
-    val["dz"] = l_domain/4
+    val["dz"] = probe_dist
     affine[pos["dz"]] = val["dz"]
     for dep, indep in zip(probe_left_pml, src_left_pml):
         gmsh.model.mesh.set_periodic(dim, [dep], [indep], affine)
-    val["dz"] = -l_domain/4
+    val["dz"] = -probe_dist
     affine[pos["dz"]] = val["dz"]
     for dep, indep in zip(probe_right_pml, src_right_pml):
         gmsh.model.mesh.set_periodic(dim, [dep], [indep], affine)
@@ -461,7 +461,7 @@ def create_sf3d_mesh(
 if __name__ == "__main__":
     nel = 8  # number of elements/wavelength
     r_left = 4  # core radius
-    r_right = 6  # core radius
+    r_right = 2  # core radius
     create_sf3d_mesh(
         r_left, r_right, "../../build/examples/meshes/sf3d_disc", nel)
     r_left = 6  # core radius
