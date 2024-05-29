@@ -44,15 +44,15 @@ data["alpha_pml_r"] = [np.sqrt(pml_r**2+pml_r**2), 0]
 pml_z = 1.0
 data["alpha_pml_z"] = [pml_z, 0]
 
-scriptname = "sf3d_nmodes.json"
-prefix = "res_sf3d_nmodes/sf3d"
+scriptname = "sf3d_pml_comp.json"
+prefix = "res_sf3d_pml_comp/sf3d"
 data["meshfile"] = "meshes/sf3d_disc.msh"
 data["cylfile"] = "meshes/sf3d_disc_cyldata.csv"
 data["check_mode_propagation"] = False
-data["compare_pml"] = False
+data["compare_pml"] = True
 data["direct_solver"] = False
 data["n_eigenpairs_left"] = 250
 data["n_eigenpairs_right"] = 250
-data["n_modes_left"] = [50, 200, 250]
-data["n_modes_right"] = [50, 200, 250]
+data["n_modes_left"] = [250]
+data["n_modes_right"] = [250]
 gen_script_and_run(data, scriptname, prefix)
