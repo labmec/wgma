@@ -1492,23 +1492,17 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
     //they are sequential
   }
 
-  //we add to vec
-  {
-    CSTATE *ptr_f = &fvec.g(pos_orig,0);
-    CSTATE *ptr_wgbc = wgbc_f.begin();
-    for(auto imode = 0; imode < nm; imode++){
-      *ptr_f++ += *ptr_wgbc++;
-    }
-  }
-  //now we add to matrix
-  for(auto imode = 0; imode < nm; imode++){
-    const auto ipos = pos_filt+imode;
-    for(auto jmode = 0; jmode < nm; jmode++){
-      const auto jpos = pos_filt+jmode;
-      const auto kval = mat->Get(ipos,jpos);
-      mat->Put(ipos,jpos,kval+wgbc_k.Get(imode,jmode));
-    }
-  }
+
+  TPZManVector<int64_t,600> src_index(nm,0), dest_index(nm,0);
+  std::iota(src_index.begin(),src_index.end(),0);
+  std::iota(dest_index.begin(),dest_index.end(),pos_orig);
+
+  
+  TPZFMatrix<CSTATE> dummy_rhs(nm,1,const_cast<CSTATE*>(wgbc_f.begin()),nm);
+  fvec.AddFel(dummy_rhs,src_index,dest_index);
+  
+  std::iota(dest_index.begin(),dest_index.end(),pos_filt);
+  mat->AddKel(const_cast<TPZFMatrix<CSTATE>&>(wgbc_k),src_index,dest_index);
 }
 
 void ComputeWpbcCoeffs(wgma::wganalysis::Wgma2D& an,
