@@ -41,6 +41,8 @@ It consists of a "shrinked" version on slab_disc.cpp.
 #include <TPZPardisoSolver.h>
 #include <TPZNullMaterial.h>
 #include <pzintel.h>
+#include <pzelementgroup.h>
+#include <pzvec_extras.h>
 #include <regex>                   // for regex_search, match_results<>::_Un...
 
 
@@ -370,6 +372,8 @@ UpdatePhysicalDataSplittedMats(TPZAutoPointer<TPZGeoMesh> &gmesh,
                                const std::set<int> &volids,
                                const int dim);
 
+void
+CreateElementGroups(TPZCompMesh *cmesh,const std::set<int>& mat_ids);
 
 void ComputeWpbcCoeffs(wgma::wganalysis::Wgma2D& an,
                        TPZFMatrix<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
@@ -1559,6 +1563,12 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   const int64_t indep_con_id_src =
     wgma::cmeshtools::RestrictDofs(scatt_mesh, src_mesh, nmodes_src, boundConnects);
 
+  constexpr bool group{true};
+  if(group){
+    //already calls expandsolution
+    CreateElementGroups(scatt_mesh.operator->(), mats_near_wpbc);
+  }
+  
   constexpr bool sym{false};
   //either we solve by iterative method or we send it to pardiso to order, so...
   constexpr bool optimize_bandwidth{false};
@@ -1612,6 +1622,20 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     }
     TPZSimpleTimer tassemble("Assemble",true);
     scatt_an.Assemble();
+  }
+
+  //for now we unwrap the groups as they seem to interfere with the solving stage
+  if(group){
+    const auto nel = scatt_mesh->ElementVec().NElements();
+    for(auto index = 0; index < nel; index++){
+      auto cel = scatt_mesh->ElementVec()[index];
+      auto group = dynamic_cast<TPZElementGroup*>(cel);
+      if(group){
+        //this call will delete the element groups
+        group->Unwrap();
+        scatt_mesh->ElementVec()[index] = nullptr;
+      }
+    }
   }
 
   {
@@ -1858,7 +1882,10 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
     wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
     if(first_assemble){
       first_assemble = false;
-      scatt_an.Assemble();
+      {
+        TPZSimpleTimer timer("Assemble",true);
+        scatt_an.Assemble();
+      }
       if(!simdata.direct_solver){
         SetupPrecond(scatt_an, {});
       }
@@ -2068,4 +2095,62 @@ std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &moda
     }
   }
   return matid_map;
+}
+
+/*group elements with id in mat_ids, forming patches*/
+void CreateElementGroups(TPZCompMesh *cmesh,const std::set<int> &mat_ids){
+
+  cmesh->LoadReferences();
+  auto gmesh = cmesh->Reference();
+  std::set<int64_t> already_grouped;
+  int ngroups{0};
+  int biggest_group{-1};
+  for(auto el : cmesh->ElementVec()){
+    auto grp = dynamic_cast<TPZElementGroup*>(el);
+    if(el && el->HasMaterial(mat_ids) && !grp){
+      const auto gel = el->Reference();
+      const auto matid = gel->MaterialId();
+      const auto first_edge = gel->NCornerNodes();
+      const auto last_edge = first_edge+gel->NSides(1);
+      //we dont use set to avoid dynamic mem alloc
+      //so we must remove duplicates afterwards
+      TPZManVector<TPZCompEl*,200> valid_neighs;
+      //every face neighbour is also an edge neighbour
+      for(auto edge = first_edge; edge < last_edge; edge++){
+        TPZGeoElSide gelside(gel,edge);
+        TPZGeoElSide neighside = gelside.Neighbour();
+        while(neighside!=gelside){
+          auto gel_neigh = neighside.Element();          
+          if(gel_neigh && gel_neigh->MaterialId() == matid){
+            auto neigh = gel_neigh->Reference();
+            if(neigh){
+              const auto n_index = neigh->Index();
+              if(already_grouped.find(n_index)==already_grouped.end()){
+                valid_neighs.push_back(neigh);
+              }
+            }
+          }
+          neighside=neighside.Neighbour();
+        }
+      }
+      //sort and remove duplicates
+      RemoveDuplicates(valid_neighs);
+      const auto nneighs = valid_neighs.size();
+      if(nneighs){
+        auto elgroup = new TPZElementGroup(*cmesh);
+        elgroup->AddElement(el);
+        already_grouped.insert(el->Index());
+        for(auto neigh : valid_neighs){
+          elgroup->AddElement(neigh);
+          already_grouped.insert(neigh->Index());
+        }
+        ngroups++;
+        biggest_group = biggest_group > nneighs+1 ? biggest_group : nneighs+1;
+      }
+    }
+  }
+  if(ngroups){
+    std::cout<<"Created "<<ngroups<<" groups, biggest one: "<<biggest_group<<std::endl;
+  }
+  cmesh->ExpandSolution();
 }
