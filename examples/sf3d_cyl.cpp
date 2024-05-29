@@ -306,7 +306,7 @@ int main(int argc, char *argv[]) {
     modal_r_an{nullptr};
   {
     modal_r_an =  ComputeModalAnalysis(gmesh,gmshmats,simdata,target_right,
-                                       nEigenpairs_left,sortingRule,
+                                       nEigenpairs_right,sortingRule,
                                        usingSLEPC,"src_right");
   }
 
