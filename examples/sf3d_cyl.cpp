@@ -390,9 +390,6 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
                   const TPZVec<CSTATE> &src_coeffs,
                   const SimData &simdata);
 
-void
-ReplaceMaterialsForProjection(TPZAutoPointer<TPZCompMesh> proj_mesh);
-
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WpbcData& src_data,
                           WpbcData& match_data,
@@ -814,7 +811,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     projected_modes = error_mesh->Solution();
     const int neq = error_mesh->Solution().Rows();
     error_mesh->Solution().Resize(neq, 1);
-    ReplaceMaterialsForProjection(error_mesh);
     if(simdata.export_vtk_error){
       const std::string error_file = simdata.prefix+"_error_"+name;
       vtk_error = new TPZVTKGenerator(error_mesh, fvars_2d, error_file, simdata.vtk_res);
@@ -998,7 +994,6 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
       error_mesh =
         wgma::wganalysis::CreateAtomicWgma2D(gmesh,is_h1,simdata.porder,volmats,pmlmats,
                                              modal_data.bcvec, modal_data.probevec);
-      ReplaceMaterialsForProjection(error_mesh);
     }
     //just to set size
     ref_sol = error_mesh->Solution();
@@ -1582,33 +1577,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
   std::cout<<"Assembling..."<<std::endl;
   TPZSimpleTimer timer("WPBC:Assemble+solve",true);
-  constexpr bool split_assemble{false};
-  if(split_assemble){
-    TPZSimpleTimer timer("Assemble",true);
-    
-    std::set<int> volids;
-    for(auto [id,mat] : scatt_mesh->MaterialVec()){
-      if(mats_near_wpbc.count(id)==0){
-        volids.insert(id);
-      }
-    }
-    scatt_an.StructMatrix()->SetMaterialIds(volids);
-    {
-      TPZSimpleTimer timer_1("interior");
-      scatt_an.Assemble();
-    }
-    //new struct matrix for the rest
-    TPZSimpleTimer timer_2("near wpbc");
-    TPZSpStructMatrix<CSTATE> strmtrx = TPZSpStructMatrix<CSTATE>(scatt_mesh);
-    strmtrx.SetNumThreads(simdata.n_threads);
-    strmtrx.SetMaterialIds(mats_near_wpbc);
-    strmtrx.EquationFilter() = scatt_an.StructMatrix()->EquationFilter();
-    strmtrx.SetComputeRhs(false);
-    //it wont be resized or anything.
-    TPZFMatrix<CSTATE> dummyRhs;
-    strmtrx.Assemble(*scatt_an.GetSolver().Matrix(), dummyRhs);
-  }
-  else{
+  {
     std::set<int> mat_ids;
     for(auto [id,mat]: scatt_mesh->MaterialVec()){
       auto nullmat = dynamic_cast<TPZNullMaterial<CSTATE>*>(mat);
@@ -1660,34 +1629,6 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 }
 
 void
-ReplaceMaterialsForProjection(TPZAutoPointer<TPZCompMesh> proj_mesh)
-{
-  //replace all materials for L2 projection
-  TPZMaterialT<CSTATE> *last_mat{nullptr};
-  for(auto [id,mat] : proj_mesh->MaterialVec()){
-    auto bnd = dynamic_cast<TPZBndCond*>(mat);
-    if(!bnd){
-      constexpr int dim{2};
-      constexpr int soldim{3};
-      auto newmat = new wgma::materials::SolutionProjection<CSTATE>(id,dim,soldim);
-      delete mat;
-      proj_mesh->MaterialVec()[id]=newmat;
-      last_mat = newmat;
-    }
-  }
-  for(auto [id,mat] : proj_mesh->MaterialVec()){
-    auto bnd = dynamic_cast<TPZBndCond*>(mat);
-    if(bnd){
-      TPZFMatrix<CSTATE> v1;
-      TPZVec<CSTATE> v2;
-      auto newmat = last_mat->CreateBC(last_mat,id,0,v1,v2);
-      delete bnd;
-      proj_mesh->MaterialVec()[id]=dynamic_cast<TPZMaterial*>(newmat);
-    }
-  }
-}
-
-void
 TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
                                       TPZAutoPointer<TPZCompMesh> src_mesh,
                                       const std::map<int64_t,int64_t>& periodic_els)
@@ -1703,7 +1644,7 @@ TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
   //gmesh will point to src_mesh
   src_mesh->LoadReferences();
 
-  auto elvec = dest_mesh->ElementVec();
+  const auto &elvec = dest_mesh->ElementVec();
   const int nel = elvec.NElements();
   
   pzutils::ParallelFor(0,nel,[&gmesh, &dest_mesh, &src_mesh, &elvec,
@@ -1864,6 +1805,7 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
   {
     const int neq = sol.Rows();
     sol.Resize(neq,1);
+    sol.Zero();
   }
   //we will add the components of the solution one by one
   const int nsol = src_coeffs.size();
@@ -1876,21 +1818,39 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
     wgma::scattering::LoadSource2D(scatt_cmesh, src, src_coeffs[isol]);
     wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
     if(first_assemble){
-      first_assemble = false;
       {
         TPZSimpleTimer timer("Assemble",true);
         scatt_an.Assemble();
       }
-      if(!simdata.direct_solver){
+      if(simdata.direct_solver){
+        auto *pardiso = scatt_an.GetSolver().GetPardisoControl();
+        const auto sp = sym ? SymProp::Sym : SymProp::NonSym;
+        pardiso->SetMatrixType(sp, TPZPardisoSolver<CSTATE>::MProperty::EIndefinite);
+        pardiso->SetMessageLevel(1);
+        auto param = pardiso->GetParam();
+        param[3] = 81;//tol 10^-8, CGS replaces LU
+        param[4] = 2;
+        param[9] = 15;
+        pardiso->SetParam(param);
+      }
+      else{
         SetupPrecond(scatt_an, {});
       }
     }else{
       scatt_an.AssembleRhs(src.id);
     }
     scatt_an.Solve();
+    if(first_assemble && simdata.direct_solver){
+      auto *pardiso = scatt_an.GetSolver().GetPardisoControl();
+      pardiso->SetMessageLevel(0);
+      auto param = pardiso->GetParam();
+      const auto peak_mem = param[14];
+      std::cout<<"Pardiso used "<<peak_mem<<"kB during factorization stage"<<std::endl;
+    }
     scatt_an.LoadSolution();
     TPZFMatrix<CSTATE> &curr_sol = scatt_cmesh->Solution();
     sol+=curr_sol;
+    first_assemble = false;
   }
   scatt_an.LoadSolution(sol);
 }
@@ -1904,7 +1864,7 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
 
   TPZAutoPointer<TPZMatrixSolver<CSTATE>> precond;
   {
-    const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
+    const auto &eqfilt = scatt_an.StructMatrix()->EquationFilter();
     auto scatt_cmesh = scatt_an.GetMesh();
     //we must filter out the dirichlet BCs
     std::set<int> bnd_ids;
@@ -2102,48 +2062,49 @@ void CreateElementGroups(TPZCompMesh *cmesh,const std::set<int> &mat_ids){
   int biggest_group{-1};
   for(auto el : cmesh->ElementVec()){
     auto grp = dynamic_cast<TPZElementGroup*>(el);
-    if(el && el->HasMaterial(mat_ids) && !grp){
-      const auto gel = el->Reference();
-      const auto matid = gel->MaterialId();
-      const auto first_edge = gel->NCornerNodes();
-      const auto last_edge = first_edge+gel->NSides(1);
-      //we dont use set to avoid dynamic mem alloc
-      //so we must remove duplicates afterwards
-      TPZManVector<TPZCompEl*,200> valid_neighs;
-      //every face neighbour is also an edge neighbour
-      for(auto edge = first_edge; edge < last_edge; edge++){
-        TPZGeoElSide gelside(gel,edge);
-        TPZGeoElSide neighside = gelside.Neighbour();
-        while(neighside!=gelside){
-          auto gel_neigh = neighside.Element();          
-          if(gel_neigh && gel_neigh->MaterialId() == matid){
-            auto neigh = gel_neigh->Reference();
-            if(neigh){
-              const auto n_index = neigh->Index();
-              if(already_grouped.find(n_index)==already_grouped.end()){
-                valid_neighs.push_back(neigh);
-              }
+    if(!el || !el->HasMaterial(mat_ids) || grp){continue;}
+    const auto gel = el->Reference();
+    const auto matid = gel->MaterialId();
+    const auto first_edge = gel->NCornerNodes();
+    const auto last_edge = first_edge+gel->NSides(1);
+    //we dont use set to avoid dynamic mem alloc
+    //so we must remove duplicates afterwards
+    TPZManVector<TPZCompEl*,200> group_candidate;
+    //every face neighbour is also an edge neighbour
+    for(auto edge = first_edge; edge < last_edge; edge++){
+      TPZGeoElSide gelside(gel,edge);
+      TPZGeoElSide neighside = gelside.Neighbour();
+      while(neighside!=gelside){
+        auto gel_neigh = neighside.Element();          
+        if(gel_neigh && gel_neigh->MaterialId() == matid){
+          auto neigh = gel_neigh->Reference();
+          if(neigh && neigh->Mesh() == cmesh){
+            const auto n_index = neigh->Index();
+            if(already_grouped.find(n_index)==already_grouped.end()){
+              group_candidate.push_back(neigh);
             }
           }
-          neighside=neighside.Neighbour();
         }
+        neighside=neighside.Neighbour();
       }
-      //sort and remove duplicates
-      RemoveDuplicates(valid_neighs);
-      const auto nneighs = valid_neighs.size();
-      if(nneighs){
-        auto elgroup = new TPZElementGroup(*cmesh);
-        elgroup->AddElement(el);
-        already_grouped.insert(el->Index());
-        for(auto neigh : valid_neighs){
-          elgroup->AddElement(neigh);
-          already_grouped.insert(neigh->Index());
-        }
-        ngroups++;
-        biggest_group = biggest_group > nneighs+1 ? biggest_group : nneighs+1;
+    }
+    group_candidate.push_back(el);
+    //sort and remove duplicates
+    RemoveDuplicates(group_candidate);
+    const auto nel_in_group = group_candidate.size();
+    if(nel_in_group>1){
+      auto elgroup = new TPZElementGroup(*cmesh);
+      for(auto elg : group_candidate){
+        elgroup->AddElement(elg);
+        already_grouped.insert(elg->Index());
+      }
+      ngroups++;
+      if(biggest_group < nel_in_group ){
+        biggest_group = nel_in_group;
       }
     }
   }
+  
   if(ngroups){
     std::cout<<"Created "<<ngroups<<" groups, biggest one: "<<biggest_group<<std::endl;
   }
