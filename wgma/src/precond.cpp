@@ -1,6 +1,8 @@
 #include "precond.hpp"
 #include <TPZSimpleTimer.h>
 #include <pzcmesh.h>
+#include <pzintel.h>
+#include <pzcondensedcompel.h>
 #include <TPZEquationFilter.h>
 #include <tpznodesetcompute.h>
 #include <TPZParallelUtils.h>
@@ -51,7 +53,6 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
     //we will set to 1 all edge connects
     TPZVec<int64_t> allcons(nindep,0);
     
-    std::set<std::pair<int64_t,int64_t>> edgeset;
     for(auto cel : cmesh->ElementVec()){
       if(!cel){continue;}
       TPZGeoEl* el = cel->Reference();
@@ -75,7 +76,21 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
             neigh++;
           }
           if(bcedge){ continue;}
-          const auto &edgecon = el->Reference()->Connect(ie);
+          TPZInterpolatedElement *intel{nullptr};
+          
+          intel = dynamic_cast<TPZInterpolatedElement*>(cel);
+          if(!intel){
+            //maybe a condensed el?
+            auto condel = dynamic_cast<TPZCondensedCompEl*>(cel);
+            if(!condel){
+              DebugStop();
+            }
+            intel = dynamic_cast<TPZInterpolatedElement*>(condel->ReferenceCompEl());
+            if(!intel){
+              DebugStop();
+            }
+          }
+          const auto &edgecon = intel->MidSideConnect(fe+ie);
           if( edgecon.IsCondensed() || edgecon.LagrangeMultiplier()
               || edgecon.HasDependency()){continue;}
           const auto seqnum = edgecon.SequenceNumber();
@@ -116,7 +131,6 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
       if(!cel){return;}
       TPZGeoEl* el = cel->Reference();
       if(el && el->Dimension() == dim){
-        const int ne = el->NSides(1);
         const int nf = el->NSides(2);
         const int ff = el->FirstSide(2);
         for(auto itf = 0; itf < nf; itf++){
@@ -124,7 +138,21 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
           TPZGeoElSide gelside(el,face);
           auto neigh = gelside.Neighbour();
           bool bcface{false};
-          const auto &facecon = el->Reference()->Connect(itf+ne);
+          TPZInterpolatedElement *intel{nullptr};
+          
+          intel = dynamic_cast<TPZInterpolatedElement*>(cel);
+          if(!intel){
+            //maybe a condensed el?
+            auto condel = dynamic_cast<TPZCondensedCompEl*>(cel);
+            if(!condel){
+              DebugStop();
+            }
+            intel = dynamic_cast<TPZInterpolatedElement*>(condel->ReferenceCompEl());
+            if(!intel){
+              DebugStop();
+            }
+          }
+          const auto &facecon = intel->MidSideConnect(ff+itf);
           if(facecon.IsCondensed() || facecon.LagrangeMultiplier()
              || facecon.HasDependency()){continue;}
           const auto seqnum = facecon.SequenceNumber();
