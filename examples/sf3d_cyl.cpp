@@ -2081,7 +2081,9 @@ void CreateElementGroups(TPZCompMesh *cmesh,const std::set<int> &mat_ids){
           if(neigh && neigh->Mesh() == cmesh){
             const auto n_index = neigh->Index();
             if(already_grouped.find(n_index)==already_grouped.end()){
-              group_candidate.push_back(neigh);
+              //maybe we are dealing with condensed elements?
+              auto real_neigh = cmesh->ElementVec()[n_index];
+              group_candidate.push_back(real_neigh);
             }
           }
         }
