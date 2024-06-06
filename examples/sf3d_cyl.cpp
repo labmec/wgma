@@ -135,7 +135,7 @@ ComputeModalAnalysis(
   const TPZVec<std::map<std::string, int>> &gmshmats,
   const SimData& simdata,
   const CSTATE target,
-  const int nEigenpairs,
+  int &nEigenpairs,
   const TPZEigenSort sortingRule,
   bool usingSLEPC,
   const std::string &name);
@@ -244,8 +244,6 @@ int main(int argc, char *argv[]) {
   // how to sort eigenvalues
   constexpr TPZEigenSort sortingRule {TPZEigenSort::UserDefined};
   constexpr bool usingSLEPC {true};
-  const int nEigenpairs_left = simdata.n_eigenpairs_left;
-  const int nEigenpairs_right = simdata.n_eigenpairs_right;
 
   const CSTATE target_left{-1.0001*simdata.ncore*simdata.ncore};
   const CSTATE target_right{-1.0001*simdata.ncore*simdata.ncore};
@@ -299,7 +297,7 @@ int main(int argc, char *argv[]) {
     modal_l_an{nullptr};
   {
     modal_l_an =  ComputeModalAnalysis(gmesh,gmshmats,simdata,target_left,
-                                       nEigenpairs_left,sortingRule,
+                                       simdata.n_eigenpairs_left,sortingRule,
                                        usingSLEPC,"src_left");
   }
 
@@ -308,7 +306,7 @@ int main(int argc, char *argv[]) {
     modal_r_an{nullptr};
   {
     modal_r_an =  ComputeModalAnalysis(gmesh,gmshmats,simdata,target_right,
-                                       nEigenpairs_right,sortingRule,
+                                       simdata.n_eigenpairs_right,sortingRule,
                                        usingSLEPC,"src_right");
   }
 
@@ -514,7 +512,7 @@ ComputeModalAnalysis(
   const TPZVec<std::map<std::string, int>> &gmshmats,
   const SimData& simdata,
   const CSTATE target,
-  const int nEigenpairs,
+  int &nEigenpairs,
   const TPZEigenSort sortingRule,
   bool usingSLEPC,
   const std::string &name)
@@ -563,6 +561,8 @@ ComputeModalAnalysis(
     an->LoadAllSolutions();
 
     TPZVec<CSTATE> betavec = an->GetEigenvalues();
+    nEigenpairs = betavec.size();
+    std::cout<<nEigenpairs<<" eigenpairs have converged"<<std::endl;
     for(auto &b : betavec){b = sqrt(-b);}
     if(simdata.export_csv_modes){
       std::ostringstream eigeninfo;
