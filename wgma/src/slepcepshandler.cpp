@@ -162,11 +162,14 @@ namespace wgma::slepc{
                              PetscScalar *&aa) ->int{
       const int nRows = pzmat.Rows();
       const int nCols = pzmat.Cols();
+      PetscErrorCode ierr;
+#ifdef WGMA_PETSC_64BIT
+      pzmat.GetData(ia,ja,aa);
+#else
       TPZVec<int64_t> I, J;
       TPZVec<TVar> A;
       pzmat.GetData(I,J,A);
       
-      PetscErrorCode ierr;
       ierr = PetscMalloc1(I.size(),&ia);CHKERRQ(ierr);
       ierr = PetscMalloc1(J.size(),&ja);CHKERRQ(ierr);
       ierr = PetscMalloc1(J.size(),&aa);CHKERRQ(ierr);
@@ -178,6 +181,7 @@ namespace wgma::slepc{
         ja[j]=J[j];
         aa[j]=A[j];
       }
+#endif
       ierr = MatCreateSeqAIJWithArrays(MPI_COMM_WORLD,nRows,nCols,ia,ja,
                                        aa,&mat);
       CHKERRQ(ierr);
@@ -223,11 +227,13 @@ namespace wgma::slepc{
 
       const STATE pc_zero = fPcZero > 0 ? fPcZero : PETSC_DECIDE;
       ierr = PCFactorSetZeroPivot(pc,pc_zero);
-#ifdef PETSC_HAVE_MUMPS
       if(!strcmp(pc_type,"lu")||!strcmp(pc_type,"cholesky")){
+#ifdef PETSC_HAVE_MKL_PARDISO
+        ierr = PCFactorSetMatSolverType(pc,MATSOLVERMKL_PARDISO);
+#elif defined(PETSC_HAVE_MUMPS)
         ierr = PCFactorSetMatSolverType(pc,MATSOLVERMUMPS);
-      }
 #endif
+      }
       CHKERRQ(ierr);
       //KSP settings
     
@@ -377,17 +383,17 @@ namespace wgma::slepc{
       ::KSP ksp;
       ::ST st;
       ierr = EPSGetIterationNumber(eps, &its);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD," Number of iterations of the method: %d\n",its);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD," Number of iterations of the method: %ld\n",its);CHKERRQ(ierr);
       ierr = EPSGetST(eps,&st);CHKERRQ(ierr);
       ierr = STGetKSP(st,&ksp);CHKERRQ(ierr);
       ierr = KSPGetTotalIterations(ksp, &lits);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD," Number of linear iterations of the method: %d\n",lits);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD," Number of linear iterations of the method: %ld\n",lits);CHKERRQ(ierr);
       ierr = EPSGetType(eps, &type);CHKERRQ(ierr);
       ierr = PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n\n",type);CHKERRQ(ierr);
       ierr = EPSGetDimensions(eps,&nev,NULL,NULL);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD, " Number of requested eigenvalues: %d\n", nev);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD, " Number of requested eigenvalues: %ld\n", nev);CHKERRQ(ierr);
       ierr = EPSGetTolerances(eps,&tol,&maxit);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD," Stopping condition: tol=%.4g, maxit=%d\n",(double)tol,maxit);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD," Stopping condition: tol=%.4g, maxit=%ld\n",(double)tol,maxit);CHKERRQ(ierr);
     }
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
        Display solution and clean up
@@ -495,13 +501,15 @@ namespace wgma::slepc{
     MatDestroy(&petscA);
     MatDestroy(&petscB);
 
-
+#ifndef WGMA_PETSC_64BIT
+    //otherwise we havent copied the matrices
     if(iaP) PetscFree(iaP);
     if(jaP) PetscFree(jaP);
     if(aaP) PetscFree(aaP);
     if(ibP) PetscFree(ibP);
     if(jbP) PetscFree(jbP);
     if(abP) PetscFree(abP);
+#endif
     if(nInitVec){
       for(int i = 0; i < nInitVec; i++){
         VecDestroy(&initVecArray[i]);
