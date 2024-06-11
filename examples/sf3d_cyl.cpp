@@ -620,6 +620,7 @@ ComputeModalAnalysis(
   
   if(simdata.export_vtk_modes){
     PostProcessModes(*an, modalfile, simdata.vtk_res,simdata.n_threads);
+    an->LoadAllSolutions();
   }
   
   return an;
