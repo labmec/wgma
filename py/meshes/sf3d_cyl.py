@@ -46,7 +46,7 @@ def create_sf3d_mesh(
     ncore = 1.4457
     # distance from center to end of cladding region(inner box)
     r_box = max(r_core_left, r_core_right) + 4.5 * wl/nclad
-    l_domain = 2.0*wl
+    l_domain = 1.0*wl
     d_pml_r = 1.75*wl/nclad  # pml width
     d_pml_z = 1*wl/nclad  # pml width
     # element sizes are different in cladding or core
@@ -459,7 +459,7 @@ def create_sf3d_mesh(
 
 
 if __name__ == "__main__":
-    nel = 8  # number of elements/wavelength
+    nel = 6  # number of elements/wavelength
     r_left = 4  # core radius
     r_right = 2  # core radius
     create_sf3d_mesh(
