@@ -33,7 +33,7 @@ data = {
     "vtk_res": 0
 }
 
-wavelength = 8.0
+wavelength = 4.0
 data["wavelength"] = wavelength
 data["ncore"] = 1.4457
 data["nclad"] = 1.4378

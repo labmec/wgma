@@ -33,7 +33,7 @@ data = {
     "vtk_res": 0
 }
 
-wavelength = 8.0
+wavelength = 4.0
 data["wavelength"] = wavelength
 data["ncore"] = 1.4457
 data["nclad"] = 1.4378
@@ -51,8 +51,8 @@ data["cylfile"] = "meshes/sf3d_disc_cyldata.csv"
 data["check_mode_propagation"] = False
 data["compare_pml"] = False
 data["direct_solver"] = False
-data["n_eigenpairs_left"] = 250
-data["n_eigenpairs_right"] = 250
-data["n_modes_left"] = [50, 200, 250]
-data["n_modes_right"] = [50, 200, 250]
+data["n_eigenpairs_left"] = 450
+data["n_eigenpairs_right"] = 450
+data["n_modes_left"] = [50, 200, 250, 400]
+data["n_modes_right"] = [50, 200, 250, 400]
 gen_script_and_run(data, scriptname, prefix)
