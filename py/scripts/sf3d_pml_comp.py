@@ -21,8 +21,8 @@ def gen_script_and_run(data, scriptname, prefix):
 data = {
     "porder": 2,
     "vtk_res": 0,
-    "export_csv_modes": False,
-    "export_csv_error": True,
+    "export_csv_modes": True,
+    "export_csv_error": False,
     "export_vtk_modes": False,
     "export_vtk_scatt": True,
     "export_vtk_error": True,
@@ -33,7 +33,7 @@ data = {
     "vtk_res": 0
 }
 
-wavelength = 4.0
+wavelength = 3.5
 data["wavelength"] = wavelength
 data["ncore"] = 1.4457
 data["nclad"] = 1.4378
@@ -51,8 +51,8 @@ data["cylfile"] = "meshes/sf3d_disc_cyldata.csv"
 data["check_mode_propagation"] = False
 data["compare_pml"] = True
 data["direct_solver"] = False
-data["n_eigenpairs_left"] = 250
-data["n_eigenpairs_right"] = 250
-data["n_modes_left"] = [250]
-data["n_modes_right"] = [250]
+data["n_eigenpairs_left"] = 750
+data["n_eigenpairs_right"] = 750
+data["n_modes_right"] = [700]
+data["n_modes_left"] = [700]
 gen_script_and_run(data, scriptname, prefix)

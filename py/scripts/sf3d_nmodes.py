@@ -24,16 +24,16 @@ data = {
     "export_csv_modes": False,
     "export_csv_error": True,
     "export_vtk_modes": False,
-    "export_vtk_scatt": True,
-    "export_vtk_error": True,
-    "export_coupling_mat": True,
+    "export_vtk_scatt": False,
+    "export_vtk_error": False,
+    "export_coupling_mat": False,
     "print_gmesh": False,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
     "vtk_res": 0
 }
 
-wavelength = 4.0
+wavelength = 3.5
 data["wavelength"] = wavelength
 data["ncore"] = 1.4457
 data["nclad"] = 1.4378
@@ -51,8 +51,8 @@ data["cylfile"] = "meshes/sf3d_disc_cyldata.csv"
 data["check_mode_propagation"] = False
 data["compare_pml"] = False
 data["direct_solver"] = False
-data["n_eigenpairs_left"] = 450
-data["n_eigenpairs_right"] = 450
-data["n_modes_left"] = [50, 200, 250, 400]
-data["n_modes_right"] = [50, 200, 250, 400]
+data["n_eigenpairs_left"] = 750
+data["n_eigenpairs_right"] = 750
+data["n_modes_left"] = [50, 200, 400, 700]
+data["n_modes_right"] = [50, 200, 400, 700]
 gen_script_and_run(data, scriptname, prefix)

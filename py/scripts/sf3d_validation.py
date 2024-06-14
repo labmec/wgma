@@ -26,14 +26,14 @@ data = {
     "export_vtk_modes": False,
     "export_vtk_scatt": True,
     "export_vtk_error": True,
-    "export_coupling_mat": True,
+    "export_coupling_mat": False,
     "print_gmesh": False,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
     "vtk_res": 0
 }
 
-wavelength = 4.0
+wavelength = 3.5
 data["wavelength"] = wavelength
 data["ncore"] = 1.4457
 data["nclad"] = 1.4378
@@ -53,6 +53,6 @@ data["compare_pml"] = False
 data["direct_solver"] = False
 data["n_eigenpairs_left"] = 10
 data["n_eigenpairs_right"] = 10
-data["n_modes_left"] = [3]
-data["n_modes_right"] = [3]
+data["n_modes_left"] = [2]
+data["n_modes_right"] = [2]
 gen_script_and_run(data, scriptname, prefix)
