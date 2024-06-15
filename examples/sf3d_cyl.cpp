@@ -585,6 +585,11 @@ ComputeModalAnalysis(
       std::cout<<"orthogonalised  "<<n_ortho<<" eigenvectors"<<std::endl;
     }
 
+    if(simdata.export_vtk_modes){
+      PostProcessModes(*an, modalfile, simdata.vtk_res,simdata.n_threads);
+      an->LoadAllSolutions();
+    }
+    
     if(simdata.couplingmat){
 
       
@@ -615,11 +620,6 @@ ComputeModalAnalysis(
     TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
     //we update analysis object
     an->SetEigenvectors(mesh_sol);
-    an->LoadAllSolutions();
-  }
-  
-  if(simdata.export_vtk_modes){
-    PostProcessModes(*an, modalfile, simdata.vtk_res,simdata.n_threads);
     an->LoadAllSolutions();
   }
   
