@@ -1245,18 +1245,18 @@ void TransformModes(wgma::wganalysis::Wgma2D& an)
     const int nrow = hcurl_sol.Rows();
     for(int isol = 0; isol < nsol; isol++){
       const auto beta = betavec[isol];
+      CSTATE *sol_ptr = &hcurl_sol.g(0,isol);
       for(int irow = 0; irow < nrow; irow++){
-        const auto val = hcurl_sol.Get(irow,isol);
-        hcurl_sol.Put(irow,isol,val/beta);
+        *sol_ptr++ /=beta;
       }
     }
   }
   {
     const int nrow = h1_sol.Rows();
     for(int isol = 0; isol < nsol; isol++){
+      CSTATE *sol_ptr = &h1_sol.g(0,isol);
       for(int irow = 0; irow < nrow; irow++){
-        const auto val = h1_sol.Get(irow,isol);
-        h1_sol.Put(irow,isol,1i*val);
+        *sol_ptr++ *= 1i;
       }
     }
   }
