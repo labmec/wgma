@@ -36,14 +36,7 @@ namespace wgma::post{
   template<class TSPACE>
   void WaveguideCoupling<TSPACE>::ComputeCoupling(){
     const int size_res = std::max(this->NThreads(),1);
-    const int ncols = this->Mesh()->Solution().Cols();
-    //if we deal with the adjoint problem as well, we have 2n solutions
-    const int nsol = m_adj ? ncols/2 : ncols;
-    if constexpr (std::is_same_v<TSPACE,MultiphysicsIntegrator>){
-      if(m_beta.size() != 0 && m_beta.size() != nsol){
-        DebugStop();
-      }
-    }
+    const int nsol = this->Mesh()->Solution().Cols();
     m_kii.Redim(nsol,nsol);
 
     m_k_scratch.Resize(size_res);
@@ -70,8 +63,7 @@ namespace wgma::post{
     auto wgdata = dynamic_cast<WgCouplData*>(&data);
     if(!wgdata){DebugStop();}
     wgdata->m_elindex = el->Index();
-    const auto ncol = el->Mesh()->Solution().Cols();
-    const auto nsol = m_adj ? ncol/2 : ncol;
+    const auto nsol = el->Mesh()->Solution().Cols();
     if(m_print_mats){wgdata->m_elmat.Resize(nsol,nsol);}
   }
 
@@ -95,12 +87,15 @@ namespace wgma::post{
       const TPZMaterialDataT<CSTATE> &data = eldata;
 
       auto mat = dynamic_cast<const TPZScalarField*>(eldata.GetMaterial());
-      TPZFNMatrix<9,CSTATE> ur;
-      mat->GetPermeability(data.x, ur);
-      ur.Decompose(ELU);
+      TPZFNMatrix<9,CSTATE> constitutive_mat;
+      if(m_te){
+        mat->GetPermeability(data.x, constitutive_mat);
+      }else{
+        mat->GetPermittivity(data.x, constitutive_mat);
+      }
+      constitutive_mat.Decompose(ELU);
 
-      const int solsize = data.sol.size();
-      const auto nsol = m_adj ? solsize/2 : solsize;
+      const int nsol = data.sol.size();
       const auto detjac = data.detjac;
       const CSTATE cte = weight*fabs(detjac);
 
@@ -112,15 +107,10 @@ namespace wgma::post{
       }
       TPZFNMatrix<3000,CSTATE> tmp;
       tmp = et;
-      ur.Substitution(&tmp);
-      if(m_adj){
-        for(auto isol = 0; isol < nsol; isol++){
-          const auto &et_ref = data.sol[nsol+isol];
-          et.Put(1,isol,std::conj(et_ref[0]));
-        }
-      }
-      tmp *= cte;
-      this->m_k_scratch[index].AddContribution(0, 0, et, true, tmp, false);
+      constitutive_mat.Substitution(&tmp);
+      //whether to conjugate or only tanspose
+      const int transp = m_conj ? 2 : 1;
+      this->m_k_scratch[index].AddContribution(0, 0, et, transp, tmp, false,cte);
     }else{
       //we expect a TPZWgma material
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
@@ -134,9 +124,7 @@ namespace wgma::post{
       mat->GetPermittivity(datavec[0].x, er);
 #endif
 
-      const int solsize = datavec[0].sol.size();
-      const auto nsol = m_adj ? solsize/2 : solsize;
-      const int firstj = m_adj ? nsol : 0;
+      const int nsol = datavec[0].sol.size();
       const auto &axes = datavec[0].axes;
       const auto detjac = datavec[0].detjac;
       const CSTATE cte = weight*fabs(detjac);

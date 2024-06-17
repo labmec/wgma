@@ -37,8 +37,6 @@ namespace wgma::post{
                       TPZVec<TPZCompEl*> elvec,
                       bool conj=false, int nThreads = 4) :
       TSPACE(mesh,elvec,nThreads), m_conj(conj) {}
-    //! Computes coupling between original and adjoint problem
-    void SetAdjoint(bool m){m_adj = m;}
     //! Whether constitutive param is used as inner product weight
     void SetMu(bool mu){m_use_mu=mu;}
     //! Computes coupling of all modes in mesh
@@ -52,14 +50,14 @@ namespace wgma::post{
     void InitData(TPZCompEl *el, ElData &data) override;
     //! Exports element matrix
     void PostProcessData(ElData& data) override;
-    //! Sets beta values (needed for 2d cross sections)
-    void SetBeta(const TPZVec<CSTATE> &beta){m_beta = beta;}
-    //! Gets beta values (needed for 2d cross sections)
-    void GetBeta(TPZVec<CSTATE> &beta) const {beta = m_beta;}
     //! Use this for printing element matrices
     void SetPrintMats(bool print){m_print_mats=print;}
     //! Prefix for file name for element matrices(normally output directory)
     void SetFilePrefix(const std::string &name){m_prefix=name;}
+    //! Sets TE/TM
+    void SetTE(bool te){m_te = te;}
+    //! Gets TE/TM
+    [[nodiscard]] bool GetTE() const{return m_te;}
   protected:
     //! Computes contribution at an integration point
     void Compute(const ElData &data, REAL weight, int thread) override;
@@ -67,16 +65,14 @@ namespace wgma::post{
     TPZVec<TPZFMatrix<CSTATE>> m_k_scratch;
     //! Coupling results (coupling between i and j modes)
     TPZFMatrix<CSTATE> m_kii;
-    //! Propagation constant beta (needed for 2D modal analysis)
-    TPZVec<CSTATE> m_beta;
-    //! Whether we are comparing solutions of one problem or problem + adjoint
-    bool m_adj{false};
     //! Whether to compute the conjugate cross product
     bool m_conj{true};
     //! Whether to weight the inner product by constitutive param
     bool m_use_mu{true};
     //! Whether to print element matrices (for debugging)
     bool m_print_mats{false};
+    //! Whether solving TE/TM case in 1D
+    bool m_te{true};
     //! Prefix for element matrices files
     std::string m_prefix{""};
   };
