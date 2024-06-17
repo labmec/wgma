@@ -1213,14 +1213,6 @@ void ComputeCouplingMat(wgma::wganalysis::Wgma2D &an,
                                                        nthreads
                                                        );
   integrator.SetNThreads(nthreads);
-  auto &an_beta = an.GetEigenvalues();
-  const int nsol = an_beta.size();
-  TPZVec<CSTATE> betavec(nsol,0);
-  for(int i = 0; i < nsol; i++){
-    betavec[i] = sqrt(-an_beta[i]);
-  }
-  integrator.SetBeta(betavec);
-  
   integrator.ComputeCoupling();
   TPZFMatrix<CSTATE> couplingmat;
   integrator.GetCoupling(couplingmat);
