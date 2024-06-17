@@ -100,6 +100,7 @@ target_link_libraries(acoustic_pcf2 PUBLIC wgma)
 
 
 file(GLOB meta_surf_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "../py/scripts/meta_surf*json")
+list(APPEND meta_surf_files ../py/scripts/meta_surf_1d.py)
 list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_freq_sweep.py)
 list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_indices.py)
 set(meta_surf_data ../py/scripts/data/AZ.dat ../py/scripts/data/Cu1.dat)
