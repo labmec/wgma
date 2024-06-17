@@ -214,6 +214,7 @@ void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
   auto gmesh = cmesh->Reference();
   gmesh->ResetReference();
   cmesh->LoadReferences();
+  const bool complex_mesh = cmesh->GetSolType() == ESolType::EComplex;
   //let us copy the connects
   for(auto [dep, indep] : periodic_els){
     //geometric elements
@@ -257,10 +258,17 @@ void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
       if(ndof==0) {continue;}
       constexpr int64_t ipos{0};
       constexpr int64_t jpos{0};
-      
-      TPZFMatrix<REAL> mat(ndof,ndof);
-      mat.Identity();
-      dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
+
+
+      if(complex_mesh){
+        TPZFNMatrix<400,CSTATE> mat(ndof,ndof);
+        mat.Identity();
+        dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
+      }else{
+        TPZFNMatrix<400,STATE> mat(ndof,ndof);
+        mat.Identity();
+        dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
+      }
     } 
   }
   cmesh->CleanUpUnconnectedNodes();
