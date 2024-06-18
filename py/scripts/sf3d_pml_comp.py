@@ -51,8 +51,8 @@ data["cylfile"] = "meshes/sf3d_disc_cyldata.csv"
 data["check_mode_propagation"] = False
 data["compare_pml"] = True
 data["direct_solver"] = False
-data["n_eigenpairs_left"] = 750
+data["n_eigenpairs_left"] = 50
 data["n_eigenpairs_right"] = 750
 data["n_modes_right"] = [700]
-data["n_modes_left"] = [700]
+data["n_modes_left"] = [50]
 gen_script_and_run(data, scriptname, prefix)

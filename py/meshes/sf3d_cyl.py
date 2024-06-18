@@ -455,8 +455,8 @@ def create_sf3d_mesh(
 
 
 if __name__ == "__main__":
-    wl = 3  # wavelength (in microns)
-    nel = 4  # number of elements/wavelength
+    wl = 3.5  # wavelength (in microns)
+    nel = 5  # number of elements/wavelength
     # refractive indices
     nclad = 1.4378
     ncore = 1.4457
