@@ -12,6 +12,7 @@
 
 
 #include <regex>//for string search
+#include <numeric>
 
 using namespace wgma;
 
@@ -194,6 +195,7 @@ cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh>& cmesh,
       const auto condensed = con.IsCondensed();
       const auto hasdep = con.HasDependency();
       const auto seqnum = con.SequenceNumber();
+      if(seqnum < 0){continue;}
       const auto pos = cmesh->Block().Position(seqnum);
       const auto blocksize = cmesh->Block().Size(seqnum);
       
@@ -214,15 +216,18 @@ void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
   auto gmesh = cmesh->Reference();
   gmesh->ResetReference();
   cmesh->LoadReferences();
-  const bool complex_mesh = cmesh->GetSolType() == ESolType::EComplex;
-  //let us copy the connects
+  const bool complex_mesh = cmesh->GetSolType() == ESolType::EComplex;  
   for(auto [dep, indep] : periodic_els){
     //geometric elements
     auto *dep_gel = gmesh->Element(dep);
     const auto *indep_gel = gmesh->Element(indep);
     //computational element
-    auto *indep_cel = indep_gel->Reference();
-    auto *dep_cel = dep_gel->Reference();
+    TPZCompEl *dep_cel{nullptr}, *indep_cel{nullptr};
+    indep_cel = indep_gel->Reference();
+    dep_cel = dep_gel->Reference();
+    //they might point to another mesh
+    if(dep_cel && dep_cel->Mesh() != cmesh.operator->()){dep_cel=nullptr;}
+    if(indep_cel && indep_cel->Mesh() != cmesh.operator->()){indep_cel=nullptr;}
     //not necessarily all elements belong to the comp mesh
     if(!indep_cel && !dep_cel){continue;}
     if(!indep_cel || !dep_cel){
@@ -235,6 +240,7 @@ void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
         PZError<<"Could not find comp el associated with geo el "<<dep<<std::endl;
       }
     }
+    std::map<int64_t,int64_t> dep_con_map;
     //number of connects
     const auto n_dep_con = dep_cel->NConnects();
     const auto n_indep_con = indep_cel->NConnects();
@@ -253,24 +259,44 @@ void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
       const auto indep_ci = indep_cel->ConnectIndex(ic);
       const auto dep_ci = dep_cel->ConnectIndex(ic);
 
+      //same connect already
       auto &dep_con = dep_cel->Connect(ic);
-      const auto ndof = dep_con.NDof(cmesh);
-      if(ndof==0) {continue;}
-      constexpr int64_t ipos{0};
-      constexpr int64_t jpos{0};
-
-
-      if(complex_mesh){
-        TPZFNMatrix<400,CSTATE> mat(ndof,ndof);
-        mat.Identity();
-        dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
-      }else{
-        TPZFNMatrix<400,STATE> mat(ndof,ndof);
-        mat.Identity();
-        dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
+      if(dep_ci!=indep_ci){
+        dep_con.DecrementElConnected();
+        dep_cel->SetConnectIndex(ic,indep_ci);
+        dep_con_map[dep_ci] = indep_ci;
       }
-    } 
+    }
+    
+    //now we go through the neighbours of the dependent el
+    //and see if they must have their connects swapped
+    const int nsides = dep_gel->NSides();
+    for(int is = 0; is < nsides; is++){
+      TPZGeoElSide gelside(dep_gel,is);
+      TPZGeoElSide neigh = gelside.Neighbour();
+      while(neigh!=gelside){
+        auto neigh_gel = neigh.Element();
+        if(neigh_gel){
+          auto neigh_cel = neigh_gel->Reference();
+          //found a neighbour in the same mesh
+          if(neigh_cel && neigh_cel->Mesh() == cmesh.operator->()){
+            auto ncon = neigh_cel->NConnects();
+            for(auto icon = 0; icon < ncon; icon++){
+              auto d_index = neigh_cel->ConnectIndex(icon);
+              if(dep_con_map.count(d_index)){
+                auto i_index = dep_con_map[d_index];
+                auto &dep_con = neigh_cel->Connect(icon);
+                dep_con.DecrementElConnected();
+                neigh_cel->SetConnectIndex(icon,i_index);
+              }
+            }
+          }
+        }
+        neigh=neigh.Neighbour();
+      }
+    }
   }
+  cmesh->ComputeNodElCon();
   cmesh->CleanUpUnconnectedNodes();
   cmesh->ExpandSolution();
 }
@@ -315,6 +341,15 @@ void cmeshtools::ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh>& mesh_dest,
         
       const int nshape = block_dest.Size(dfseq_dest);
       if(nshape!= block_orig.Size(dfseq_orig)){
+        const auto orig_ord = (int)con_orig.Order();
+        const auto dest_ord = (int)con_dest.Order();
+        PZError<<__PRETTY_FUNCTION__
+               <<"\nDest con index: "<<el_dest->ConnectIndex(icon)
+               <<"\tOrig con index: "<<el_orig->ConnectIndex(icon)
+               <<"\nDest nshape: "<<nshape
+               <<"\tOrig nshape: "<<block_orig.Size(dfseq_orig)
+               <<"\nDest order: "<<dest_ord
+               <<"\tOrig order: "<<orig_ord<<std::endl;
         DebugStop();
       }
       for(int is = 0; is < nshape; is++){
