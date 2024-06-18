@@ -34,10 +34,12 @@ for rib_copper in [True, False]:
     prefix = prefix_orig
     prefix += "_cu" if rib_copper else "_az"
     data["prefix"] = prefix
+    outfile = prefix+"_output.txt"
     # we erase any reflection file before starting the freq sweep
     if data["compute_reflection_norm"]:
         try:
             os.remove("../"+prefix+"_reflection.csv")
+            os.remove("../"+outfile)
         except FileNotFoundError:
             pass
     for i, wavelength in enumerate(wl_list):
@@ -59,9 +61,9 @@ for rib_copper in [True, False]:
         data["wavelength"] = wavelength
         data["scale"] = wavelength/(2*np.pi)
 
-        with open(filename, 'w+') as outfile:
+        with open(filename, 'w+') as jsonfile:
             # create json
-            json.dump(data, outfile, indent=4, sort_keys=True)
+            json.dump(data, jsonfile, indent=4, sort_keys=True)
         # now we check if we are in build or source directory
         p = subprocess.Popen('test -f ../meta_surf_1d',
                              stdout=subprocess.PIPE, shell=True)
@@ -69,4 +71,8 @@ for rib_copper in [True, False]:
         # found executable
         if status == 0:
             # run program
-            os.system('cd .. && ./meta_surf_1d scripts/'+filename)
+            print("\rrunning {} out of {}...".format(i, len(wl_list)), end='')
+            os.system(
+                'cd .. && ./meta_surf_1d scripts/' + filename + ' >> ' +
+                outfile)
+    print("\rDone!")
