@@ -1518,6 +1518,7 @@ void ComputeWpbcCoeffs(wgma::wganalysis::Wgma2D& an,
   wgbc.GetContribution(wgbc_k,wgbc_f);
 }
 #include <TPZSpStructMatrix.h>
+#include <TPZStructMatrixOMPorTBB.h>
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WpbcData& src_data,
                           WpbcData& match_data,
@@ -1568,6 +1569,16 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   //we precomputed it already
   scatt_an.StructMatrix()->SetComputeRhs(false);
 
+  auto strmtrx =
+    TPZAutoPointerDynamicCast<TPZSpStructMatrix<CSTATE,
+                                                TPZStructMatrixOMPorTBB<CSTATE>>>(
+                                                  scatt_an.StructMatrix());
+  if(!strmtrx){DebugStop();}
+  //300 is the number of shape functions in a k4 hexahedron
+  const int maxsz = std::max(nmodes_match,nmodes_src) + 540;
+  const int bufsz = maxsz*maxsz;
+  strmtrx->BufferSizeForUserMatrix(bufsz);
+    
   std::cout<<"Assembling..."<<std::endl;
   TPZSimpleTimer timer("WPBC:Assemble+solve",true);
   {
