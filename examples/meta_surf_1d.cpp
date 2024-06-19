@@ -15,7 +15,7 @@ light illuminating a meta surface
 #include <scattering.hpp>
 #include <util.hpp>
 #include <slepcepshandler.hpp>
-#include <post/solutionnorm.hpp>
+#include <post/reflectivity.hpp>
 #include <post/waveguideportbc.hpp>
 #include <post/waveguidecoupling.hpp>
 #include <post/orthowgsol.hpp>
@@ -180,6 +180,8 @@ SimData GetSimData(bool rib_copper)
 
 int main(int argc, char *argv[]) {
 
+  wgma::wganalysis::using_tbb_mat=true;
+  wgma::scattering::using_tbb_mat=true;
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
    * the log should be initialised as:*/
@@ -516,10 +518,12 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
       wgma::post::WgNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,
                                                             conj,n_threads);
     TPZVec<CSTATE> betavec = an.GetEigenvalues();
-    constexpr STATE tol{0.5};
+    constexpr STATE tol{0.1};
+    
+
     for(auto &b : betavec){
       b = std::sqrt(b);
-      if(b.real()<tol){
+      if(!(std::abs(b.real())>10*std::abs(b.imag()))){
         if(b.imag()>0){b=-b;}
       }
     }
@@ -680,13 +684,13 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
    */
   TPZFMatrix<CSTATE> src_sol;
   TPZAutoPointer<TPZCompMesh> ref_mesh = nullptr;
-  STATE src_norm{0};
   if(simdata.compute_reflection_norm){
+    auto src_mesh = src_an->GetMesh();
     ref_mesh = src_an->GetMesh()->Clone();
     const int64_t neq_ref_mesh =
       src_an->GetMesh()->Solution().Rows();
     src_sol.Redim(neq_ref_mesh,1);
-    
+
     for(int i = 0; i < n_eigenpairs_top; i++){
       if(src_coeffs[i]!=0.){
         src_an->LoadSolution(i);
@@ -695,11 +699,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
         src_sol += sol;
       }
     }
-
-    ref_mesh->LoadSolution(src_sol);
-    wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator> sol_norm(ref_mesh);
-    sol_norm.SetNThreads(simdata.n_threads);
-    src_norm = std::real(sol_norm.ComputeNorm()[0]);
   }
   //now we solve varying the number of modes used in the wgbc
   src_an->LoadAllSolutions();
@@ -738,8 +737,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     const int count = simdata.initial_count;
     vtk->SetStep(count);
   }
-    
-  TPZFMatrix<CSTATE> ref_sol = src_sol;
+  
   for(int im = 0; im < nmodes.size(); im++){
     const int nm = nmodes[im];
     if(!nm){continue;}
@@ -755,24 +753,31 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     
     if(simdata.compute_reflection_norm){
       //now we compute the reflection
-      wgma::cmeshtools::ExtractSolFromMesh(ref_mesh, scatt_mesh, ref_sol);
-      ref_mesh->LoadSolution(ref_sol);
-      wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator> sol_norm(ref_mesh);
-      sol_norm.SetNThreads(simdata.n_threads);
-      const STATE ref_norm = std::real(sol_norm.ComputeNorm()[0]);
-      const STATE ref_ratio = ref_norm/src_norm;
-      ref_sol-=src_sol;
-      ref_mesh->LoadSolution(ref_sol);
-      const STATE diff_norm = std::real(sol_norm.ComputeNorm()[0]);
-      const STATE diff_ratio = diff_norm/src_norm;
+      const int solsz = src_sol.Rows();
+      TPZFMatrix<CSTATE> refl_sol(solsz,2,0);
+
+      //we copy the solution to the first column
+      TPZFMatrix<CSTATE> dummy_0(solsz,1,refl_sol.Elem(),solsz);
+      wgma::cmeshtools::ExtractSolFromMesh(ref_mesh, scatt_mesh, dummy_0);
+      //we copy the src to the second column
+      TPZFMatrix<CSTATE> dummy_1(solsz,1,refl_sol.Elem()+solsz,solsz);
+      dummy_1 = src_sol;
+      ref_mesh->LoadSolution(refl_sol);
+
+      using namespace wgma::post;
+      SolutionReflectivity<SingleSpaceIntegrator>ref_calc(ref_mesh);
+      ref_calc.SetNThreads(simdata.n_threads);
+      auto ref = ref_calc.ComputeReflectivity();
       std::string outputfile = simdata.prefix+"_reflection.csv";
       std::ofstream ost;
       ost.open(outputfile, std::ios_base::app);
-      std::cout<<"wavelength: "<<simdata.wavelength<<"src norm "<<src_norm<<" ref norm "<<ref_norm<<std::endl;
-      ost << simdata.wavelength
-          <<','<<ref_norm<<','<<ref_ratio
-          <<','<<diff_norm<<','<<diff_ratio
-          <<','<<simdata.scale<<std::endl;
+      std::cout<<"wavelength: "<<simdata.wavelength
+               <<"ref "<<ref
+               <<" ref norm "<<std::abs(ref)<<std::endl;
+      const char ref_sign = ref.imag() > 0 ? '+' : '-';
+      ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
+      ost << simdata.wavelength<<','
+          <<ref.real()<<ref_sign<<std::abs(ref.imag())<<'j'<<std::endl;
     }
     //plot
     if(simdata.export_vtk_scatt){vtk->Do();}
@@ -854,10 +859,9 @@ void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
   
   wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(mesh);
   TPZManVector<CSTATE,1000> betavec = an.GetEigenvalues();
-  constexpr STATE tol{0.5};
   for(auto &b : betavec){
     b = std::sqrt(b);
-    if(b.real()<tol){
+    if(!(std::abs(b.real())>10*std::abs(b.imag()))){
       if(b.imag()>0){b=-b;}
     }
   }
