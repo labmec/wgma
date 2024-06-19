@@ -30,6 +30,7 @@ set(headers
   include/post/solcoupling.hpp
   include/post/orthowgsol.hpp
   include/post/wgnorm.hpp
+  include/post/reflectivity.hpp
   include/materials/twisted_wgma.hpp
   include/materials/acousticmodesbase.hpp
   include/materials/acousticmodesbeta.hpp
@@ -55,6 +56,7 @@ set(sources
   src/post/solcoupling.cpp
   src/post/orthowgsol.cpp
   src/post/wgnorm.cpp
+  src/post/reflectivity.cpp
   src/materials/twisted_wgma.cpp
   src/materials/acousticmodesbase.cpp
   src/materials/acousticmodesbeta.cpp
