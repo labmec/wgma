@@ -26,9 +26,8 @@ n_air = 1
 data["n_air"] = n_air
 data["target_top"] = n_air*n_air*1.00001
 
-prefix_orig = "res_meta_surf_1d/meta_surf_1d"
-wl_list = [wl/1000 for wl in np.arange(600, 1400, 1.0)]
-
+prefix_orig = "res_meta_surf_1d_freq_sweep/meta_surf_1d"
+wl_list = [wl/1000 for wl in np.arange(600, 1400, 10)]
 
 for rib_copper in [True, False]:
     prefix = prefix_orig
@@ -75,4 +74,8 @@ for rib_copper in [True, False]:
             os.system(
                 'cd .. && ./meta_surf_1d scripts/' + filename + ' >> ' +
                 outfile)
+        try:
+            os.remove(filename)
+        except FileNotFoundError:
+            pass
     print("\rDone!")
