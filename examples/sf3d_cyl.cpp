@@ -769,20 +769,24 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   auto vtk = TPZVTKGenerator(scatt_mesh_wpbc, fvars_3d, scatt_file, simdata.vtk_res);
   vtk.SetNThreads(simdata.n_threads);
   
+
   
   //compute wgbc coefficients
   WpbcData src_data;
-  src_data.cmesh = src_an.GetHCurlMesh();
-  ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
-                    src_data.wgbc_f, false, src_coeffs,
-                    simdata.n_threads);
-
   WpbcData match_data;
-  match_data.cmesh = match_an.GetHCurlMesh();
-  ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
-                    match_data.wgbc_f,true, {},
-                    simdata.n_threads);
-    
+
+  {
+    TPZSimpleTimer timer("wpbc coeffs",true);
+    src_data.cmesh = src_an.GetHCurlMesh();
+    ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
+                      src_data.wgbc_f, false, src_coeffs,
+                      simdata.n_threads);
+
+    match_data.cmesh = match_an.GetHCurlMesh();
+    ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
+                      match_data.wgbc_f,true, {},
+                      simdata.n_threads);
+  }
 
   //set up post processing vars
   TPZVec<std::string> fvars_2d = {
@@ -1063,19 +1067,22 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
 
   //compute wgbc coefficients
   WpbcData src_data;
-  src_data.cmesh = src_an.GetHCurlMesh();
-  ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
-                    src_data.wgbc_f, false, src_coeffs,
-                    simdata.n_threads);
-
   WpbcData match_data;
-  match_data.cmesh = match_an.GetHCurlMesh();
-  ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
-                    match_data.wgbc_f,true, {},
-                    simdata.n_threads);
-    
 
+  {
+    TPZSimpleTimer timer("wpbc coeffs",true);
+    src_data.cmesh = src_an.GetHCurlMesh();
+    ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
+                      src_data.wgbc_f, false, src_coeffs,
+                      simdata.n_threads);
 
+    match_data.cmesh = match_an.GetHCurlMesh();
+    ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
+                      match_data.wgbc_f,true, {},
+                      simdata.n_threads);
+  } 
+
+  
   TPZFMatrix<CSTATE> sol_pml;
   STATE norm_sol_pml{1}, norm_error_pml{1};
   if(simdata.compare_pml){
