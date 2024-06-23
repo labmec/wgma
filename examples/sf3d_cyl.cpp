@@ -1519,6 +1519,7 @@ void ComputeWpbcCoeffs(wgma::wganalysis::Wgma2D& an,
 }
 #include <TPZSpStructMatrix.h>
 #include <TPZStructMatrixOMPorTBB.h>
+#include "TPZYSMPMatrix.h"
 void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WpbcData& src_data,
                           WpbcData& match_data,
@@ -1591,20 +1592,49 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     }
     TPZSimpleTimer tassemble("Assemble",true);
     scatt_an.Assemble();
-  }
-
-  //for now we unwrap the groups as they seem to interfere with the solving stage
-  if(group){
-    const auto nel = scatt_mesh->ElementVec().NElements();
-    for(auto index = 0; index < nel; index++){
-      auto cel = scatt_mesh->ElementVec()[index];
-      auto group = dynamic_cast<TPZElementGroup*>(cel);
-      if(group){
-        //this call will delete the element groups
-        group->Unwrap();
-        scatt_mesh->ElementVec()[index] = nullptr;
+  
+    //for now we unwrap the groups as they seem to interfere with the solving stage
+    if(group){
+      const auto nel = scatt_mesh->ElementVec().NElements();
+      for(auto index = 0; index < nel; index++){
+        auto cel = scatt_mesh->ElementVec()[index];
+        auto group = dynamic_cast<TPZElementGroup*>(cel);
+        if(group){
+          //this call will delete the element groups
+          group->Unwrap();
+          scatt_mesh->ElementVec()[index] = nullptr;
+        }
       }
     }
+
+    //now that we have removed the groups we can get a new sparse matrix
+    //with reduced sparsity
+    TPZSimpleTimer transf_mat("New sparse matrix");
+    auto sparse_old =
+      TPZAutoPointerDynamicCast<TPZFYsmpMatrix<CSTATE>>(scatt_an.GetSolver().Matrix());
+    auto sparse_new = 
+      dynamic_cast<TPZFYsmpMatrix<CSTATE>*>(strmtrx->Create());
+    int64_t *ia_old,*ja_old,*ia_new,*ja_new;
+    CSTATE *aa_old,*aa_new;
+    sparse_old->GetData(ia_old, ja_old, aa_old);
+    sparse_new->GetData(ia_new, ja_new, aa_new);
+    const auto nr = sparse_old->Rows();
+    for(auto ir = 0; ir < nr; ir++){
+      const auto first_new = ia_new[ir];
+      const auto last_new = ia_new[ir+1];
+      int64_t ij_old = ia_old[ir];
+      for(auto ij = first_new; ij < last_new; ij++){
+        const auto col = ja_new[ij];
+        while(ja_old[ij_old] < col){ij_old++;}
+#ifdef PZDEBUG
+        if(ja_old[ij_old] != col){
+          DebugStop();
+        }
+#endif
+        aa_new[ij] = aa_old[ij_old];
+      }
+    }
+    scatt_an.GetSolver().SetMatrix(sparse_new);
   }
 
   {
