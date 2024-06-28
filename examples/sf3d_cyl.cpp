@@ -582,7 +582,7 @@ ComputeModalAnalysis(
       constexpr STATE tol{1e-14};
       constexpr bool conj{false};
       const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
-      std::cout<<"orthogonalised  "<<n_ortho<<" eigenvectors"<<std::endl;
+      std::cout<<"orthogonalised  "<<n_ortho<<" degenerate eigenpairs"<<std::endl;
     }
 
     if(simdata.export_vtk_modes){
@@ -597,6 +597,7 @@ ComputeModalAnalysis(
       ComputeCouplingMat(*an,couplingfile,simdata.n_threads,false);
       couplingfile = simdata.prefix+"_coupling_"+name+"_conj.csv";
       ComputeCouplingMat(*an,couplingfile,simdata.n_threads,true);
+      an->LoadAllSolutions();
     }
 
     /*
@@ -1421,16 +1422,6 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     auto cmesh =
       wgma::scattering::CMeshScattering3D(gmesh, pOrder, scatt_data,src_ids,
                                           lambda,scale,true);
-    constexpr int scatt_dim{3};
-    for(auto cel : cmesh->ElementVec()){
-      if(cel->Dimension() != scatt_dim){continue;}
-      auto intel =
-        dynamic_cast<TPZInterpolatedElement*>(cel);
-      if(!intel){continue;}
-      const auto ns = intel->Reference()->NSides();
-      intel->ForceSideOrder(ns-1,pOrder+1);
-    }
-    cmesh->ExpandSolution();
     return cmesh;
  };
 
