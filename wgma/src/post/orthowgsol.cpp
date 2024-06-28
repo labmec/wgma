@@ -44,18 +44,18 @@ int wgma::post::OrthoWgSol(wgma::wganalysis::Wgma &an,
       n_ortho+=count+1;
     }
 
-    const int offset = iev * neq_expand;
-    TPZFMatrix<CSTATE> evec_scatter(neq_expand, count+1, evectors.Elem() + offset,
+    const int offset_i_scatter = iev * neq_expand;
+    TPZFMatrix<CSTATE> evec_scatter(neq_expand, count+1, evectors.Elem() + offset_i_scatter,
                                     neq_expand*(count+1));
     TPZFMatrix<CSTATE> evec(neq, count+1, 0);
     eqfilt.Gather(evec_scatter,evec);
     for(int i = 0; i < count+1;i++){
-      const int offset = neq*i;
-      TPZFMatrix<CSTATE> ei(neq,1,evec.Elem() + offset, neq);
+      const int offset_i = neq*i;
+      TPZFMatrix<CSTATE> ei(neq,1,evec.Elem() + offset_i, neq);
       for(int j = 0; j < i; j++){
-        TPZFMatrix<CSTATE> ej(neq,1,evec.Elem() + offset, neq);
+	const int offset_j = neq*j;
+        TPZFMatrix<CSTATE> ej(neq,1,evec.Elem() + offset_j, neq);
         BMat->Multiply(ej, aux);
-        const int offset = neq*j;
         const CSTATE dot_ej = Dot(ei,aux,conj);
         //v_j^T B v_j is unity, so we dont need to divide by it
         ei-=dot_ej*ej;
