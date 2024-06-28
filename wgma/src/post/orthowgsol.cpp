@@ -4,7 +4,7 @@
 
 int wgma::post::OrthoWgSol(wgma::wganalysis::Wgma &an,
                            const STATE tol,
-			   const bool conj){
+                           const bool conj){
   int n_ortho{0};
   auto BMat = [&an]() -> TPZAutoPointer<TPZMatrix<CSTATE>> {
     auto an_cast = dynamic_cast<wgma::wganalysis::Wgma2D*>(&an);
@@ -40,10 +40,9 @@ int wgma::post::OrthoWgSol(wgma::wganalysis::Wgma &an,
         break;
       }
     }
-    // if (count==0) {
-    //   continue;
-    // }
-    n_ortho+=count;
+    if(count!=0){
+      n_ortho+=count+1;
+    }
 
     const int offset = iev * neq_expand;
     TPZFMatrix<CSTATE> evec_scatter(neq_expand, count+1, evectors.Elem() + offset,
@@ -53,55 +52,19 @@ int wgma::post::OrthoWgSol(wgma::wganalysis::Wgma &an,
     for(int i = 0; i < count+1;i++){
       const int offset = neq*i;
       TPZFMatrix<CSTATE> ei(neq,1,evec.Elem() + offset, neq);
-      BMat->Multiply(ei, aux);
       for(int j = 0; j < i; j++){
-        const int offset = neq*j;
         TPZFMatrix<CSTATE> ej(neq,1,evec.Elem() + offset, neq);
-        CSTATE dot_ej{0};
-        {
-          const CSTATE *pej = ej.Elem();
-          const CSTATE *pbei = aux.Elem();
-	  if(conj){
-	    for (int ieq = 0; ieq < neq; ieq++) {
-	      dot_ej += std::conj(*pej++) * *pbei++;
-	    }
-	  }else{
-	    for (int ieq = 0; ieq < neq; ieq++) {
-	      dot_ej += *pej++ * *pbei++;
-	    }
-	  }
-        }
-        //v_j^T B v_j is unity
-        const CSTATE &coeff = dot_ej;
-        CSTATE *pei = ei.Elem();
-        const CSTATE *pej = ej.Elem();
-        for (int ieq = 0; ieq < neq; ieq++,pei++) {
-          *pei -= coeff * *pej++;
-        }
+        BMat->Multiply(ej, aux);
+        const int offset = neq*j;
+        const CSTATE dot_ej = Dot(ei,aux,conj);
+        //v_j^T B v_j is unity, so we dont need to divide by it
+        ei-=dot_ej*ej;
       }
-      BMat->Multiply(ei, aux);
-      CSTATE dot_ei{0};
       //now we normalise it
-      {
-        const CSTATE *pei = ei.Elem();
-        const CSTATE *pbei = aux.Elem();
-	if(conj){
-	  for (int ieq = 0; ieq < neq; ieq++) {
-	    dot_ei += std::conj(*pei++) * *pbei++;
-	  }
-	}else{
-	  for (int ieq = 0; ieq < neq; ieq++) {
-	    dot_ei += *pei++ * *pbei++;
-	  }
-	}
-      }
-      dot_ei = sqrt(dot_ei);
-      {
-        CSTATE *pei = ei.Elem();
-        for (int ieq = 0; ieq < neq; ieq++, pei++) {
-          *pei /= dot_ei;
-        }
-      }
+      BMat->Multiply(ei, aux);
+      const CSTATE dot_ei = Dot(ei,aux,conj);
+      const CSTATE coeff = 1./sqrt(dot_ei);
+      ei*=coeff;
       TPZFMatrix<CSTATE> ei_scatter(neq_expand, 1,
                                     evec_scatter.Elem() + neq_expand*i,
                                     neq_expand);
