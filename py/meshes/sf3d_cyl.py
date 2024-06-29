@@ -38,7 +38,7 @@ def cut_vol_with_plane(vols, surfs, elsize):
 
 
 def create_sf3d_mesh(
-        r_core_left: float, r_core_right: float, nclad: float, ncore: float,
+        r_core_left: float, r_core_right: float, ncore: float, nclad: float,
         l_domain: float, wl: float, nel_l: int, filename: str,):
     # distance from center to end of cladding region(inner box)
     r_box = max(r_core_left, r_core_right) + 3.5 * wl/nclad
@@ -283,10 +283,10 @@ def create_sf3d_mesh(
     def find_common_bounds(domain_1_tags, domain_2_tags, dim):
         domain_1_tags_bnd = [t for _, t in gmsh.model.get_boundary(
             [(dim, tag) for tag in domain_1_tags],
-            combined=False, oriented=False)]
+            combined=True, oriented=False)]
         domain_2_tags_bnd = [t for _, t in gmsh.model.get_boundary(
             [(dim, tag) for tag in domain_2_tags],
-            combined=False, oriented=False)]
+            combined=True, oriented=False)]
         common_bnd = [t for t in domain_1_tags_bnd if t in domain_2_tags_bnd]
         return common_bnd
 
@@ -306,8 +306,25 @@ def create_sf3d_mesh(
             cyltags = list(cylset.union(new_cyls))
         return cyltags
 
-    cyl1 = find_all_cyl_tags(find_common_bounds(core_left.tag, clad.tag, 3))
-    cyl2 = find_all_cyl_tags(find_common_bounds(core_right.tag, clad.tag, 3))
+    pml_left_core = [
+        tag for (pmltype, tag), neigh in new_pml_map.items()
+        if pmltype == 'zm' and neigh in core_left.tag]
+    pml_left_clad = [
+        tag for (pmltype, tag), neigh in new_pml_map.items()
+        if pmltype == 'zm' and neigh in clad.tag]
+    pml_right_core = [
+        tag for (pmltype, tag), neigh in new_pml_map.items()
+        if pmltype == 'zp' and neigh in core_right.tag]
+    pml_right_clad = [
+        tag for (pmltype, tag), neigh in new_pml_map.items()
+        if pmltype == 'zp' and neigh in clad.tag]
+    # we want to include the PML cylinders but we must make sure
+    # that cyl1 and cyl2 do not overlap if they have the same radius,
+    # so we cannot use find_all_cyl_tags
+    cyl1 = filter_cyl_tags(find_common_bounds(core_left.tag, clad.tag, 3)) \
+        + filter_cyl_tags(find_common_bounds(pml_left_core, pml_left_clad, 3))
+    cyl2 = filter_cyl_tags(find_common_bounds(core_right.tag, clad.tag, 3)) \
+        + filter_cyl_tags(find_common_bounds(pml_right_core, pml_right_clad, 3))
     cyl3 = find_all_cyl_tags(find_common_bounds(clad.tag, pml.tag, 3))
     cyl4 = filter_cyl_tags(all_bounds)
 
