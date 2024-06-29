@@ -1084,8 +1084,11 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
              1. neighbours that have been already identified (will be in  neigh_els)
              2. neighbours that are in the cylinder wall as well
           */
-          auto check_el = neigh_els.find(neigh_el) == neigh_els.end();
-          if(check_el && neigh_el->MaterialId() != matid){
+          const auto check_el = neigh_els.find(neigh_el) == neigh_els.end();
+          //we need to check if the neighbour belongs to ANY cylinder!
+          const auto is_neigh_cylinder =
+            cylinder_ids.find(neigh_el->MaterialId()) != cylinder_ids.end();
+          if(check_el && !is_neigh_cylinder){
             all_neighs.insert(neighbour);
             neigh_els.insert(neigh_el);
           }
@@ -1101,9 +1104,18 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
         /*let us take into account the possibility that
           one triangle might be neighbour of two cylinders
          */
+#ifdef WGMADEBUG
+        if(neigh_el->IsGeoBlendEl()==false && neigh_el->IsLinearMapping() == false){
+          //we should investigate what is happening
+          DebugStop();
+        }
+#endif
         if(!neigh_el->IsGeoBlendEl()){
           const auto neigh_index = neigh_el->Index();
           TPZChangeEl::ChangeToGeoBlend(gmesh.operator->(), neigh_index);
+        }
+        else{
+          neigh_el->BuildBlendConnectivity();
         }
       }//for(auto neighbour : all_neighs)
     }//if(is_cylinder)
