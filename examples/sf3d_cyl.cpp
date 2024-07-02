@@ -145,16 +145,16 @@ SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &modal_mesh,
                        std::set<int> &all_matids);
 void
 SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
-                wgma::wganalysis::Wgma2D &src_an,
-                wgma::wganalysis::Wgma2D &match_an,
+                TPZAutoPointer<wgma::wganalysis::Wgma2D> &src_an,
+                TPZAutoPointer<wgma::wganalysis::Wgma2D> &match_an,
                 const TPZVec<std::map<std::string, int>> &gmshmats,
                 const std::map<int,int> &split_mats,
                 const std::map<int64_t,int64_t> &periodic_els,
                 const SimData &simdata);
 void
 SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
-                     wgma::wganalysis::Wgma2D &src_an,
-                     wgma::wganalysis::Wgma2D &match_an,
+                     TPZAutoPointer<wgma::wganalysis::Wgma2D> &src_an,
+                     TPZAutoPointer<wgma::wganalysis::Wgma2D> &match_an,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
                      const std::map<int,int> &split_mats,
                      const std::map<int64_t,int64_t> &periodic_els,
@@ -330,7 +330,8 @@ int main(int argc, char *argv[]) {
   for(auto [old_mat,new_mat] : modal_r_map){
     split_mats[new_mat] = old_mat;
   }
-  
+
+  //these methods will delete the wgma2d analysis instances!!!
   if(!simdata.check_mode_propagation){
     SolveScattering(gmesh, modal_l_an,  modal_r_an, gmshmats,
                     split_mats,periodic_els, simdata);
@@ -623,7 +624,9 @@ ComputeModalAnalysis(
     an->SetEigenvectors(mesh_sol);
     an->LoadAllSolutions();
   }
-  
+  //we dont need them anymore, let us free up memory
+  an->GetSolver().SetMatrixA(nullptr);
+  an->GetSolver().SetMatrixB(nullptr);
   return an;
 }
 
@@ -679,8 +682,8 @@ SimData ReadSimData(const std::string &dataname){
 
 
 void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
-                     wgma::wganalysis::Wgma2D &src_an,
-                     wgma::wganalysis::Wgma2D &match_an,
+                     TPZAutoPointer<wgma::wganalysis::Wgma2D> &src_an,
+                     TPZAutoPointer<wgma::wganalysis::Wgma2D> &match_an,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
                      const std::map<int,int> &split_mats,
                      const std::map<int64_t,int64_t> &periodic_els,
@@ -692,7 +695,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
    *********************/  
   TPZSimpleTimer tscatt("Scattering");
 
-  const auto n_eigenpairs_left = src_an.GetEigenvalues().size();
+  const auto n_eigenpairs_left = src_an->GetEigenvalues().size();
   /*
     the source is written as a linear combination of the modes
     this vector contains the coefficients of such combination
@@ -734,8 +737,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   }
 
   
-  src_an.LoadAllSolutions();
-  match_an.LoadAllSolutions();
+  src_an->LoadAllSolutions();
+  match_an->LoadAllSolutions();
 
   //set up post processing
   TPZVec<std::string> fvars_3d = {
@@ -751,7 +754,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
     SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
     //now we load back all the solutions into the src mesh
-    src_an.LoadAllSolutions();
+    src_an->LoadAllSolutions();
     if(simdata.export_vtk_scatt){
       auto vtk = TPZVTKGenerator(scatt_mesh_pml, fvars_3d, scatt_file, simdata.vtk_res);
       vtk.SetNThreads(simdata.n_threads);
@@ -778,15 +781,18 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
 
   {
     TPZSimpleTimer timer("wpbc coeffs",true);
-    src_data.cmesh = src_an.GetHCurlMesh();
+    src_data.cmesh = src_an->GetHCurlMesh();
     ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
                       src_data.wgbc_f, false, src_coeffs,
                       simdata.n_threads);
 
-    match_data.cmesh = match_an.GetHCurlMesh();
+    //only hcurl mesh is needed from now on, we can delete analysis object
+    src_an=nullptr;
+    match_data.cmesh = match_an->GetHCurlMesh();
     ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
                       match_data.wgbc_f,true, {},
                       simdata.n_threads);
+    match_an=nullptr;
   }
 
   //set up post processing vars
@@ -798,8 +804,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
 
   auto CreateErrorMesh = [&simdata, &gmesh, &gmshmats, &fvars_2d,
                           &periodic_els](TPZAutoPointer<TPZCompMesh> &error_mesh,
+                                         const TPZAutoPointer<TPZCompMesh> &hcurl_mesh,
                                          TPZFMatrix<CSTATE> &projected_modes,
-                                         wgma::wganalysis::Wgma2D &modal_an,
                                          TPZAutoPointer<TPZVTKGenerator> &vtk_error,
                                          const std::string &name)
   {
@@ -813,7 +819,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       wgma::wganalysis::CreateAtomicWgma2D(gmesh,is_h1,simdata.porder,volmats,pmlmats,
                                            modal_data.bcvec, modal_data.probevec);
     //now we transfer the modal solution from the WPBC to the error mesh and store it
-    TransferSolutionBetweenPeriodicMeshes(error_mesh, modal_an.GetHCurlMesh(), periodic_els);
+    TransferSolutionBetweenPeriodicMeshes(error_mesh, hcurl_mesh, periodic_els);
     projected_modes = error_mesh->Solution();
     const int neq = error_mesh->Solution().Rows();
     error_mesh->Solution().Resize(neq, 1);
@@ -832,8 +838,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   TPZAutoPointer<TPZCompMesh> error_mesh_left{nullptr}, error_mesh_right{nullptr};
   TPZFMatrix<CSTATE> projected_modes_left, projected_modes_right;
   TPZAutoPointer<TPZVTKGenerator> vtk_error_left{nullptr}, vtk_error_right{nullptr};
-  CreateErrorMesh(error_mesh_left,projected_modes_left,src_an,vtk_error_left,"probe_left");
-  CreateErrorMesh(error_mesh_right,projected_modes_right,match_an,vtk_error_right,"probe_right");
+  CreateErrorMesh(error_mesh_left,src_data.cmesh,projected_modes_left,vtk_error_left,"probe_left");
+  CreateErrorMesh(error_mesh_right,match_data.cmesh,projected_modes_right,vtk_error_right,"probe_right");
   
   
 
@@ -851,7 +857,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       vtk_proj->SetNThreads(simdata.n_threads);
     }
   };
-
   /*
     dirichlet boundary connects should not be restricted, otherwise
     this will result in all the equations on the same dependency
@@ -919,8 +924,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
 }
 
 void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
-                          wgma::wganalysis::Wgma2D &src_an,
-                          wgma::wganalysis::Wgma2D &match_an,
+                          TPZAutoPointer<wgma::wganalysis::Wgma2D> &src_an,
+                          TPZAutoPointer<wgma::wganalysis::Wgma2D> &match_an,
                           const TPZVec<std::map<std::string, int>> &gmshmats,
                           const std::map<int,int> &split_mats,
                           const std::map<int64_t,int64_t> &periodic_els,
@@ -931,7 +936,7 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
    *********************/  
   TPZSimpleTimer tscatt("Scattering");
 
-  const auto n_eigenpairs_left = src_an.GetEigenvalues().size();
+  const auto n_eigenpairs_left = src_an->GetEigenvalues().size();
   /*
     the source is written as a linear combination of the modes
     this vector contains the coefficients of such combination
@@ -1005,11 +1010,11 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
     ref_sol = error_mesh->Solution();
 
     //now error mesh will contain all the modes
-    TransferSolutionBetweenPeriodicMeshes(error_mesh, src_an.GetHCurlMesh(), periodic_els);
+    TransferSolutionBetweenPeriodicMeshes(error_mesh, src_an->GetHCurlMesh(), periodic_els);
     //let us get the distance between src and error mesh
     const STATE dist =
       error_mesh->Element(0)->Reference()->Node(0).Coord(2)-
-      src_an.GetHCurlMesh()->Element(0)->Reference()->Node(0).Coord(2);
+      src_an->GetHCurlMesh()->Element(0)->Reference()->Node(0).Coord(2);
     //now we compute the expected (propagated) solution
     ref_sol.Redim(ref_sol.Rows(),1);
 
@@ -1020,7 +1025,7 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
         TPZFMatrix<CSTATE> &mode = error_mesh->Solution();
         const auto neq = mode.Rows();
         const auto offset = neq*i;
-        const auto beta = std::sqrt(-src_an.GetEigenvalues()[i]);
+        const auto beta = std::sqrt(-src_an->GetEigenvalues()[i]);
         const auto coeff = src_coeffs[i]*std::exp(-1i*beta*dist);
         std::cout<<"beta "<<beta<<" dist "<<dist<<std::endl;
         CSTATE *mode_ptr = mode.Elem() + offset;
@@ -1060,30 +1065,7 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
   const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
   auto vtk = TPZVTKGenerator(scatt_mesh_wpbc, fvars_3d, scatt_file, simdata.vtk_res);
   vtk.SetNThreads(simdata.n_threads);
-  
-  src_an.LoadAllSolutions();
-  match_an.LoadAllSolutions();
 
-  
-
-  //compute wgbc coefficients
-  WpbcData src_data;
-  WpbcData match_data;
-
-  {
-    TPZSimpleTimer timer("wpbc coeffs",true);
-    src_data.cmesh = src_an.GetHCurlMesh();
-    ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
-                      src_data.wgbc_f, false, src_coeffs,
-                      simdata.n_threads);
-
-    match_data.cmesh = match_an.GetHCurlMesh();
-    ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
-                      match_data.wgbc_f,true, {},
-                      simdata.n_threads);
-  } 
-
-  
   TPZFMatrix<CSTATE> sol_pml;
   STATE norm_sol_pml{1}, norm_error_pml{1};
   if(simdata.compare_pml){
@@ -1095,7 +1077,7 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
     const std::string scatt_file = simdata.prefix+"_scatt_"+suffix;
     SolveWithPML(scatt_mesh_pml,src_an,src_coeffs,simdata);
     //now we load back all the solutions into the src mesh
-    src_an.LoadAllSolutions();
+    src_an->LoadAllSolutions();
     if(simdata.export_vtk_scatt){
       auto vtk = TPZVTKGenerator(scatt_mesh_pml, fvars_3d, scatt_file, simdata.vtk_res);
       vtk.SetNThreads(simdata.n_threads);
@@ -1135,6 +1117,32 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
     }
   }
 
+
+  src_an->LoadAllSolutions();
+  match_an->LoadAllSolutions();
+
+  
+
+  //compute wgbc coefficients
+  WpbcData src_data;
+  WpbcData match_data;
+
+  {
+    TPZSimpleTimer timer("wpbc coeffs",true);
+    src_data.cmesh = src_an->GetHCurlMesh();
+    ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
+                      src_data.wgbc_f, false, src_coeffs,
+                      simdata.n_threads);
+
+    //only hcurl mesh is needed from now on, we can delete analysis object
+    src_an=nullptr;
+    match_data.cmesh = match_an->GetHCurlMesh();
+    ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
+                      match_data.wgbc_f,true, {},
+                      simdata.n_threads);
+    src_an = nullptr;
+  }
+  
   TPZFMatrix<CSTATE> sol_wpbc = ref_sol;//just to have the same size
   
   std::map<std::pair<int,int>,STATE> wpbc_error_res;
