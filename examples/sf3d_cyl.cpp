@@ -723,17 +723,13 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       }
     }
 
-    std::set<int> valid_nmodes_left;
+    TPZVec<int> valid_nmodes_left;
     for (auto im : nmodes_left){
       if(im > last_mode){
-        valid_nmodes_left.insert(im);
+        valid_nmodes_left.push_back(im);
       }
     }
-    const int nmodes_left_size = valid_nmodes_left.size();
-    nmodes_left.resize(0);
-    for(auto im : valid_nmodes_left){
-      nmodes_left.push_back(im);
-    }
+    nmodes_left = valid_nmodes_left;
   }
 
   
