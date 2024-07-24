@@ -1894,7 +1894,7 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
 void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                   const std::set<int64_t> &indep_cons) {
   TPZSimpleTimer solve("SetupPrecond", true);
-  constexpr REAL tol = 5e-8;
+  constexpr REAL tol = 5e-6;
       
   auto &solver = dynamic_cast<TPZStepSolver<CSTATE>&>(scatt_an.GetSolver());
 
