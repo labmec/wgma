@@ -12,7 +12,7 @@ namespace wgma::gmeshtools{
 
   enum class ElType {Tri, Quad};
   //! Prints a geometric mesh in .txt and .vtk format
-  void PrintGeoMesh(TPZAutoPointer<TPZGeoMesh>& gmesh, std::string filename);
+  void PrintGeoMesh(TPZAutoPointer<TPZGeoMesh>& gmesh, std::string filename, bool txt_too=true);
 
   /** @brief Parametric map of a circunference arc
 

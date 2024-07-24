@@ -13,11 +13,14 @@
 #include <fstream>
 
 void wgma::gmeshtools::PrintGeoMesh(TPZAutoPointer<TPZGeoMesh>& gmesh,
-                                    std::string filename)
+                                    std::string filename, bool txt_too)
 {
-  const std::string gmeshFileNameTxt{filename+".txt"};
-  std::ofstream gmeshFileTxt(gmeshFileNameTxt);
-  gmesh->Print(gmeshFileTxt);
+  //on large meshes this is too big
+  if(txt_too){
+    const std::string gmeshFileNameTxt{filename+".txt"};
+    std::ofstream gmeshFileTxt(gmeshFileNameTxt);
+    gmesh->Print(gmeshFileTxt);
+  }
   const std::string gmeshFileNameVtk{filename+".vtk"};
   std::ofstream gmeshFileVtk(gmeshFileNameVtk);
   TPZVTKGeoMesh::PrintGMeshVTK(gmesh, gmeshFileVtk, true);
