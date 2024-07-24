@@ -19,7 +19,7 @@ def gen_script_and_run(data, scriptname, prefix):
 
 
 data = {
-    "porder": 2,
+    "porder": 3,
     "vtk_res": 0,
     "export_csv_modes": False,
     "export_csv_error": True,
@@ -33,7 +33,7 @@ data = {
     "vtk_res": 0
 }
 
-wavelength = 3.5
+wavelength = 1.55
 data["wavelength"] = wavelength
 data["ncore"] = 1.4457
 data["nclad"] = 1.4378
@@ -50,7 +50,7 @@ data["meshfile"] = "meshes/sf3d_validation.msh"
 data["cylfile"] = "meshes/sf3d_validation_cyldata.csv"
 data["check_mode_propagation"] = True
 data["compare_pml"] = False
-data["direct_solver"] = False
+data["direct_solver"] = True
 data["n_eigenpairs_left"] = 10
 data["n_eigenpairs_right"] = 10
 data["n_modes_left"] = [2]
