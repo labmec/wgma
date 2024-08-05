@@ -23,8 +23,8 @@ namespace wgma::precond{
                         const TPZEquationFilter &eqfilt,
                         TPZVec<int64_t> &eqgraph,
                         TPZVec<int64_t> &eqgraphindex,
-                        const std::set<int64_t> &indep_cons = {}
-                        );
+                        const std::set<int64_t> &indep_cons = {},
+                        const bool separate_wpbc_blocks = false);
   /**
      @brief This function will create AFW blocks for preconditioning a matrix created
      with hcurl elements

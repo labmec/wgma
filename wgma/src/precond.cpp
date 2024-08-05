@@ -18,7 +18,8 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
                                      const TPZEquationFilter &eqfilt,
                                      TPZVec<int64_t> &eqgraph,
                                      TPZVec<int64_t> &eqgraphindex,
-                                     const std::set<int64_t> &indep_cons
+                                     const std::set<int64_t> &indep_cons,
+                                     const bool separate_wpbc_blocks
                                      )
 {
   /*
@@ -210,6 +211,15 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
     }
   }
 
+  if(separate_wpbc_blocks){
+  //we will have one extra block per WPBC
+    for(auto con : indep_cons){
+      const auto seq = cmesh->ConnectVec()[con].SequenceNumber();
+      const auto first = cmesh->Block().Position(seq);
+      const auto sz = cmesh->Block().Size(seq);
+      if(sz>0){blcount++;}
+    }
+  }
   const int nbl = blcount;
   eqgraphindex.Resize(nbl+1);
   //now we take into account the independent connects eqs
@@ -224,39 +234,63 @@ void wgma::precond::CreateZaglBlocks(TPZAutoPointer<TPZCompMesh> cmesh,
   eqcount = 0;
   eqgraphindex[0] = 0;
 
-  int64_t first_indep=-1;
-  if(indep_cons.begin()!=indep_cons.end()){
-    //we store the index of the first indep connect
-    first_indep = *indep_cons.begin();
-    //we add the equations of the first indep connect (bound restriction)
+  if(separate_wpbc_blocks){
+    //we get the first eq of each edge connect
+    for(auto seq : edgemap){
+      eqgraph[eqcount++] = cmesh->Block().Position(seq);
+    }
+    std::sort(eqgraph.begin(), eqgraph.begin()+eqcount);
+    eqgraphindex[++blcount] = eqcount;
+    //now, one block for each WPBC
+    for(auto con : indep_cons){
+      const auto seq = cmesh->ConnectVec()[con].SequenceNumber();
+      const auto first = cmesh->Block().Position(seq);
+      const auto sz = cmesh->Block().Size(seq);
+      if(sz){
+        const auto first_graph = eqcount;
+        for(int ieq = 0; ieq < sz; ieq++){
+          eqgraph[eqcount++] = first+ieq;
+        }
+        std::sort(eqgraph.begin()+first_graph, eqgraph.begin()+eqcount);
+        eqgraphindex[++blcount] = eqcount;
+      }
+    }
+  }else{
+    int64_t first_indep=-1;
+    if(indep_cons.begin()!=indep_cons.end()){
+      //we store the index of the first indep connect
+      first_indep = *indep_cons.begin();
+      //we add the equations of the first indep connect (bound restriction)
   
-    {
-      const auto seq = cmesh->ConnectVec()[first_indep].SequenceNumber();
+      {
+        const auto seq = cmesh->ConnectVec()[first_indep].SequenceNumber();
+        const auto first = cmesh->Block().Position(seq);
+        const auto sz = cmesh->Block().Size(seq);
+        for(int ieq = 0; ieq < sz; ieq++){
+          eqgraph[eqcount++] = first+ieq;
+        }
+      }
+    }
+  
+    //we get the first eq of each edge connect
+    for(auto seq : edgemap){
+      eqgraph[eqcount++] = cmesh->Block().Position(seq);
+    }
+    //we add the equations of the remaining indep connect (bound restriction)
+    for(auto con : indep_cons){
+      if(con == first_indep){continue;}
+      const auto seq = cmesh->ConnectVec()[con].SequenceNumber();
       const auto first = cmesh->Block().Position(seq);
       const auto sz = cmesh->Block().Size(seq);
       for(int ieq = 0; ieq < sz; ieq++){
         eqgraph[eqcount++] = first+ieq;
       }
     }
+  
+    std::sort(eqgraph.begin(), eqgraph.begin()+eqcount);
+    eqgraphindex[++blcount] = eqcount;
   }
   
-  //we get the first eq of each edge connect
-  for(auto seq : edgemap){
-    eqgraph[eqcount++] = cmesh->Block().Position(seq);
-  }
-  //we add the equations of the remaining indep connect (bound restriction)
-  for(auto con : indep_cons){
-    if(con == first_indep){continue;}
-    const auto seq = cmesh->ConnectVec()[con].SequenceNumber();
-    const auto first = cmesh->Block().Position(seq);
-    const auto sz = cmesh->Block().Size(seq);
-    for(int ieq = 0; ieq < sz; ieq++){
-      eqgraph[eqcount++] = first+ieq;
-    }
-  }
-  
-  std::sort(eqgraph.begin(), eqgraph.begin()+eqcount);
-  eqgraphindex[++blcount] = eqcount;
   for(auto seq : edgemap){
     const int bsize = cmesh->Block().Size(seq) -1;
     if(bsize>0){
