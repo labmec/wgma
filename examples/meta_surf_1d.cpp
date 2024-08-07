@@ -327,12 +327,12 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
                       std::string filename,
                       const int vtkres,
                       std::set<int> sols = {});
-void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
-                          WgbcData& src_data,
-                          WgbcData& match_data,
-                          const int nmodes_src,
-                          const int nmodes_match,
-                          const SimData &simdata);
+int64_t RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
+                             WgbcData& src_data,
+                             WgbcData& match_data,
+                             const int nmodes_src,
+                             const int nmodes_match,
+                             const SimData &simdata);
 
 void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
                        TPZFMatrix<CSTATE> &wgbc_k, TPZVec<CSTATE> &wgbc_f,
@@ -748,9 +748,13 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
       :
       0;
     const int nmodes_match = simdata.n_eigen_bot > nm ? nm : simdata.n_eigen_bot;
-    RestrictDofsAndSolve(scatt_mesh, src_data, match_data, nmodes_src,nmodes_match, simdata);
-
-    
+    const int64_t sol_pos =
+      RestrictDofsAndSolve(scatt_mesh, src_data, match_data, nmodes_src,nmodes_match, simdata);
+    const TPZFMatrix<CSTATE> &sol = scatt_mesh->Solution();
+    const CSTATE alpha = sol.GetVal(sol_pos,0);
+    for(int i = 0; i < std::min(10,nmodes_src); i++){
+      std::cout<<"i "<<i<<" alpha "<<sol.GetVal(sol_pos+i,0)<<std::endl;
+    }
     if(simdata.compute_reflection_norm){
       //now we compute the reflection
       const int solsz = src_sol.Rows();
@@ -772,8 +776,9 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
       std::ofstream ost;
       ost.open(outputfile, std::ios_base::app);
       std::cout<<"wavelength: "<<simdata.wavelength
-               <<"ref "<<ref
-               <<" ref norm "<<std::abs(ref)<<std::endl;
+               <<" ref "<<ref
+               <<" ref norm "<<std::abs(ref)
+               <<" alpha "<<alpha<<std::endl;
       const char ref_sign = ref.imag() > 0 ? '+' : '-';
       ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
       ost << simdata.wavelength<<','
@@ -787,12 +792,14 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   if(simdata.compute_reflection_norm){wgma::cmeshtools::RemovePeriodicity(ref_mesh);}
 }
 
-void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
-                          WgbcData& src_data,
-                          WgbcData& match_data,
-                          const int nmodes_src,
-                          const int nmodes_match,
-                          const SimData &simdata)
+#include <TPZStructMatrixOMPorTBB.h>
+#include <TPZSpStructMatrix.h>
+int64_t RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
+                             WgbcData& src_data,
+                             WgbcData& match_data,
+                             const int nmodes_src,
+                             const int nmodes_match,
+                             const SimData &simdata)
 {
 
   auto gmesh = scatt_mesh->Reference();
@@ -849,6 +856,13 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   std::cout<<"Solving...";
   scatt_an.Solve();
   std::cout<<"\rSolved!"<<std::endl;
+
+  const auto &block = scatt_mesh->Block();
+  const auto &indep_con = scatt_mesh->ConnectVec()[indep_con_id_src];
+  const auto seqnum = indep_con.SequenceNumber();
+  const auto pos = block.Position(seqnum);
+  return pos;
+  
 }
 
 void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
