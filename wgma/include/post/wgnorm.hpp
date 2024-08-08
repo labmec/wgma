@@ -5,7 +5,12 @@
 
 
 namespace wgma::post{
-  //! Computes L2 norm of a given FEM solution (already loaded into the mesh)
+    /** @brief Computes Poynting vector integral of waveguide solutions.
+
+        Computes L2 norm of a given waveguide mode loaded into the FEM mesh.
+        The norm computed is the integral of E \times H^*, i.e., the norm
+        of the time-average Poynting vector.
+     */
   template<class TSPACE>
   class WgNorm: public TSPACE{
   public:
@@ -23,7 +28,11 @@ namespace wgma::post{
     CSTATE ComputeNorm(int s);
     //! Compute norm of all solutions
     TPZVec<CSTATE> ComputeNorm();
-    //! Normalise all solutions and return their norm before normalising
+    /**@brief Normalise modes such that they carry unit power
+     @note Radiation modes are identified through the real part of
+     the integral, according to a given tolerance, and normalised such that
+     1/2 im(E\times H^*) = -1
+    */
     TPZVec<CSTATE> Normalise();
     //! Computes contribution at an integration point
     void Compute(const ElData &data, REAL weight, int thread) override;

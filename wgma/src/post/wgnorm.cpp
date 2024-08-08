@@ -15,7 +15,16 @@ namespace wgma::post{
     auto mesh = this->Mesh();
     const int size_res = std::max(this->NThreads(),1);
     const int nsol = mesh->Solution().Cols();
-    m_res.Resize(size_res,TPZVec<CSTATE>(nsol,0.));
+    /*this wont work!!! if the size is correct, it wont
+      set existing entries to zero*/
+    // m_res.Resize(size_res,TPZVec<CSTATE>(nsol,0));
+    
+    m_res.Resize(size_res);
+    for (auto &it : m_res){
+      it.Resize(nsol);
+      it.Fill(0);
+    }
+    
     this->Integrate(this->m_elvec);
     
     TPZVec<CSTATE> res(nsol,0.);
@@ -24,7 +33,7 @@ namespace wgma::post{
         res[isol] += it[isol];
       }
     }
-
+    m_res.Resize(0);
     return res;
   }
   
@@ -35,15 +44,25 @@ namespace wgma::post{
     
     auto mesh = this->Mesh();
     TPZFMatrix<CSTATE> &evectors = mesh->Solution();
-    const int nev = evectors.Cols();
-    const int neq = mesh->NEquations();
-    //we iterate through the eigenvectors
+    const auto nev = evectors.Cols();
+    const auto neq = evectors.Rows();
+    /**we iterate through the eigenvectors
+     and normalise them such that the
+     1/2 real(\int E\times H^*) = 1
+     therefore we will distinguish between radiation modes
+     since the real part of E\times H^* is null
+    */
+    constexpr STATE tol{1e-6};
     for(int iev = 0; iev < nev; iev++){
-      const auto norm = std::sqrt(res[iev]);
+      const auto norm2 = res[iev];
+      if(std::abs(norm2) < tol){DebugStop();}
+      const bool is_propagating = norm2.real() > tol;
+      const auto val = is_propagating ? norm2.real() : std::abs(norm2.imag());
+      const auto norm = std::sqrt(val);
       const int offset = iev * neq;
       TPZFMatrix<CSTATE> ei(neq,1,evectors.Elem() + offset,neq);
       //let us avoid nasty divisions
-      if(std::abs(norm) > 1e-12){ei *= M_SQRT1_2/norm;}
+      if(std::abs(norm) > 1e-12){ei *= M_SQRT2/norm;}
     }
     return res;
   }
@@ -52,6 +71,7 @@ namespace wgma::post{
   CSTATE WgNorm<TSPACE>::ComputeNorm(int s){
     //we store the solution
     TPZFMatrix<CSTATE> solcp = this->Mesh()->Solution();
+    TPZVec<CSTATE> betacp = m_beta;
     const auto neq = solcp.Rows();
     const auto nsols = solcp.Cols();
     if(s >= nsols){
@@ -59,11 +79,14 @@ namespace wgma::post{
     }
     //we set only desired sol in mesh
     TPZFMatrix<CSTATE> desired_sol(neq,1,&solcp.s(0,s),neq);
+    //we set only desired beta
+    m_beta = {m_beta[s]};
     this->Mesh()->LoadSolution(desired_sol);
     //normalise it
     auto res = this->Normalise();
     //restore previous solution
     this->Mesh()->LoadSolution(std::move(solcp));
+    m_beta = betacp;
     return res[0];
   }
 
@@ -83,27 +106,42 @@ namespace wgma::post{
       }
       coeff_mat.Decompose(ELU);
       const auto detjac = data.detjac;
-      //speed of light times \mu_0
-      const auto c_uo = 120*M_PI;
-      const auto omega_uo = (2*M_PI/m_wl)*c_uo;
+      //c_0 times \mu_0 = 29.9792458 * 4 * pi
+      const auto c_uo = 29.9792458*4*M_PI;
+      //\omega times \mu_0 = 2\pi f \mu_0^-1 =  2 pi c_0 \mu_0^-1/ wl
+      //for TM modes: \epsilon_0*c_0 = 1/(\mu_0 c_0)
+      //we also put the sign here already
+      const auto omega_uo = is_te ? (2*M_PI/m_wl)*c_uo : (2*M_PI/m_wl)/c_uo;
       const auto cte = weight*fabs(detjac);
       const int nsol = data.sol.size();
+      /*
+        e field is the primary field (state variable of 1d modal analysis)
+        , that is, it is E for TE, and H for TM.
+        h field is the secondary field, that is, it is H for TE, and E for TM
+       */
       TPZFNMatrix<3000,CSTATE> rot_e_field(3,nsol,0.), h_field(3,nsol,0.);
       for(int isol = 0; isol < nsol; isol++){
         const auto val = data.sol[isol][0];
-        rot_e_field.Put(1,isol,-val);
+        rot_e_field.Put(1,isol, val);
         const auto beta = m_beta[isol];
         //we have -jbeta/(j\omega\mu_0)
-        const auto ct = -1.0*beta/omega_uo;
+        const auto ct = beta/omega_uo;
         h_field.Put(1,isol,ct*val);
       }
       //apply constitutive param
       coeff_mat.Substitution(&h_field);
       //if conj
       if(m_conj){
-        for(int isol = 0; isol < nsol; isol++){
-          const auto val = h_field.Get(1,isol);
-          h_field.Put(1,isol,std::conj(val));
+        if(is_te){
+          for(int isol = 0; isol < nsol; isol++){
+            const auto val = h_field.Get(1,isol);
+            h_field.Put(1,isol,std::conj(val));
+          }
+        }else{
+          for(int isol = 0; isol < nsol; isol++){
+            const auto val = rot_e_field.Get(1,isol);
+            rot_e_field.Put(1,isol,std::conj(val));
+          }
         }
       }
       
@@ -147,7 +185,9 @@ namespace wgma::post{
       ur.Decompose(ELU);
       ur.Substitution(&h_field);
 
-      const auto c_uo = 120*M_PI;
+      //c_0 times \mu_0 = 29.9792458 * 4 * pi
+      const auto c_uo = 29.9792458*4*M_PI;
+      //\omega times \mu_0 = 2\pi f \mu_0^-1 =  2 pi c_0 \mu_0^-1/ wl
       const auto omega_uo = (2*M_PI/m_wl)*c_uo;
       h_field *= 1i/omega_uo;
 
