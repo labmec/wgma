@@ -450,10 +450,9 @@ ComputeModalAnalysis(
     std::set<int> matids {};
     constexpr bool conj{true};
     auto norm =
-      wgma::post::WgNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,
-                                                            conj,0);
+      wgma::post::WgNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,conj);
     norm.SetNThreads(simdata.n_threads);
-    TPZVec<CSTATE> betavec = an->GetEigenvalues();
+    TPZVec<CSTATE> &betavec = an->GetEigenvalues();
     for(auto &b : betavec){b = sqrt(b);}
     norm.SetBeta(betavec);
     if(simdata.export_csv_modes){
@@ -863,7 +862,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
         TPZFMatrix<CSTATE> &mode = error_mesh->Solution();
         const auto neq = mode.Rows();
         const auto offset = neq*i;
-        const auto beta = std::sqrt(src_an.GetEigenvalues()[i]);
+        const auto beta = src_an.GetEigenvalues()[i];
         const auto coeff = src_coeffs[i]*std::exp(-1i*beta*dist);
         std::cout<<"beta "<<beta<<" dist "<<dist<<std::endl;
         CSTATE *mode_ptr = mode.Elem() + offset;
@@ -1211,8 +1210,7 @@ void ComputeWpbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
   wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(mesh);
   wgbc.SetNThreads(nthreads);
   const bool is_te = mode == wgma::planarwg::mode::TE;
-  TPZManVector<CSTATE,1000> betavec = an.GetEigenvalues();
-  for(auto &b : betavec){b = std::sqrt(b);}
+  TPZVec<CSTATE> &betavec = an.GetEigenvalues();
   wgbc.SetTE(is_te);
   wgbc.SetPositiveZ(positive_z);
   constexpr bool adj{false};
@@ -1486,7 +1484,7 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
   for(int isol = 0; isol < nsol; isol++){
     if(IsZero(src_coeffs[isol])){continue;}
     src_an.LoadSolution(isol);
-    auto beta = std::sqrt(src_an.GetEigenvalues()[isol]);
+    auto beta = src_an.GetEigenvalues()[isol];
     wgma::scattering::LoadSource1D(scatt_cmesh, src, src_coeffs[isol]);
     wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
     if(first_assemble){
