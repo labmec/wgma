@@ -91,7 +91,8 @@ namespace wgma::post{
       
       TPZFNMatrix<3000,CSTATE> tmp(et_beta);
       coeff_mat.Substitution(&tmp);
-      this->m_k_scratch[index].AddContribution(0, 0, rot_et, conj_trans, tmp, no_trans,cte);
+      TPZFMatrix<CSTATE> &kmat = this->m_k_scratch[index];
+      kmat.AddContribution(0, 0, rot_et, conj_trans, tmp, no_trans,cte);
       //src term
       if(is_src){
         //compute solution
@@ -109,7 +110,7 @@ namespace wgma::post{
         }
         coeff_mat.Substitution(&sol_mat);
         TPZFMatrix<CSTATE> fmat(nsol,1,this->m_f_scratch[index].begin(),nsol);
-        fmat.AddContribution(0, 0, rot_et, conj_trans, sol_mat, 0, cte*2.0);
+        fmat.AddContribution(0, 0, rot_et, conj_trans, sol_mat, no_trans, cte*2.0);
       }
     }else{
       const STATE sign = m_pos_z ? 1 : -1;
