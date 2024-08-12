@@ -223,8 +223,8 @@ int main(int argc, char *argv[]) {
   const int nEigenpairs_left = simdata.n_eigenpairs_left;
   const int nEigenpairs_right = simdata.n_eigenpairs_right;
 
-  const CSTATE target_left{simdata.ncore*simdata.ncore};
-  const CSTATE target_right{simdata.ncore*simdata.ncore};
+  const CSTATE target_left{simdata.ncore*simdata.ncore/simdata.scale/simdata.scale};
+  const CSTATE target_right{simdata.ncore*simdata.ncore/simdata.scale/simdata.scale};
   /*********
    * begin *
    *********/
@@ -454,6 +454,7 @@ ComputeModalAnalysis(
     norm.SetNThreads(simdata.n_threads);
     TPZVec<CSTATE> &betavec = an->GetEigenvalues();
     for(auto &b : betavec){b = sqrt(b);}
+    norm.SetTE(simdata.mode == wgma::planarwg::mode::TE);
     norm.SetBeta(betavec);
     if(simdata.export_csv_modes){
       std::ostringstream eigeninfo;
@@ -492,7 +493,7 @@ SimData ReadSimData(const std::string &dataname){
   sd.prefix =  data["prefix"];
   sd.lambda =  data["wavelength"];
   sd.scale = data["scale"];
-  sd.mode = wgma::planarwg::mode::TE;
+  sd.mode = wgma::planarwg::string_to_mode(data["mode"]);
   sd.ncore = data["ncore"];
   sd.nclad = data["nclad"];
   sd.compare_pml = data["compare_pml"];
