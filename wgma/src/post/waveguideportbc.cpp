@@ -24,10 +24,10 @@ namespace wgma::post{
     m_k_scratch.Resize(size_res);
     for(auto &res : m_k_scratch) {res.Redim(nsol,nsol);}
 
-    m_fi.Resize(nsol,0.);
+    m_fi.Resize(nsol);
+    m_fi.Fill(0);
     m_f_scratch.Resize(size_res);
-    for(auto &res : m_f_scratch) {res.Resize(nsol,0);}
-    
+    for(auto &res : m_f_scratch) {res.Resize(nsol);res.Fill(0);}
     this->Integrate(this->m_elvec);
     
     for (int ires = 0; ires< size_res; ires++){
