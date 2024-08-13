@@ -7,10 +7,10 @@ from meta_surf_1d_indices import az_n, az_k, cu_n, cu_k
 data = {
     "meshfile": "meshes/meta_surf_1d.msh",
     "mode": "TM",
-    "porder": 4,
-    "n_eigen_top": 300,
+    "porder": 2,
+    "n_eigen_top": 10,
     "n_eigen_bot": 0,
-    "nmodes": [250],
+    "nmodes": [15],
     "compute_reflection_norm": True,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
@@ -24,14 +24,17 @@ data = {
 n_air = 1
 
 data["n_air"] = n_air
-data["target_top"] = n_air*n_air*1.00001
 
 prefix_orig = "res_meta_surf_1d_freq_sweep/meta_surf_1d"
-wl_list = [wl/1000 for wl in np.arange(600, 1400, 10)]
+wl_list = [wl/1000 for wl in np.arange(500, 1400, 10)]
+wl_list.append(.741)
+wl_list.append(.746)
+wl_list.sort()
 
-for rib_copper in [True, False]:
+for rib_copper in [False, True]:
     prefix = prefix_orig
-    prefix += "_cu" if rib_copper else "_az"
+    suffix = "_cu" if rib_copper else "_az"
+    prefix += suffix
     data["prefix"] = prefix
     outfile = prefix+"_output.txt"
     # we erase any reflection file before starting the freq sweep
@@ -49,17 +52,18 @@ for rib_copper in [True, False]:
         k_az = az_k(wavelength)
         data["n_copper"] = n_copper
         data["k_copper"] = k_copper
-        data["n_az"] = n_az
-        data["k_az"] = k_az
-        data["target_bot"] = n_copper*n_copper*1.00001
 
         data["n_rib"] = n_copper if rib_copper else n_az
         data["k_rib"] = k_copper if rib_copper else k_az
-        filename = 'meta_surf_1d_'+str(i)+'.json'
+        filename = 'meta_surf_1d'+suffix+"_"+str(i)+'.json'
         data["initial_count"] = i
         data["wavelength"] = wavelength
-        data["scale"] = wavelength/(2*np.pi)
-
+        k0 = (2*np.pi)/wavelength
+        scale = 1
+        data["scale"] = scale
+        data["target_top"] = ((k0*n_air/scale)**2)*1.00001
+        data["target_bot"] = n_copper*n_copper*1.00001
+        data["target_bot"] = ((k0*n_copper/scale)**2)*1.00001
         with open(filename, 'w+') as jsonfile:
             # create json
             json.dump(data, jsonfile, indent=4, sort_keys=True)
@@ -78,4 +82,4 @@ for rib_copper in [True, False]:
             os.remove(filename)
         except FileNotFoundError:
             pass
-    print("\rDone!")
+    print("\nDone!")

@@ -7,27 +7,29 @@ from meta_surf_1d_indices import az_n, az_k, cu_n, cu_k
 data = {
     "meshfile": "meshes/meta_surf_1d.msh",
     "mode": "TM",
-    "porder": 4,
-    "n_eigen_top": 300,
-    "n_eigen_bot": 0,
-    "nmodes": [300],
+    "porder": 2,
+    "n_eigen_top": 10,
+    "n_eigen_bot":     0,
+    "nmodes": [15],
     "compute_reflection_norm": True,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
     "print_gmesh": False,
     "export_vtk_modes": False,
-    "export_vtk_scatt": True,
-    "couplingmat": True,
+    "export_vtk_scatt": False,
+    "couplingmat": False,
     "vtk_res": 0,
 }
 
-rib_copper = True
+rib_copper = False
 wavelength = .746 if rib_copper == True else .741
 data["wavelength"] = wavelength
-data["scale"] = wavelength/(2*np.pi)
+k0 = 2*np.pi/wavelength
+scale = 1
+data["scale"] = scale
 n_air = 1
 data["n_air"] = 1
-data["target_top"] = n_air*n_air*1.00001
+data["target_top"] = ((k0*n_air/scale)**2)*1.00001
 
 prefix = "res_meta_surf_1d/meta_surf_1d"
 suffix = "_cu" if rib_copper else "_az"
@@ -39,9 +41,8 @@ n_az = az_n(wavelength)
 k_az = az_k(wavelength)
 data["n_copper"] = n_copper
 data["k_copper"] = k_copper
-data["n_az"] = n_az
-data["k_az"] = k_az
-data["target_bot"] = n_copper*n_copper*1.00001
+
+data["target_bot"] = ((k0*n_copper/scale)**2)*1.00001
 
 data["n_rib"] = n_copper if rib_copper else n_az
 data["k_rib"] = k_copper if rib_copper else k_az
