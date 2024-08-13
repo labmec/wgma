@@ -13,8 +13,8 @@ namespace wgma::post{
     const int nsol = mesh->Solution().Cols();
     if(nsol != 2){DebugStop();}
     
-    m_numerator.Resize(size_res,0);
-    m_denominator.Resize(size_res,0);
+    m_numerator.Resize(size_res); m_numerator.Fill(0);
+    m_denominator.Resize(size_res); m_numerator.Fill(0);
     this->Integrate(this->m_elvec);
     
     CSTATE num{0}, den{0};
@@ -22,6 +22,8 @@ namespace wgma::post{
       num += m_numerator[it];
       den += m_denominator[it];
     }
+    m_numerator.Resize(0);
+    m_denominator.Resize(0);
     return num/den;
   }
 
