@@ -156,11 +156,11 @@ SimData GetSimData(bool rib_copper)
   data.mode = wgma::planarwg::mode::TM;
   data.n_copper = 0.1;
   data.k_copper = 7;
-  data.n_az = 1.622;
-  data.k_az = 0;
+  const STATE n_az = 1.622;
+  const STATE k_az = 0;
   data.n_air = 1;
-  data.n_rib = rib_copper ? data.n_copper : data.n_az;
-  data.k_rib = rib_copper ? data.k_copper : data.k_az;
+  data.n_rib = rib_copper ? data.n_copper : n_az;
+  data.k_rib = rib_copper ? data.k_copper : k_az;
   data.porder = 4;
   data.filter_bnd_eqs = true;
   data.print_gmesh=true;
@@ -364,10 +364,6 @@ SimData ReadSimData(const std::string &dataname)
   sd.n_copper=data["n_copper"];
   //!imag part of refractive index of copper
   sd.k_copper=data["k_copper"];
-  //!real part of refractive index of photoresist
-  sd.n_az=data["n_az"];
-  //!imag part of refractive index of photoresist
-  sd.k_az=data["k_az"];
   //!real part of refractive index of rib
   sd.n_rib=data["n_rib"];
   //!imag part of refractive index of rib
