@@ -316,6 +316,7 @@ int main(int argc, char *argv[]) {
 
 void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
                   const REAL lambda,
+                  const bool is_te,
                   const REAL scale,
                   const int n_threads);
 
@@ -477,7 +478,8 @@ ComputeModalAnalysis(
   }
 
   const std::string modal_file{simdata.prefix+"_modal_"+name};
-  ComputeModes(*modal_an, simdata.wavelength,simdata.scale, simdata.n_threads);
+  ComputeModes(*modal_an, simdata.wavelength,simdata.mode == wgma::planarwg::mode::TE,
+               simdata.scale, simdata.n_threads);
   if(simdata.couplingmat){
     std::string couplingfile{simdata.prefix+"_coupling_"+name+".csv"};
     const bool is_te = simdata.mode == wgma::planarwg::mode::TE;
@@ -491,6 +493,7 @@ ComputeModalAnalysis(
 
 void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
                   const REAL lambda,
+                  const bool is_te,
                   const REAL scale,
                   const int n_threads)
 {
@@ -527,6 +530,7 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
         if(b.imag()>0){b=-b;}
       }
     }
+    norm.SetTE(is_te);
     norm.SetBeta(betavec);
     norm.SetWavelength(lambda/scale);
     norm.Normalise();
