@@ -11,7 +11,11 @@ namespace wgma::post{
     auto mesh = this->Mesh();
     const int size_res = std::max(this->NThreads(),1);
     const int nsol = mesh->Solution().Cols();
-    m_res.Resize(size_res,TPZVec<CSTATE>(nsol,0.));
+    m_res.Resize(size_res);
+    for (auto &it : m_res){
+      it.Resize(nsol);
+      it.Fill(0);
+    }
     this->Integrate(this->m_elvec);
     
     TPZVec<CSTATE> res(nsol,0.);
@@ -25,6 +29,7 @@ namespace wgma::post{
       res[isol] = sqrt(res[isol]);
       // std::cout<<"computed norm of solution "<<isol<<": "<<res[isol]<<std::endl;
     }
+    m_res.Resize(0);
     return res;
   }
   
