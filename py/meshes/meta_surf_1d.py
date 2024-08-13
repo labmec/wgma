@@ -21,7 +21,7 @@ h_domain = 0.9
 h_copper = 0.25
 h_rib = 0.1
 w_rib = 0.3
-min_wl = 0.741
+min_wl = 0.5
 # refractive index: air
 n_air = 1.0
 # real part of refractive index: copper
