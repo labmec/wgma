@@ -682,28 +682,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   
   if(has_bot){match_an->LoadAllSolutions();}
 
-  /*
-    this mesh will be used to compute the reflection
-    so, first, we need to store the solution corresponding to our src
-   */
-  TPZFMatrix<CSTATE> src_sol;
-  TPZAutoPointer<TPZCompMesh> ref_mesh = nullptr;
-  if(simdata.compute_reflection_norm){
-    auto src_mesh = src_an->GetMesh();
-    ref_mesh = src_an->GetMesh()->Clone();
-    const int64_t neq_ref_mesh =
-      src_an->GetMesh()->Solution().Rows();
-    src_sol.Redim(neq_ref_mesh,1);
-
-    for(int i = 0; i < n_eigenpairs_top; i++){
-      if(src_coeffs[i]!=0.){
-        src_an->LoadSolution(i);
-        TPZFMatrix<CSTATE> sol = src_an->GetMesh()->Solution();
-        sol*=src_coeffs[i];
-        src_sol += sol;
-      }
-    }
-  }
   //now we solve varying the number of modes used in the wgbc
   src_an->LoadAllSolutions();
   
@@ -760,22 +738,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
       std::cout<<"i "<<i<<" alpha "<<sol.GetVal(sol_pos+i,0)<<std::endl;
     }
     if(simdata.compute_reflection_norm){
-      //now we compute the reflection
-      const int solsz = src_sol.Rows();
-      TPZFMatrix<CSTATE> refl_sol(solsz,2,0);
-
-      //we copy the solution to the first column
-      TPZFMatrix<CSTATE> dummy_0(solsz,1,refl_sol.Elem(),solsz);
-      wgma::cmeshtools::ExtractSolFromMesh(ref_mesh, scatt_mesh, dummy_0);
-      //we copy the src to the second column
-      TPZFMatrix<CSTATE> dummy_1(solsz,1,refl_sol.Elem()+solsz,solsz);
-      dummy_1 = src_sol;
-      ref_mesh->LoadSolution(refl_sol);
-
-      using namespace wgma::post;
-      SolutionReflectivity<SingleSpaceIntegrator>ref_calc(ref_mesh);
-      ref_calc.SetNThreads(simdata.n_threads);
-      auto ref = ref_calc.ComputeReflectivity();
+      const CSTATE ref = alpha-src_coeffs[0];
       std::string outputfile = simdata.prefix+"_reflection.csv";
       std::ofstream ost;
       ost.open(outputfile, std::ios_base::app);
@@ -793,7 +756,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     //removing restrictions
     wgma::cmeshtools::RemovePeriodicity(scatt_mesh);
   }
-  if(simdata.compute_reflection_norm){wgma::cmeshtools::RemovePeriodicity(ref_mesh);}
 }
 
 #include <TPZStructMatrixOMPorTBB.h>
