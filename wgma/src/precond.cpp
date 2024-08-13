@@ -634,7 +634,7 @@ BlockPrecond::BlockPrecond(TPZAutoPointer<TPZMatrix<CSTATE>> refmat,
   m_blockgraph(std::move(block)), m_blockindex(std::move(block_index))
 {
   const int nbl = m_blockindex.size()-1;
-  m_sparse_mats.Resize(nbl,0);
+  m_sparse_mats.Resize(nbl); m_sparse_mats.Fill(false);
   for(auto m : sparse_mats){m_sparse_mats[m] = true;}
   for(int ibl = 0; ibl < nbl; ibl++){
     const auto bs = this->BlockSize(ibl);
@@ -654,7 +654,7 @@ BlockPrecond::BlockPrecond(TPZAutoPointer<TPZMatrix<CSTATE>> refmat,
   m_blockgraph(block), m_blockindex(block_index)
 {
   const int nbl = m_blockindex.size()-1;
-  m_sparse_mats.Resize(nbl,0);
+  m_sparse_mats.Resize(nbl); m_sparse_mats.Fill(false);
   for(auto m : sparse_mats){m_sparse_mats[m] = true;}
   for(int ibl = 0; ibl < nbl; ibl++){
     const auto bs = this->BlockSize(ibl);
@@ -715,7 +715,7 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
   if(refmat == this->fReferenceMatrix){
     const int nbl = this->NBlocks();
     if(this->m_blockinv.size()!=nbl){
-      this->m_blockinv.Resize(nbl,nullptr);
+      this->m_blockinv.Resize(nbl); this->m_blockinv.Fill(nullptr);
       for(int ibl = 0; ibl < nbl; ibl++){
         const int bs = BlockSize(ibl);
         if(m_sparse_mats[ibl]){
