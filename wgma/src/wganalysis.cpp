@@ -1198,10 +1198,10 @@ namespace wgma::wganalysis{
   CMeshWgma1D(TPZAutoPointer<TPZGeoMesh> gmesh,
               wgma::planarwg::mode mode, int pOrder,
               wgma::cmeshtools::PhysicalData &data,
-              const STATE lambda, const REAL scale)
+              const STATE lambda, const REAL scale, bool verbose)
   {
     return CMeshWgma1DPeriodic(gmesh,mode,pOrder,data,
-                               {},lambda,scale);
+                               {},lambda,scale, verbose);
   }
 
   TPZAutoPointer<TPZCompMesh>
@@ -1209,7 +1209,7 @@ namespace wgma::wganalysis{
                       wgma::planarwg::mode mode, int pOrder,
                       wgma::cmeshtools::PhysicalData &data,
                       const std::map<int64_t,int64_t> periodic_els,
-                      const STATE lambda, const REAL scale)
+                      const STATE lambda, const REAL scale, bool verbose)
   {
   
     static constexpr bool isComplex{true};
@@ -1223,6 +1223,11 @@ namespace wgma::wganalysis{
     std::set<int> volmats;
     std::set<int> allmats;
     TPZPeriodicWgma::ModeType matmode;
+    if(verbose){
+      std::cout<<"Creating mesh for analysing "
+               <<wgma::planarwg::mode_to_string(mode)
+               <<" modes"<<std::endl;
+    }
     switch (mode) {
     case wgma::planarwg::mode::TE:
       matmode = TPZScalarField::ModeType::TE;
@@ -1234,16 +1239,22 @@ namespace wgma::wganalysis{
       DebugStop();
       break;
     }
+    
+    if(verbose && data.matinfovec.size()){std::cout<<"VOLMATS:"<<std::endl;}
     for (auto [id, er, ur] : data.matinfovec) {
       auto *mat =
         new TPZPlanarWgma(id, er, ur, lambda, matmode, scale);
       cmeshH1->InsertMaterialObject(mat);
+      if(verbose){
+        std::cout<<"\tid "<<id<<" er "<<er<<" ur "<<ur<<std::endl;
+      }
       // for pml
       volmats.insert(id);
       //for assembling only desired materials
       allmats.insert(id);
     }
 
+    if(verbose && data.pmlvec.size()){std::cout<<"PMLs:"<<std::endl;}
     for (auto &pml : data.pmlvec) {
       //skip PMLs of other dimensions
       if(pml->dim != cmeshH1->Dimension()){continue;}
@@ -1252,7 +1263,17 @@ namespace wgma::wganalysis{
       if(cart_pml){
         cart_pml->neigh =
           cmeshtools::AddRectangularPMLRegion<TPZPlanarWgma>(*cart_pml, volmats, gmesh, cmeshH1);
+        if(verbose){
+          std::cout<<"\tid:";
+          for(auto [id,neigh]: pml->neigh){std::cout<<' '<<id<<"("<<neigh<<") ";}
+          std::cout<<"type  "<<wgma::pml::cart::to_string(cart_pml->t)
+                   <<" ax "<<cart_pml->alphax
+                   <<" ay "<<cart_pml->alphay
+                   <<" az "<<cart_pml->alphaz
+                   <<std::endl;
+        }
       }else if (cyl_pml){
+        DebugStop();//in 1D?
         cyl_pml->neigh =
           cmeshtools::AddCylindricalPMLRegion<TPZPlanarWgma>(*cyl_pml, volmats, gmesh, cmeshH1);
       }else{
@@ -1265,17 +1286,22 @@ namespace wgma::wganalysis{
     }
     
 
+    if(verbose && data.probevec.size()){std::cout<<"PROBES:"<<std::endl;}
     for(auto [id,matdim] : data.probevec){
       static constexpr int soldim{1};
       auto *mat = new wgma::materials::SolutionProjection<CSTATE>(id,matdim,soldim);
       cmeshH1->InsertMaterialObject(mat);
       allmats.insert(id);
+      if(verbose){
+        std::cout<<"\t id "<<id<<" dim "<<matdim<<std::endl;
+      }
     }
     TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
     TPZManVector<CSTATE, 1> val2(1, 0.);
 
     /**let us associate each boundary with a given material.
        this is important for the source boundary*/
+    if(verbose){std::cout<<"BC:"<<std::endl;}
     for(auto &bc : data.bcvec){
       auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, allmats);
       if(!res.has_value()){
@@ -1285,14 +1311,6 @@ namespace wgma::wganalysis{
       }else{
         bc.volid = res.value();
       }
-    }
-
-    // for(auto bc : data.bcvec){
-    //   std::cout<<"bc "<<bc.id<<" mat "<<bc.volid<<std::endl;
-    // }
-
-  
-    for (auto bc : data.bcvec) {
       const int bctype = wgma::bc::to_int(bc.t);
       const int id = bc.id;
       const int volmatid = bc.volid;
@@ -1300,6 +1318,10 @@ namespace wgma::wganalysis{
         dynamic_cast<TPZMaterialT<CSTATE> *>(cmeshH1->FindMaterial(volmatid));
       auto *bcmat = volmat->CreateBC(volmat, id, bctype, val1, val2);
       cmeshH1->InsertMaterialObject(bcmat);
+      if(verbose){
+        std::cout<<"\tid "<<id<<" bctype "<<wgma::bc::to_string(bc.t)
+                 <<" neigh "<<volmatid<<std::endl;
+      }
       allmats.insert(id);
     }
 

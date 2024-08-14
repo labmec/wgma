@@ -388,7 +388,7 @@ namespace wgma::wganalysis{
   CMeshWgma1D(TPZAutoPointer<TPZGeoMesh> gmesh,
               wgma::planarwg::mode mode, int pOrder,
               cmeshtools::PhysicalData &data,
-              const STATE lambda, const REAL scale);
+              const STATE lambda, const REAL scale, bool verbose=false);
   /**
      @brief Creates the computational meshes used for approximating the waveguide EVP in one dimension, for planar waveguides with periodic boundaries.
      @param[in] gmesh geometrical mesh
@@ -404,7 +404,7 @@ namespace wgma::wganalysis{
                       wgma::planarwg::mode mode, int pOrder,
                       wgma::cmeshtools::PhysicalData &data,
                       const std::map<int64_t,int64_t> periodic_els,
-                      const STATE lambda, const REAL scale);
+                      const STATE lambda, const REAL scale, bool verbose=false);
 
   /**
      @brief Creates the computational meshes used for approximating the waveguide EVP
