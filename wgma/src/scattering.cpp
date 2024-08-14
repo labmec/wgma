@@ -612,6 +612,11 @@ namespace wgma::scattering{
       DebugStop();
       break;
     }
+    if(verbose){
+      std::cout<<"Creating mesh for propagation of  "
+               <<wgma::planarwg::mode_to_string(mode)
+               <<" modes"<<std::endl;
+    }
     if(verbose && data.matinfovec.size()){std::cout<<"VOLMATS:"<<std::endl;}
     for(auto [id,er,ur] : data.matinfovec){
       auto *mat = new TPZPlanarWgScatt(id,er,ur,lambda,matmode,scale);
