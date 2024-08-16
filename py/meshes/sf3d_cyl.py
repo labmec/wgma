@@ -141,8 +141,8 @@ def create_sf3d_mesh(
     horiz_plane.xc = -(r_box+d_pml_r)
     horiz_plane.yc = 0
     horiz_plane.zc = -l_domain/2
-    horiz_plane.h = 2*(r_box+d_pml_r)
-    horiz_plane.w = l_domain
+    horiz_plane.h = l_domain
+    horiz_plane.w = 2*(r_box+d_pml_r)
 
     create_rect(horiz_plane, el_clad, 'y')
 

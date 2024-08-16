@@ -125,31 +125,13 @@ def create_rect(rect, elsize: float, normal: str = 'z'):
     zc = rect.zc
     w = rect.w
     h = rect.h
-    pts = []
-    if normal == 'z':
-        pts.append(gmsh.model.occ.add_point(xc, yc, zc, elsize))
-        pts.append(gmsh.model.occ.add_point(xc+w, yc, zc, elsize))
-        pts.append(gmsh.model.occ.add_point(xc+w, yc+h, zc, elsize))
-        pts.append(gmsh.model.occ.add_point(xc, yc+h, zc, elsize))
+    t = gmsh.model.occ.add_rectangle(xc, yc, zc, w, h)
+    rect.tag = [t]
+    pi = 3.14159265358979323846
+    if normal == 'x':
+        gmsh.model.occ.rotate([(2, t)], xc, yc, zc, 0, 1, 0, pi/2)
     elif normal == 'y':
-        pts.append(gmsh.model.occ.add_point(xc, yc, zc, elsize))
-        pts.append(gmsh.model.occ.add_point(xc, yc, zc+w, elsize))
-        pts.append(gmsh.model.occ.add_point(xc+h, yc, zc+w, elsize))
-        pts.append(gmsh.model.occ.add_point(xc+h, yc, zc, elsize))
-    else:  # normal == 'x'
-        pts.append(gmsh.model.occ.add_point(xc, yc, zc, elsize))
-        pts.append(gmsh.model.occ.add_point(xc, yc+w, zc, elsize))
-        pts.append(gmsh.model.occ.add_point(xc, yc+w, zc+h, elsize))
-        pts.append(gmsh.model.occ.add_point(xc, yc, zc+h, elsize))
-    l = []
-    assert(len(pts) == 4)
-    for i in range(len(pts)):
-        p1 = i
-        p2 = (i+1) % 4
-        l.append(gmsh.model.occ.add_line(pts[p1], pts[p2]))
-    lloop = gmsh.model.occ.add_curve_loop(l)
-    surface = gmsh.model.occ.add_plane_surface([lloop])
-    rect.tag = [surface]
+        gmsh.model.occ.rotate([(2, t)], xc, yc, zc, 1, 0, 0,  pi/2)
 
 
 def create_circle(data: CircleData, elsize: float):
@@ -219,7 +201,7 @@ them into lists of physical_ids and regions
     physical_ids_1d = physical_ids[1]
     for circ in circdata:
         name = "circ"+str(new_physical_id)
-        assert(name not in regions)
+        assert (name not in regions)
         physical_ids_1d[name] = new_physical_id
         regions[name] = circ.linetag
         circ.matid = new_physical_id
@@ -250,7 +232,7 @@ them into lists of physical_ids and regions
     physical_ids_2d = physical_ids[2]
     for cyl in cyldata:
         name = "cyl"+str(new_physical_id)
-        assert(name not in regions)
+        assert (name not in regions)
         physical_ids_2d[name] = new_physical_id
         regions[name] = cyl.surftag
         cyl.matid = new_physical_id
@@ -357,7 +339,7 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         return b
 
     if type(dimtag) == list:
-        assert(len(dimtag) == 1)
+        assert (len(dimtag) == 1)
         dimtag = dimtag[0]
 
     dim = dimtag[0]
@@ -375,7 +357,7 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
                   ]
     direction = direction.lower()
     # just to make sure nothing weird will happen
-    assert(direction in valid_dirs)
+    assert (direction in valid_dirs)
 
     # calc orientation
     signvec = []
@@ -391,7 +373,7 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
     dpml = [dpml[i] * signvec[i] for i in range(3)]
     # all directions with an attenuation
     alldirs = [i for i, s in enumerate(signvec) if s != 0]
-    assert(len(alldirs) > 0)
+    assert (len(alldirs) > 0)
     # let us find the boundary in the PML direction
     b = find_bnd(dimtag, alldirs[0], signvec)
     # now we expect to find a PML region after this boundary
@@ -409,7 +391,7 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
     bpml = find_bnd(pmlreg, alldirs[1], signvec)
     # now we may or may not find a PML region after this boundary
     up, _ = gmsh.model.get_adjacencies(bpml[0], bpml[1])
-    if(len(up) > 1):
+    if (len(up) > 1):
         # there is already a PML in that direction
         pmlreg = (dim, up[0] if up[1] == pmlreg[1] else up[1])
     else:
@@ -418,22 +400,22 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         dx[alldirs[1]] = dpml[alldirs[1]]
         nel = [nlayers]
         height = [1]
-        pmlreg = [(d, t)
-                  for d, t in gmsh.model.occ.extrude([bpml], *dx, nel, height,True) if d == dim][0]
+        pmlreg = [(d, t) for d, t in gmsh.model.occ.extrude(
+            [bpml], *dx, nel, height, True) if d == dim][0]
 
-    if(len(alldirs) == 3):
+    if (len(alldirs) == 3):
         # yet another extrusion
         bpml = find_bnd(pmlreg, alldirs[2], signvec)
         # now we should not find a PML region after this boundary
         up, _ = gmsh.model.get_adjacencies(bpml[0], bpml[1])
         # why would there be already a PML?
-        assert(len(up) == 1)
+        assert (len(up) == 1)
         dx = [0, 0, 0]
         dx[alldirs[2]] = dpml[alldirs[2]]
         nel = [nlayers]
         height = [1]
-        pmlreg = [(d, t)
-                  for d, t in gmsh.model.occ.extrude([bpml], *dx, nel, height,True) if d == dim][0]
+        pmlreg = [(d, t) for d, t in gmsh.model.occ.extrude(
+            [bpml], *dx, nel, height, True) if d == dim][0]
 
     return {(direction, pmlreg[1]): dimtag[1]}
 
@@ -469,12 +451,12 @@ The same applies for "xm" and "ym"
     valid_dirs = ["xm", "ym", "xp", "yp", "zm", "zp"]
     direction = direction.lower()
     # just to make sure nothing weird will happen
-    assert(direction in valid_dirs)
+    assert (direction in valid_dirs)
 
     dimlist = [dt[0] for dt in dimtags]
 
     # ensure that all regions have the same dimension
-    assert(len(set(dimlist)) == 1)
+    assert (len(set(dimlist)) == 1)
     # get all boundaries of the regions
     allbnds = gmsh.model.get_boundary(dimtags, combined=True, oriented=False)
     # attenuation direction
@@ -503,15 +485,15 @@ The same applies for "xm" and "ym"
         # get region adjacent to pml boundary
         up, _ = gmsh.model.get_adjacencies(bnd[0], bnd[1])
         # check if there is only one adjacent region of dimension dim
-        assert(len(up) == 1)
+        assert (len(up) == 1)
     nel = [nlayers]
     height = [1]
     pmlregs = gmsh.model.occ.extrude(pml_bnds, dx, dy, dz, nel, height, True)
-    #let us filter the relevant PML regions 
+    # let us filter the relevant PML regions
     pmlregs = [pr[1] for pr in pmlregs if pr[0] == dim]
-    #we now assume that the output of extrude will give 3d regions
-    #in the same order as the 3d regions in dimtags
-    assert(len(dimtags) == len(pmlregs))
+    # we now assume that the output of extrude will give 3d regions
+    # in the same order as the 3d regions in dimtags
+    assert (len(dimtags) == len(pmlregs))
     for i, pml in enumerate(pmlregs):
         pmlmap.update({(direction, pml): dimtags[i][1]})
     return pmlmap
@@ -675,10 +657,10 @@ zero)
     dimlist = [dt[0] for dt in dimtags]
 
     # ensure that all regions have the same dimension
-    assert(len(set(dimlist)) == 1)
+    assert (len(set(dimlist)) == 1)
 
     dim = dimlist[0]
-    assert(dim > 0)
+    assert (dim > 0)
     dirmap = {"x": 0, "y": 1, "z": 2}
     # index of given direction
     dirindex = dirmap[direction]

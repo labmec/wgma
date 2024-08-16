@@ -39,7 +39,6 @@ def cut_vol_with_plane(vols, surfs, elsize):
     remap_tags(vols+surfs, domain_map)
 
 
-
 wl = 4.0  # wavelength (in microns)
 
 # refractive indices
@@ -109,15 +108,15 @@ gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
 
-#we divide it at the y=0 plane to avoid issues when finding the PML
+# we divide it at the y=0 plane to avoid issues when finding the PML
 horiz_plane = RectData()
 horiz_plane.xc = -d_box
 horiz_plane.yc = 0
 horiz_plane.zc = -l_domain
-horiz_plane.h = 2*d_box
-horiz_plane.w = l_domain
+horiz_plane.h = l_domain
+horiz_plane.w = 2*d_box
 
-create_rect(horiz_plane, el_clad,'y')
+create_rect(horiz_plane, el_clad, 'y')
 
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
@@ -134,7 +133,6 @@ gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
 cut_vol_with_plane([vol, cyl], [src, horiz_plane], el_clad)
-
 
 
 # let us split the source domains
@@ -187,10 +185,14 @@ gmsh.model.occ.synchronize()
 
 dpml = [d_pmlx, d_pmly, d_pmlz]
 # avoid using zp here because cylindrical regions do not play well with these PML corner algorithms
-[pmlmap.update(create_pml_corner(reg, "xmzp", dpml, nlayerspml)) for reg in xmzp]
-[pmlmap.update(create_pml_corner(reg, "xpzp", dpml, nlayerspml)) for reg in xpzp]
-[pmlmap.update(create_pml_corner(reg, "xmzm", dpml, nlayerspml)) for reg in xmzm]
-[pmlmap.update(create_pml_corner(reg, "xpzm", dpml, nlayerspml)) for reg in xpzm]
+[pmlmap.update(create_pml_corner(reg, "xmzp", dpml, nlayerspml))
+ for reg in xmzp]
+[pmlmap.update(create_pml_corner(reg, "xpzp", dpml, nlayerspml))
+ for reg in xpzp]
+[pmlmap.update(create_pml_corner(reg, "xmzm", dpml, nlayerspml))
+ for reg in xmzm]
+[pmlmap.update(create_pml_corner(reg, "xpzm", dpml, nlayerspml))
+ for reg in xpzm]
 
 
 [pmlmap.update(create_pml_corner(reg, "xpyp", dpml, nlayerspml)) for reg in yp]
@@ -199,26 +201,38 @@ dpml = [d_pmlx, d_pmly, d_pmlz]
 [pmlmap.update(create_pml_corner(reg, "xmym", dpml, nlayerspml)) for reg in ym]
 
 
-[pmlmap.update(create_pml_corner(reg, "ypzm", dpml, nlayerspml)) for reg in ypzm]
-[pmlmap.update(create_pml_corner(reg, "ypzp", dpml, nlayerspml)) for reg in ypzp]
-[pmlmap.update(create_pml_corner(reg, "ymzm", dpml, nlayerspml)) for reg in ymzm]
-[pmlmap.update(create_pml_corner(reg, "ymzp", dpml, nlayerspml)) for reg in ymzp]
+[pmlmap.update(create_pml_corner(reg, "ypzm", dpml, nlayerspml))
+ for reg in ypzm]
+[pmlmap.update(create_pml_corner(reg, "ypzp", dpml, nlayerspml))
+ for reg in ypzp]
+[pmlmap.update(create_pml_corner(reg, "ymzm", dpml, nlayerspml))
+ for reg in ymzm]
+[pmlmap.update(create_pml_corner(reg, "ymzp", dpml, nlayerspml))
+ for reg in ymzp]
 
 # the PMLs that attenuate in 3 directions need to be aware of the other ones
 
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
-[pmlmap.update(create_pml_corner(reg, "xmypzp", dpml, nlayerspml)) for reg in ypzp]
-[pmlmap.update(create_pml_corner(reg, "xpypzp", dpml, nlayerspml)) for reg in ypzp]
-[pmlmap.update(create_pml_corner(reg, "xmymzp", dpml, nlayerspml)) for reg in ymzp]
-[pmlmap.update(create_pml_corner(reg, "xpymzp", dpml, nlayerspml)) for reg in ymzp]
+[pmlmap.update(create_pml_corner(reg, "xmypzp", dpml, nlayerspml))
+ for reg in ypzp]
+[pmlmap.update(create_pml_corner(reg, "xpypzp", dpml, nlayerspml))
+ for reg in ypzp]
+[pmlmap.update(create_pml_corner(reg, "xmymzp", dpml, nlayerspml))
+ for reg in ymzp]
+[pmlmap.update(create_pml_corner(reg, "xpymzp", dpml, nlayerspml))
+ for reg in ymzp]
 
 
-[pmlmap.update(create_pml_corner(reg, "xmypzm", dpml, nlayerspml)) for reg in ypzm]
-[pmlmap.update(create_pml_corner(reg, "xpypzm", dpml, nlayerspml)) for reg in ypzm]
-[pmlmap.update(create_pml_corner(reg, "xmymzm", dpml, nlayerspml)) for reg in ymzm]
-[pmlmap.update(create_pml_corner(reg, "xpymzm", dpml, nlayerspml)) for reg in ymzm]
+[pmlmap.update(create_pml_corner(reg, "xmypzm", dpml, nlayerspml))
+ for reg in ypzm]
+[pmlmap.update(create_pml_corner(reg, "xpypzm", dpml, nlayerspml))
+ for reg in ypzm]
+[pmlmap.update(create_pml_corner(reg, "xmymzm", dpml, nlayerspml))
+ for reg in ymzm]
+[pmlmap.update(create_pml_corner(reg, "xpymzm", dpml, nlayerspml))
+ for reg in ymzm]
 
 
 gmsh.model.occ.remove_all_duplicates()
@@ -310,7 +324,6 @@ insert_pml_ids(pmlmap, domain_physical_ids, domain_regions)
 insert_pml_ids(pmlmap2d, domain_physical_ids, domain_regions, 2)
 
 generate_physical_ids(domain_physical_ids, domain_regions)
-
 
 
 gmsh.fltk.run()
