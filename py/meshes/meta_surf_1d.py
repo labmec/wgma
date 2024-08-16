@@ -18,6 +18,7 @@ from utils.gmsh import (
 #############################################
 w_domain = 0.6
 h_domain = 0.9
+h_pml = 0.25
 h_copper = 0.25
 h_rib = 0.1
 w_rib = 0.3
@@ -38,8 +39,9 @@ max_n = max(n_az, n_copper, n_air)
 nel_lambda = 50
 el_copper = (min_wl/n_copper)/nel_lambda/3
 el_rib = (min_wl/max_n)/nel_lambda/2
-el_air = (min_wl/n_air)/nel_lambda
+el_air = 2*(min_wl/n_air)/nel_lambda
 
+print(el_copper,el_rib,el_air)
 gmsh.initialize()
 gmsh.option.set_number("Geometry.Tolerance", 10**-14)
 gmsh.option.set_number("Geometry.MatchMeshTolerance", 10**-14)
@@ -78,7 +80,6 @@ create_rect(air, el_air)
 
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
-
 objs = []
 [objs.append((2, s)) for s in air.tag]
 tools = []
@@ -90,19 +91,43 @@ remap_tags([air], air_map)
 gmsh.model.occ.remove_all_duplicates()
 gmsh.model.occ.synchronize()
 
+# pml domain
+pml = RectData()
+pml.xc = -w_domain/2
+pml.yc = h_domain
+pml.w = w_domain
+pml.h = h_pml
+create_rect(pml, el_air)
+
+gmsh.model.occ.remove_all_duplicates()
+gmsh.model.occ.synchronize()
+
 
 # set periodicity in x direction
-bnd_right, bnd_left, _ = set_periodic(
-    1, -w_domain/2, 0, 0, w_domain/2, h_domain, 0, 0)
 
-gmsh.model.occ.synchronize()
-# first we get all 1d boundaries
-dim = 2
-all_domains = gmsh.model.get_entities(dim)
-all_bounds = gmsh.model.get_boundary(
-    all_domains, combined=True, oriented=False, recursive=False)
+#first for the real domain, then pmls
+vol_domains = air.tag+bottom.tag+rib.tag
+vol_bounds = gmsh.model.get_boundary([(2,t) for t in vol_domains],combined=True,oriented=False)
+pml_bounds = gmsh.model.get_boundary([(2,t) for t in pml.tag],combined=True,oriented=False)
+
+# get left and right bounds
+bnd_left, bnd_right = split_region_dir(vol_bounds, 'x')
+bnd_left = [t for _, t in bnd_left]
+bnd_right = [t for _, t in bnd_right]
+trsf = [1, 0, 0, w_domain, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+gmsh.model.mesh.setPeriodic(1, bnd_right, bnd_left, trsf)
+
+_, bnd_pml_top = split_region_dir(pml_bounds, 'y')
+bnd_pml_top = [t for _, t in bnd_pml_top]
+
+bnd_pml_left, bnd_pml_right = split_region_dir(pml_bounds, 'x')
+bnd_pml_left = [t for _, t in bnd_pml_left]
+bnd_pml_right = [t for _, t in bnd_pml_right]
+trsf = [1, 0, 0, w_domain, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+gmsh.model.mesh.setPeriodic(1, bnd_pml_right, bnd_pml_left, trsf)
+
 # get bottom and top bounds
-bnd_bottom, bnd_top = split_region_dir(all_bounds, 'y')
+bnd_bottom, bnd_top = split_region_dir(vol_bounds, 'y')
 bnd_bottom = [t for _, t in bnd_bottom]
 bnd_top = [t for _, t in bnd_top]
 
@@ -139,7 +164,7 @@ gmsh.model.mesh.field.set_number(field_ct, "VIn", el_rib)
 field_ct += 1
 gmsh.model.mesh.field.add("Constant", field_ct)
 gmsh.model.mesh.field.set_number(field_ct, "IncludeBoundary", 1)
-gmsh.model.mesh.field.set_numbers(field_ct, "SurfacesList", air.tag)
+gmsh.model.mesh.field.set_numbers(field_ct, "SurfacesList", air.tag+pml.tag)
 gmsh.model.mesh.field.set_number(field_ct, "VIn", el_air)
 # gmsh.model.mesh.field.set_number(field_ct, "VOut", el_air)
 field_ct += 1
@@ -155,7 +180,8 @@ gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
 domain_physical_ids_2d = {
     "copper": 1,
     "rib": 2,
-    "air": 3
+    "air": 3,
+    "pml_air_xm": 4
 }
 
 domain_physical_ids_1d = {
@@ -163,6 +189,9 @@ domain_physical_ids_1d = {
     "bnd_periodic_2": 11,
     "bnd_top": 12,
     "bnd_bottom": 13,
+    "bnd_periodic_3": 14,
+    "bnd_periodic_4": 15,
+    "bnd_backed_port": 16
 }
 
 domain_physical_ids_0d = {
@@ -178,10 +207,14 @@ domain_physical_ids = [domain_physical_ids_0d,
 domain_regions = {"copper": bottom.tag,
                   "rib": rib.tag,
                   "air": air.tag,
+                  "pml_air_xm": pml.tag,
                   "bnd_periodic_1": bnd_left,
                   "bnd_periodic_2": bnd_right,
+                  "bnd_periodic_3": bnd_pml_left,
+                  "bnd_periodic_4": bnd_pml_right,
                   "bnd_bottom": bnd_bottom,
                   "bnd_top": bnd_top,
+                  "bnd_backed_port": bnd_pml_top,
                   "bnd_wgma_bottom_0": [bnd_wgma_bottom[0]],
                   "bnd_wgma_bottom_1": [bnd_wgma_bottom[1]],
                   "bnd_wgma_top_0": [bnd_wgma_top[0]],
@@ -195,7 +228,7 @@ gmsh.model.mesh.generate(2)
 dim = 1
 
 invert = []
-for r, l in zip(bnd_right, bnd_left):
+for r, l in zip(bnd_right+bnd_pml_right, bnd_left+bnd_pml_left):
     coord = [0]
     d_l = gmsh.model.get_derivative(dim, l, coord)
     d_r = gmsh.model.get_derivative(dim, r, coord)

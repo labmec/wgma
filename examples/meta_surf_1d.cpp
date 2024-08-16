@@ -442,6 +442,8 @@ ComputeModalAnalysis(
     constexpr int modal_dim{1};
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
                                             {0}, modal_data, modal_dim);
+
+    modal_data.pmlvec={};
     return wgma::wganalysis::CMeshWgma1DPeriodic(gmesh,mode,pOrder,modal_data,
                                                  periodic_els,
                                                  wavelength, scale);
@@ -632,6 +634,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
                                             {0,0}, scatt_data);
+    scatt_data.pmlvec={};
 
     
 
