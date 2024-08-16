@@ -46,10 +46,6 @@ struct SimData{
   STATE n_copper{1};
   //!imag part of refractive index of copper
   STATE k_copper{1};
-  //!real part of refractive index of photoresist
-  STATE n_az{1};
-  //!imag part of refractive index of photoresist
-  STATE k_az{1};
   //!real part of refractive index of rib
   STATE n_rib{1};
   //!imag part of refractive index of rib
@@ -80,6 +76,10 @@ struct SimData{
   bool export_vtk_modes{false};
   //!post process scatt fields
   bool export_vtk_scatt{false};
+  //!whether to use PML backed ports
+  bool using_pml{false};
+  //!pml attenuation constant
+  CSTATE alpha_pml{0};
   /**
      @brief Computes reflection and exports to .csv file
      @note This will APPEND to a given csv file, be sure to
@@ -175,6 +175,7 @@ SimData GetSimData(bool rib_copper)
   data.target_bot=data.n_copper*data.n_copper*1.0001;
   data.vtk_res=0;
   data.prefix = prefix;
+  data.using_pml=false;
   return std::move(data);
 }
 
@@ -346,6 +347,10 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
                                   const TPZFMatrix<CSTATE> &wgbc_k,
                                   const TPZVec<CSTATE> &wgbc_f);
 
+void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
+                  wgma::wganalysis::WgmaPlanar& src_an,
+                  const TPZVec<CSTATE> &src_coeffs,
+                  const SimData &simdata);
 
 //! Reads sim data from file
 SimData ReadSimData(const std::string &dataname)
@@ -370,6 +375,20 @@ SimData ReadSimData(const std::string &dataname)
   sd.k_rib=data["k_rib"];
   //!refractive index of air 
   sd.n_air=data["n_air"];
+  //!whether to use pml
+  sd.using_pml=data.value("using_pml",false);
+  if(sd.using_pml){
+    std::vector<double> tmpvec_double =
+      data["alpha_pml"].get<std::vector<double>>();
+    if(tmpvec_double.size() <1 || tmpvec_double.size()>2){
+      DebugStop();
+    }
+    if(tmpvec_double.size()==1){
+      sd.alpha_pml = tmpvec_double[0];
+    }else{
+      sd.alpha_pml = {tmpvec_double[0], tmpvec_double[1]};
+    }
+  }
   //!mode currently analysed
   sd.mode=wgma::planarwg::string_to_mode(data["mode"]);
   //!polynomial order
@@ -630,11 +649,16 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     std::map<std::string, wgma::bc::type> scatt_bcs;
     scatt_bcs["bnd_periodic_1"] = wgma::bc::type::PERIODIC;
     scatt_bcs["bnd_periodic_2"] = wgma::bc::type::PERIODIC;
+    if(simdata.using_pml){
+      scatt_bcs["bnd_periodic_3"] = wgma::bc::type::PERIODIC;
+      scatt_bcs["bnd_periodic_4"] = wgma::bc::type::PERIODIC;
+      scatt_bcs["bnd_backed_port"] = wgma::bc::type::PEC;
+    }
     if(!has_bot){scatt_bcs["bnd_bottom"] = wgma::bc::type::PEC;}
     
     wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
-                                            {0,0}, scatt_data);
-    scatt_data.pmlvec={};
+                                            {simdata.alpha_pml,0}, scatt_data);
+    if(simdata.using_pml==false){scatt_data.pmlvec={};}
 
     
 
@@ -648,7 +672,9 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     */
     {
       std::vector<std::string> probeMats;
-      probeMats.push_back("bnd_top");
+      if(simdata.using_pml==false){
+        probeMats.push_back("bnd_top");
+      }
       if(has_bot){probeMats.push_back("bnd_bottom");}
       for(auto &mat : probeMats){
         const auto matdim = 1;
@@ -658,9 +684,13 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     }
     //empty
     std::set<int> src_ids;
+    if(simdata.using_pml){
+      src_ids.insert(gmshmats[1].at("bnd_top"));
+    }
     return wgma::scattering::CMeshScattering2DPeriodic(gmesh, mode, pOrder,
                                                        scatt_data,periodic_els,
-                                                       src_ids,wavelength,scale);
+                                                       src_ids,wavelength,scale,
+                                                       true);
   }(epsilon_rib,epsilon_copper,epsilon_air);
   /*********************
    * solve(scattering) *  
@@ -687,24 +717,28 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   const auto mode = simdata.mode;
   //compute wgbc coefficients
   WgbcData src_data;
-  src_data.cmesh = src_an->GetMesh();
-  ComputeWgbcCoeffs(*src_an, src_data.wgbc_k, src_data.wgbc_f, mode, false, src_coeffs);
-
   WgbcData match_data;
-  if(has_bot){
-    match_data.cmesh = match_an->GetMesh();
-    ComputeWgbcCoeffs(*match_an, match_data.wgbc_k, match_data.wgbc_f,mode, true, {});
-  }
-  constexpr bool print_wgbc_mats{false};
-  if(print_wgbc_mats){
-    std::ofstream matfile{simdata.prefix+"_wgbc_k.csv"};
-    src_data.wgbc_k.Print("",matfile,ECSV);
-    const int nsol = src_data.wgbc_f.size();
-    TPZFMatrix<CSTATE> wgbc_f(nsol,1,src_data.wgbc_f.begin(),nsol);
-    std::ofstream vecfile{simdata.prefix+"_wgbc_f.csv"};
-    wgbc_f.Print("",vecfile,ECSV);
-  }
+  if(simdata.using_pml==false){
+    src_data.cmesh = src_an->GetMesh();
+    ComputeWgbcCoeffs(*src_an, src_data.wgbc_k, src_data.wgbc_f,
+                      mode, false, src_coeffs);
 
+    if(has_bot){
+      match_data.cmesh = match_an->GetMesh();
+      ComputeWgbcCoeffs(*match_an, match_data.wgbc_k, match_data.wgbc_f,
+                        mode, true, {});
+    }
+  
+    constexpr bool print_wgbc_mats{false};
+    if(print_wgbc_mats){
+      std::ofstream matfile{simdata.prefix+"_wgbc_k.csv"};
+      src_data.wgbc_k.Print("",matfile,ECSV);
+      const int nsol = src_data.wgbc_f.size();
+      TPZFMatrix<CSTATE> wgbc_f(nsol,1,src_data.wgbc_f.begin(),nsol);
+      std::ofstream vecfile{simdata.prefix+"_wgbc_f.csv"};
+      wgbc_f.Print("",vecfile,ECSV);
+    }
+  }
   //set up post processing
   const std::string scatt_file = simdata.prefix+"_scatt";
   TPZVec<std::string> fvars = {
@@ -717,6 +751,12 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     vtk->SetNThreads(simdata.n_threads);
     const int count = simdata.initial_count;
     vtk->SetStep(count);
+  }
+
+  if(simdata.using_pml){
+    SolveWithPML(scatt_mesh,src_an,src_coeffs,simdata);
+    if(simdata.export_vtk_scatt){vtk->Do();}
+    return;
   }
   
   for(int im = 0; im < nmodes.size(); im++){
@@ -891,4 +931,94 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
   
   std::iota(dest_index.begin(),dest_index.end(),pos_filt);
   mat->AddKel(const_cast<TPZFMatrix<CSTATE>&>(wgbc_k),src_index,dest_index);
+}
+
+void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
+                  wgma::wganalysis::WgmaPlanar& src_an,
+                  const TPZVec<CSTATE> &src_coeffs,
+                  const SimData &simdata)
+{
+  constexpr bool sym{false};
+  auto scatt_an = wgma::scattering::Analysis(scatt_cmesh, simdata.n_threads,
+                                             simdata.optimize_bandwidth,
+                                             simdata.filter_bnd_eqs,
+                                             sym);
+    
+  auto src_mesh = src_an.GetMesh();
+  //get id of source materials
+  wgma::scattering::SourceWgma src;
+  for(auto [id,mat] : src_mesh->MaterialVec()){
+    src.id.insert(id);
+  }
+  src.modal_cmesh = src_mesh;
+
+
+  TPZFMatrix<CSTATE> sol = scatt_cmesh->Solution();
+  
+  {
+    const int neq = sol.Rows();
+    sol.Resize(neq,1);
+  }
+  
+  //we will add the components of the solution one by one
+  const int nsol = src_coeffs.size();
+  bool first_assemble{true};
+  for(int isol = 0; isol < nsol; isol++){
+    if(IsZero(src_coeffs[isol])){continue;}
+    src_an.LoadSolution(isol);
+    auto beta = src_an.GetEigenvalues()[isol];
+    wgma::scattering::LoadSource1D(scatt_cmesh, src, src_coeffs[isol]);
+    wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
+    if(first_assemble){
+      first_assemble = false;
+      scatt_an.Assemble();
+    }else{
+      scatt_an.AssembleRhs(src.id);
+    }
+    scatt_an.Solve();
+    scatt_an.LoadSolution();
+    TPZFMatrix<CSTATE> &curr_sol = scatt_cmesh->Solution();
+    sol+=curr_sol;
+  }
+  scatt_an.LoadSolution(sol);
+
+  if(!simdata.compute_reflection_norm){return;}
+  /*
+    this mesh will be used to compute the reflection
+    so, first, we need to store the solution corresponding to our src
+   */
+  TPZFMatrix<CSTATE> src_sol;
+  TPZAutoPointer<TPZCompMesh> ref_mesh = nullptr;
+  
+  ref_mesh = src_an.GetMesh()->Clone();
+  const int64_t neq_ref_mesh =
+    src_an.GetMesh()->Solution().Rows();
+  src_sol.Redim(neq_ref_mesh,1);
+
+  const auto n_eigenpairs_top = src_coeffs.size();
+  for(int i = 0; i < n_eigenpairs_top; i++){
+    if(src_coeffs[i]!=0.){
+      src_an.LoadSolution(i);
+      TPZFMatrix<CSTATE> sol = src_an.GetMesh()->Solution();
+      sol*=src_coeffs[i];
+      src_sol += sol;
+    }
+  }
+  //now we compute the reflection
+  const int solsz = src_sol.Rows();
+  TPZFMatrix<CSTATE> refl_sol(solsz,2,0);
+
+  //we copy the solution to the first column
+  TPZFMatrix<CSTATE> dummy_0(solsz,1,refl_sol.Elem(),solsz);
+  wgma::cmeshtools::ExtractSolFromMesh(ref_mesh, scatt_cmesh, dummy_0);
+  //we copy the src to the second column
+  TPZFMatrix<CSTATE> dummy_1(solsz,1,refl_sol.Elem()+solsz,solsz);
+  dummy_1 = src_sol;
+  ref_mesh->LoadSolution(refl_sol);
+
+  using namespace wgma::post;
+  SolutionReflectivity<SingleSpaceIntegrator>ref_calc(ref_mesh);
+  ref_calc.SetNThreads(simdata.n_threads);
+  auto ref = ref_calc.ComputeReflectivity();
+  std::cout<<"ref: "<<std::abs(ref)<<'('<<ref<<')'<<std::endl;
 }
