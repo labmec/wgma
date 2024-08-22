@@ -254,13 +254,13 @@ int main(int argc, char *argv[]) {
   const STATE &k_copper = simdata.k_copper;
   //complex permittivity
   const CSTATE epsilon_copper =
-    n_copper*n_copper-k_copper*k_copper + 2i*n_copper*k_copper;
+    n_copper*n_copper-k_copper*k_copper - 2i*n_copper*k_copper;
 
   const STATE &n_rib = simdata.n_rib;
   const STATE &k_rib = simdata.k_rib;
   //complex permittivity
   const CSTATE epsilon_rib =
-    n_rib*n_rib-k_rib*k_rib + 2i*n_rib*k_rib;
+    n_rib*n_rib-k_rib*k_rib - 2i*n_rib*k_rib;
 
   TPZAutoPointer<wgma::wganalysis::WgmaPlanar> modal_bottom_an, modal_top_an;
   
@@ -481,9 +481,10 @@ ComputeModalAnalysis(
   const int neq = modal_an->StructMatrix()->EquationFilter().NActiveEquations();
   nEigenpairs = nEigenpairs >= neq ? neq : nEigenpairs;
   {
-    const bool verbose{false};
+    const bool verbose{true};
     auto solver =
-      wgma::wganalysis::SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC,nEigenpairs,verbose);
+      wgma::wganalysis::SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC,
+                                    50*nEigenpairs,verbose);
     if(sortingRule==TPZEigenSort::UserDefined){
       solver->SetUserSortingFunc([](CSTATE a, CSTATE b)->bool{
         const auto sqrt_a_im = std::fabs(std::imag(std::sqrt(a)));
@@ -519,11 +520,12 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
   static constexpr bool computeVectors{true};
   
   an.Run(computeVectors);
-
   an.LoadAllSolutions();
+  
+
   {
     TPZSimpleTimer timer("Ortho",false);
-    constexpr STATE tol{1e-14};
+    constexpr STATE tol{1e-8};
     constexpr bool conj{false};
     const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
     std::cout<<"orthogonalised  "<<n_ortho<<" eigenvectors"<<std::endl;
@@ -537,20 +539,36 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
     auto norm =
       wgma::post::WgNorm<wgma::post::SingleSpaceIntegrator>(cmesh,matids,
                                                             conj,n_threads);
-    TPZVec<CSTATE> betavec = an.GetEigenvalues();
-    constexpr STATE tol{0.1};
+    TPZVec<CSTATE> &betavec = an.GetEigenvalues();
+    constexpr STATE tol{1e-6};
+    
+    for(CSTATE &b : betavec){
+      b = std::sqrt(b);
+      if(std::abs(b.real())<tol){
+        if(b.imag() > 0){
+          std::cout<<"beta transf: ";
+          b=-b;
+        }
+        else{
+          std::cout<<"beta : ";
+        }
+      }else{
+        std::cout<<"beta : ";
+      }
+      std::cout<<b<<std::endl;
+    }
     
 
-    for(auto &b : betavec){
-      b = std::sqrt(b);
-      if(!(std::abs(b.real())>10*std::abs(b.imag()))){
-        if(b.imag()>0){b=-b;}
-      }
-    }
     norm.SetTE(is_te);
     norm.SetBeta(betavec);
     norm.SetWavelength(lambda/scale);
-    norm.Normalise();
+    const int nmodes = betavec.size();
+    auto norms = norm.Normalise();
+    norms = norm.Normalise();
+    for(int i = 0; i < nmodes; i++){
+      std::cout<<"mode "<<i<<" beta "<<betavec[i]
+               <<" norm "<<norms[i]<<std::endl;
+    }
     TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
     //we update analysis object
 
@@ -596,6 +614,7 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
   const std::string file = filename;
   TPZVec<std::string> fvars = {
     "Field_real",
+    "Field_imag",
     "Field_abs",
   };
   auto cmesh = an.GetMesh();
@@ -715,6 +734,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
   src_an->LoadAllSolutions();
   
   const auto mode = simdata.mode;
+  std::cout<<"solving for "<<wgma::planarwg::mode_to_string(simdata.mode)<<std::endl;
   //compute wgbc coefficients
   WgbcData src_data;
   WgbcData match_data;
@@ -764,14 +784,11 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     if(!nm){continue;}
     //now we check how many modes we have in each
     const int nmodes_src = simdata.n_eigen_top > nm ? nm : simdata.n_eigen_top;
-    const int neq_match = match_an ?
-      (match_an->StructMatrix()->EquationFilter().NActiveEquations())
-      :
-      0;
     const int nmodes_match = simdata.n_eigen_bot > nm ? nm : simdata.n_eigen_bot;
     const int64_t sol_pos =
       RestrictDofsAndSolve(scatt_mesh, src_data, match_data, nmodes_src,nmodes_match, simdata);
-    const TPZFMatrix<CSTATE> &sol = scatt_mesh->Solution();
+
+    TPZFMatrix<CSTATE> &sol = scatt_mesh->Solution();
     const CSTATE alpha = sol.GetVal(sol_pos,0);
     for(int i = 0; i < std::min(10,nmodes_src); i++){
       std::cout<<"i "<<i<<" alpha "<<sol.GetVal(sol_pos+i,0)<<std::endl;
@@ -792,6 +809,30 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
     }
     //plot
     if(simdata.export_vtk_scatt){vtk->Do();}
+
+    {
+      auto modal_mesh = src_an->GetMesh();
+      const int64_t isol{2};
+      src_an->LoadSolution(isol);
+      TPZFMatrix<CSTATE> modal_sol = modal_mesh->Solution();
+      modal_sol*=1i;
+      sol.Zero();
+      sol.PutVal(sol_pos+isol,0,1i);
+      scatt_mesh->LoadSolution(sol);
+
+      const int sz = modal_sol.Rows();
+      TPZFMatrix<CSTATE> scatt_sol(sz,1,0);
+      wgma::cmeshtools::ExtractSolFromMesh(modal_mesh, scatt_mesh, scatt_sol);
+      for(int ir = 0; ir < sz; ir++){
+        const auto diff = scatt_sol.Get(ir,0) - modal_sol.Get(ir,0);
+        if(std::abs(diff) > 1e-10){
+          std::cout<<"row "<<ir<<" diff "<<diff
+                   <<" modal "<<modal_sol.Get(ir,0)
+                   <<" scatt "<<scatt_sol.Get(ir,0)<<std::endl;
+        }
+      }
+    }
+    
     //removing restrictions
     wgma::cmeshtools::RemovePeriodicity(scatt_mesh);
   }
@@ -877,13 +918,7 @@ void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
   auto mesh = an.GetMesh();
   
   wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(mesh);
-  TPZManVector<CSTATE,1000> betavec = an.GetEigenvalues();
-  for(auto &b : betavec){
-    b = std::sqrt(b);
-    if(!(std::abs(b.real())>10*std::abs(b.imag()))){
-      if(b.imag()>0){b=-b;}
-    }
-  }
+  const TPZVec<CSTATE> betavec = an.GetEigenvalues();
   wgbc.SetPositiveZ(positive_z);
   wgbc.SetAdjoint(false);
   if(coeff.size()){
