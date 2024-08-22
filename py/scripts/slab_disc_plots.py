@@ -24,9 +24,9 @@ data = {
     "vtk_res": 0,
     "export_csv_modes": False,
     "export_csv_error": True,
-    "export_vtk_modes": False,
-    "export_vtk_scatt": False,
-    "export_vtk_error": False,
+    "export_vtk_modes": True,
+    "export_vtk_scatt": True,
+    "export_vtk_error": True,
     "print_gmesh": False,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
@@ -43,12 +43,12 @@ data["alpha_pml_x"] = [39.76175623920896, 0]
 data["alpha_pml_y"] = [59.64263435881344, 0]
 
 scriptname = "slab_disc.json"
-prefix = "res_slab_disc/slab_disc"
+prefix = "res_slab_disc_plots/slab_disc"
 data["meshfile"] = "meshes/slab_disc.msh"
 data["compare_pml"] = False
-data["n_eigenpairs_left"] = 500
-data["n_eigenpairs_right"] = 500
-data["n_modes_left"] = [3, 50, 100, 200, 300]
-data["n_modes_right"] = [3, 50, 100, 200, 300]
+data["n_eigenpairs_left"] = 250
+data["n_eigenpairs_right"] = 250
+data["n_modes_left"] = [200]
+data["n_modes_right"] = [3, 10, 200]
 
 gen_script_and_run(data, scriptname, prefix)
