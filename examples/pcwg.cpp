@@ -198,7 +198,7 @@ int main(int argc, char *argv[]) {
   
   std::cout.precision(std::numeric_limits<STATE>::max_digits10);
   STATE rel_error{0};
-  constexpr STATE tol = std::numeric_limits<STATE>::epsilon()*1000;
+  constexpr STATE tol = std::numeric_limits<STATE>::epsilon()*3000;
 
   bool computeVectors{false};
   constexpr int neigenpairs{1};
@@ -240,7 +240,7 @@ int main(int argc, char *argv[]) {
     std::cout<<"finished in "<<nit<<" iterations"<<std::endl;
 
     computeVectors = true;
-    solver->SetTarget(beta*beta);
+    solver->SetTarget(1.1*beta*beta);
     modal_an.SetSolver(*solver);
     modal_an.SetBeta(beta);
     modal_an.AssembleMat(TPZEigenAnalysis::Mat::A);
