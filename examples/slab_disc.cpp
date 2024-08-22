@@ -470,6 +470,12 @@ ComputeModalAnalysis(
     }
     norm.SetWavelength(simdata.lambda/simdata.scale);
     norm.Normalise();
+    auto norms = norm.Normalise();
+    const int nmodes = norms.size();
+    for(int i = 0; i < std::min(10,nmodes); i++){
+      std::cout<<"mode "<<i<<" beta "<<betavec[i]
+               <<" norm "<<norms[i]<<std::endl;
+    }
     TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
     //we update analysis object
     an->SetEigenvectors(mesh_sol);
@@ -1145,7 +1151,7 @@ void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
 
   auto cmesh = an.GetMesh();
   auto vtk = TPZVTKGenerator(cmesh, fvars, file, vtkres);
-  const int64_t maxval{100};
+  const int64_t maxval{10};
   const auto nsol = std::min(maxval,an.GetEigenvectors().Cols());
   std::cout<<"Exporting "<<nsol<<" solutions"<<std::endl;
   for(auto isol = 0; isol < nsol ; isol++){
