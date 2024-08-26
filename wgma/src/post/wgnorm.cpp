@@ -126,7 +126,7 @@ namespace wgma::post{
         const auto beta = m_beta[isol];
         //we have -jbeta/(j\omega\mu_0)
         const auto ct = beta/omega_uo;
-        h_field.Put(1,isol,ct*val);
+        h_field.PutVal(1,isol,ct*val);
       }
       //apply constitutive param
       coeff_mat.Substitution(&h_field);
@@ -135,19 +135,19 @@ namespace wgma::post{
         if(is_te){
           for(int isol = 0; isol < nsol; isol++){
             const auto val = h_field.Get(1,isol);
-            h_field.Put(1,isol,std::conj(val));
+            h_field.PutVal(1,isol,std::conj(val));
           }
         }else{
           for(int isol = 0; isol < nsol; isol++){
             const auto val = rot_e_field.Get(1,isol);
-            rot_e_field.Put(1,isol,std::conj(val));
+            rot_e_field.PutVal(1,isol,std::conj(val));
           }
         }
       }
       
       for(int isol = 0; isol < nsol; isol++){
-        const auto e = rot_e_field.Get(1,isol);
-        const auto h = h_field.Get(1,isol);
+        const auto e = rot_e_field.g(1,isol);
+        const auto h = h_field.g(1,isol);
         
         this->m_res[index][isol] += e * h * cte;
       }
@@ -163,13 +163,13 @@ namespace wgma::post{
         const auto &ex = et_ref[0];
         const auto &ey = et_ref[1];
         const auto beta = m_beta[isol];
-        rot_et.Put(0,isol,ey);
-        rot_et.Put(1,isol,-ex);
-        rot_et_beta.Put(0,isol,1i*beta*ey);
-        rot_et_beta.Put(1,isol,-1i*beta*ex);
+        rot_et.PutVal(0,isol,ey);
+        rot_et.PutVal(1,isol,-ex);
+        rot_et_beta.PutVal(0,isol,1i*beta*ey);
+        rot_et_beta.PutVal(1,isol,-1i*beta*ex);
         auto &gradez_ref = datavec[ TPZWgma::H1Index() ].dsol[isol];
-        grad_ez_axes.Put(0,isol,gradez_ref[0]);
-        grad_ez_axes.Put(1,isol,gradez_ref[1]);
+        grad_ez_axes.PutVal(0,isol,gradez_ref[0]);
+        grad_ez_axes.PutVal(1,isol,gradez_ref[1]);
       }
 
       const auto &axes = datavec[0].axes;
