@@ -38,12 +38,11 @@ def cut_vol_with_plane(vols, surfs, elsize):
 
 
 def create_sf3d_mesh(
-        r_core_left: float, r_core_right: float, ncore: float, nclad: float,
-        l_domain: float, wl: float, nel_l: int, filename: str,):
+        r_core_left: float, r_core_right: float, r_box: float, ncore: float,
+        nclad: float, l_domain: float, wl: float, nel_l: int, filename: str,):
     # distance from center to end of cladding region(inner box)
-    r_box = max(r_core_left, r_core_right) + 3.5 * wl/nclad
-    d_pml_r = 1.75*wl/nclad  # pml width
-    d_pml_z = 1.75*wl/nclad  # pml width
+    d_pml_r = 2*wl/nclad  # pml width
+    d_pml_z = 2*wl/nclad  # pml width
     # element sizes are different in cladding or core
     el_clad = (wl/nclad)/nel_l  # el size in cladding
     el_core = (wl/ncore)/nel_l  # el size in core
@@ -473,17 +472,20 @@ def create_sf3d_mesh(
 
 if __name__ == "__main__":
     wl = 1.55  # wavelength (in microns)
-    nel = 4  # number of elements/wavelength
+    nel = 8  # number of elements/wavelength
     # refractive indices
     nclad = 1.4378
     ncore = 1.4457
-    l_domain = 4.0*(wl/nclad)
-    r_left = 6  # core radius
-    r_right = 8  # core radius
-    create_sf3d_mesh(r_left, r_right, ncore, nclad, l_domain,
+    l_domain = 2.0*(wl/nclad)
+    r_left = 2  # core radius
+    r_right = 4  # core radius
+    r_box = max(r_left, r_right) + 4*(wl/nclad)
+    create_sf3d_mesh(r_left, r_right, r_box, ncore, nclad, l_domain,
                      wl, nel, "../../build/examples/meshes/sf3d_disc")
+
     l_domain = 4.0*(wl/nclad)/nel
-    r_left = 8  # core radius
-    r_right = 8  # core radius
-    create_sf3d_mesh(r_left, r_right, ncore, nclad, l_domain,
+    r_left = 2  # core radius
+    r_right = 2  # core radius
+    r_box = max(r_left, r_right) + 4*(wl/nclad)
+    create_sf3d_mesh(r_left, r_right, r_box, ncore, nclad, l_domain,
                      wl, nel,  "../../build/examples/meshes/sf3d_validation")

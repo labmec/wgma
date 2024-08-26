@@ -22,10 +22,10 @@ data = {
     "porder": 3,
     "vtk_res": 0,
     "export_csv_modes": False,
-    "export_csv_error": True,
-    "export_vtk_modes": False,
-    "export_vtk_scatt": True,
-    "export_vtk_error": True,
+    "export_csv_error": False,
+    "export_vtk_modes": True,
+    "export_vtk_scatt": False,
+    "export_vtk_error": False,
     "export_coupling_mat": False,
     "print_gmesh": False,
     "filter_bnd_eqs": True,
@@ -39,8 +39,9 @@ data["ncore"] = 1.4457
 data["nclad"] = 1.4378
 data["scale"] = wavelength/(2*np.pi)
 data["source_coeffs"] = [[0, 1]]
-pml_r = 0.4
-data["alpha_pml_r"] = [np.sqrt(pml_r**2+pml_r**2), 0]
+pml_r_real = 0.8
+pml_r_imag = -0.4
+data["alpha_pml_r"] = [pml_r_real, pml_r_imag]
 pml_z = 1.0
 data["alpha_pml_z"] = [pml_z, 0]
 
@@ -51,8 +52,8 @@ data["cylfile"] = "meshes/sf3d_validation_cyldata.csv"
 data["check_mode_propagation"] = True
 data["compare_pml"] = False
 data["direct_solver"] = True
-data["n_eigenpairs_left"] = 10
-data["n_eigenpairs_right"] = 10
+data["n_eigenpairs_left"] = 5
+data["n_eigenpairs_right"] = 5
 data["n_modes_left"] = [2]
 data["n_modes_right"] = [2]
 gen_script_and_run(data, scriptname, prefix)
