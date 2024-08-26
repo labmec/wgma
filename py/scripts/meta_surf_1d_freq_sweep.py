@@ -8,9 +8,9 @@ data = {
     "meshfile": "meshes/meta_surf_1d.msh",
     "mode": "TM",
     "porder": 2,
-    "n_eigen_top": 10,
+    "n_eigen_top": 100,
     "n_eigen_bot": 0,
-    "nmodes": [15],
+    "nmodes": [100],
     "compute_reflection_norm": True,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
@@ -26,12 +26,12 @@ n_air = 1
 data["n_air"] = n_air
 
 prefix_orig = "res_meta_surf_1d_freq_sweep/meta_surf_1d"
-wl_list = [wl/1000 for wl in np.arange(500, 1400, 10)]
-wl_list.append(.741)
-wl_list.append(.746)
-wl_list.sort()
+wl_list = ([wl / 1000 for wl in np.arange(500, 730, 10)] +
+           [wl / 1000 for wl in np.arange(730, 750, 0.25)] +
+           [wl / 1000 for wl in np.arange(750, 800, 10)] +
+           [wl / 1000 for wl in np.arange(800, 1500, 50)])
 
-for rib_copper in [False, True]:
+for rib_copper in [True, False]:
     prefix = prefix_orig
     suffix = "_cu" if rib_copper else "_az"
     prefix += suffix
