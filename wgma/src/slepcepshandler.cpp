@@ -448,7 +448,7 @@ namespace wgma::slepc{
         }else{
           val = eigr;
         }
-        if(std::abs(val)>1e-10){
+        if(std::abs(val)>1e-8){
           w[count] = val;
           count++;
         }else{
