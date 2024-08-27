@@ -546,16 +546,16 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
       b = std::sqrt(b);
       if(std::abs(b.real())<tol){
         if(b.imag() > 0){
-          std::cout<<"beta transf: ";
+          // std::cout<<"beta transf: ";
           b=-b;
         }
         else{
-          std::cout<<"beta : ";
+          // std::cout<<"beta : ";
         }
       }else{
-        std::cout<<"beta : ";
+        // std::cout<<"beta : ";
       }
-      std::cout<<b<<std::endl;
+      // std::cout<<b<<std::endl;
     }
     
 
@@ -564,11 +564,11 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
     norm.SetWavelength(lambda/scale);
     const int nmodes = betavec.size();
     auto norms = norm.Normalise();
-    norms = norm.Normalise();
-    for(int i = 0; i < nmodes; i++){
-      std::cout<<"mode "<<i<<" beta "<<betavec[i]
-               <<" norm "<<norms[i]<<std::endl;
-    }
+    // norms = norm.Normalise();
+    // for(int i = 0; i < nmodes; i++){
+    //   std::cout<<"mode "<<i<<" beta "<<betavec[i]
+    //            <<" norm "<<norms[i]<<std::endl;
+    // }
     TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
     //we update analysis object
 
