@@ -2,12 +2,13 @@ import json
 import numpy as np
 import os
 import subprocess
+import sys
 from meta_surf_1d_indices import az_n, az_k, cu_n, cu_k
 
 data = {
     "meshfile": "meshes/meta_surf_1d.msh",
     "mode": "TM",
-    "porder": 2,
+    "porder": 3,
     "n_eigen_top": 100,
     "n_eigen_bot": 0,
     "nmodes": [100],
@@ -27,7 +28,7 @@ data["n_air"] = n_air
 
 prefix_orig = "res_meta_surf_1d_freq_sweep/meta_surf_1d"
 wl_list = ([wl / 1000 for wl in np.arange(500, 730, 10)] +
-           [wl / 1000 for wl in np.arange(730, 750, 0.25)] +
+           [wl / 1000 for wl in np.arange(730, 750, 1)] +
            [wl / 1000 for wl in np.arange(750, 800, 10)] +
            [wl / 1000 for wl in np.arange(800, 1500, 50)])
 
@@ -75,9 +76,14 @@ for rib_copper in [True, False]:
         if status == 0:
             # run program
             print("\rrunning {} out of {}...".format(i, len(wl_list)), end='')
-            os.system(
-                'cd .. && ./meta_surf_1d scripts/' + filename + ' >> ' +
-                outfile)
+            if '-verbose' in sys.argv:
+                os.system(
+                    'cd .. && ./meta_surf_1d scripts/' + filename + ' >> ' +
+                    outfile)
+            else:
+                os.system(
+                    'cd .. && ./meta_surf_1d scripts/' + filename +
+                    ' >> /dev/null')
         try:
             os.remove(filename)
         except FileNotFoundError:

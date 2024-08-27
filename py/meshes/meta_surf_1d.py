@@ -37,11 +37,11 @@ k_az = 0
 max_n = max(n_az, n_copper, n_air)
 
 nel_lambda = 50
-el_copper = (min_wl/n_copper)/nel_lambda/3
-el_rib = (min_wl/max_n)/nel_lambda/2
-el_air = 2*(min_wl/n_air)/nel_lambda
+el_copper = (min_wl/n_copper)/nel_lambda/4
+el_rib = (min_wl/max_n)/nel_lambda
+el_air = 3*(min_wl/n_air)/nel_lambda
 
-print(el_copper,el_rib,el_air)
+print(el_copper, el_rib, el_air)
 gmsh.initialize()
 gmsh.option.set_number("Geometry.Tolerance", 10**-14)
 gmsh.option.set_number("Geometry.MatchMeshTolerance", 10**-14)
@@ -105,10 +105,14 @@ gmsh.model.occ.synchronize()
 
 # set periodicity in x direction
 
-#first for the real domain, then pmls
+# first for the real domain, then pmls
 vol_domains = air.tag+bottom.tag+rib.tag
-vol_bounds = gmsh.model.get_boundary([(2,t) for t in vol_domains],combined=True,oriented=False)
-pml_bounds = gmsh.model.get_boundary([(2,t) for t in pml.tag],combined=True,oriented=False)
+vol_bounds = gmsh.model.get_boundary(
+    [(2, t) for t in vol_domains],
+    combined=True, oriented=False)
+pml_bounds = gmsh.model.get_boundary(
+    [(2, t) for t in pml.tag],
+    combined=True, oriented=False)
 
 # get left and right bounds
 bnd_left, bnd_right = split_region_dir(vol_bounds, 'x')
@@ -146,20 +150,20 @@ bnd_wgma_top = [t for _, t in top_bnds]
 field_ct = 1
 gmsh.model.mesh.field.add("Distance", field_ct)
 gmsh.model.mesh.field.setNumbers(
-    field_ct, "CurvesList", [5, 9, 13])
+    field_ct, "CurvesList", [10, 11, 12])
 field_ct += 1
 gmsh.model.mesh.field.add("Threshold", field_ct)
 gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
 # gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
-gmsh.model.mesh.field.set_number(field_ct, "DistMin", 0.1*h_copper)
-gmsh.model.mesh.field.set_number(field_ct, "DistMax", 0.3*h_copper)
-gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_copper)
+gmsh.model.mesh.field.set_number(field_ct, "DistMin", 0.5*h_copper)
+gmsh.model.mesh.field.set_number(field_ct, "DistMax", h_copper)
 gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_rib)
+gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_copper)
 field_ct += 1
 gmsh.model.mesh.field.add("Constant", field_ct)
 gmsh.model.mesh.field.set_number(field_ct, "IncludeBoundary", 1)
 gmsh.model.mesh.field.set_numbers(field_ct, "SurfacesList", rib.tag)
-gmsh.model.mesh.field.set_number(field_ct, "VIn", el_rib)
+gmsh.model.mesh.field.set_number(field_ct, "VIn", el_copper)
 # gmsh.model.mesh.field.set_number(field_ct, "VOut", el_air)
 field_ct += 1
 gmsh.model.mesh.field.add("Constant", field_ct)
