@@ -1068,64 +1068,81 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
       TPZManVector<REAL,3> xc = {cyldata.m_xc,cyldata.m_yc,cyldata.m_zc};
       TPZManVector<REAL,3> axis = {cyldata.m_xaxis, cyldata.m_yaxis,cyldata.m_zaxis};
 
-      auto cyl =
-        TPZChangeEl::ChangeToCylinder(gmesh.operator->(), el->Index(), xc, axis);
-      el = nullptr;
-      constexpr REAL tol{1e-11};
-      CheckCylMap(cyl, axis, xc, r, tol);
-
-      //let us store all the neighbours
-      std::set<TPZGeoElSide> all_neighs;
-      //just to ensure we wont  remove any element twice
-      std::set<TPZGeoEl*> neigh_els;
-
-
-      for(auto is = cyl->NNodes(); is < cyl->NSides(); is++){
-        /**now we need to replace each neighbour with a blend element,
-           so it can be deformed accordingly*/
-        TPZGeoElSide gelside(cyl,is);
-        //now we iterate through all the neighbours of the given side
-        TPZGeoElSide neighbour = gelside.Neighbour();
-      
-        while(neighbour.Exists() && neighbour != gelside){
-          auto neigh_el = neighbour.Element();
-          /*
-            let us skip:
-             1. neighbours that have been already identified (will be in  neigh_els)
-             2. neighbours that are in the cylinder wall as well
-          */
-          const auto check_el = neigh_els.find(neigh_el) == neigh_els.end();
-          //we need to check if the neighbour belongs to ANY cylinder!
-          const auto is_neigh_cylinder =
-            cylinder_ids.find(neigh_el->MaterialId()) != cylinder_ids.end();
-          if(check_el && !is_neigh_cylinder){
-            all_neighs.insert(neighbour);
-            neigh_els.insert(neigh_el);
-          }
-          neighbour = neighbour.Neighbour();
-        }
+      TPZGeoEl *cyl{nullptr};
+      if(1){
+        cyl =
+          TPZChangeEl::ChangeToCylinder(gmesh.operator->(), el->Index(), xc, axis,r);
+        el = nullptr;
+        constexpr REAL tol{1e-11};
+        CheckCylMap(cyl, axis, xc, r, tol);
       }
-
-      
-      //let us replace all the matching neighbours
-      for(auto neighbour : all_neighs){ 
-        const auto neigh_side = neighbour.Side();
-        auto neigh_el = neighbour.Element();
-        if(neigh_el->IsGeoBlendEl()==false && neigh_el->IsLinearMapping() == false){
-          //we should investigate what is happening
-          DebugStop();
+      else{
+        cyl =
+          TPZChangeEl::ChangeToQuadratic(gmesh.operator->(), el->Index());
+        const int nnodes = cyl->NNodes();
+        const int ncorner = cyl->NCornerNodes();
+        TPZManVector<REAL,3> co(3,0.);
+        for(int in = ncorner; in < nnodes; in++){
+          cyl->NodePtr(in)->GetCoordinates(co);
+          const REAL z = co[2];
+          co[2]=0;
+          const REAL prev_radius = Norm(co);
+          co[0] = co[0]*(r/prev_radius);
+          co[1] = co[1]*(r/prev_radius);
+          co[2] = z;
+          cyl->NodePtr(in)->SetCoord(co);
         }
-        if(!neigh_el->IsGeoBlendEl()){
-          const auto neigh_index = neigh_el->Index();
-          TPZChangeEl::ChangeToGeoBlend(gmesh.operator->(), neigh_index);
-        }
-        else{
-          // neigh_el->BuildBlendConnectivity();
-          neigh_el->SetNeighbourForBlending(neigh_side);
-        }
-      }//for(auto neighbour : all_neighs)
+        el = nullptr;
+      }
     }//if(is_cylinder)
   }//for(auto el : gmesh->ElementVec())
+
+  
+  for(auto el : gmesh->ElementVec()){
+    if(!el || el->IsLinearMapping()==false){continue;}
+    const auto nnodes = el->NCornerNodes();
+    const auto nsides = el->NSides();
+    bool changed=false;
+    for(int iside = nnodes; iside < nsides; iside++){
+      if(changed){break;}
+      TPZGeoElSide elside(el,iside);
+      for(auto neigh = elside.Neighbour(); neigh != elside; neigh++){
+        if(changed){break;}
+        const bool neighlinear = neigh.IsLinearMapping();
+        if(!neighlinear){
+          TPZChangeEl::ChangeToGeoBlend(gmesh.operator->(), el->Index());
+          changed=true;
+        }
+      }
+    }
+  }
+
+  //just for debugging
+  
+  // for(auto el : gmesh->ElementVec()){
+  //   if(!el){continue;}
+  //   if(el->IsLinearMapping()==false){continue;}
+  //   const auto nnodes = el->NCornerNodes();
+  //   const auto nsides = el->NSides();
+  //   for(int iside = nnodes; iside < nsides; iside++){
+  //     const bool iamlinear = el->IsLinearMapping(iside);
+  //     TPZGeoElSide elside(el,iside);
+  //     for(auto neigh = elside.Neighbour(); neigh != elside; neigh++){
+  //       auto neigh_el = neigh.Element();
+  //       auto neigh_side = neigh.Side();
+  //       const bool neighlinear = neigh_el->IsLinearMapping(neigh_side);
+  //       if(!neighlinear && iamlinear){
+  //         std::cout<<"myself: "<<el->Index()
+  //                  <<"\nneigh: "<<neigh.Element()->Index()
+  //                  <<std::endl;
+  //         el->Print();
+  //         neigh_el->Print();
+  //         DebugStop();
+  //       }
+  //     }
+  //   }
+  // }
+
   
   for(auto cylinder : found_cylinders){
     if(!cylinder.second){
