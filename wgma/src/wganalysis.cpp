@@ -197,7 +197,12 @@ namespace wgma::wganalysis{
     m_cmesh_h1 = meshvec[1 + TPZWgma::H1Index()];
     m_cmesh_hcurl = meshvec[1 + TPZWgma::HCurlIndex()];
 
-    this->SetRenumber(new TPZCutHillMcKee());
+#ifdef PZ_USING_METIS
+    const auto renumtype = RenumType::EMetis;
+#else
+    const auto renumtype = RenumType::ECutHillMcKee;
+#endif
+    this->CreateRenumberObject(renumtype);
     this->SetCompMeshInit(m_cmesh_mf.operator->(), reorder_eqs);
 
     TPZAutoPointer<TPZStructMatrix> strmtrx{nullptr};
@@ -393,7 +398,12 @@ namespace wgma::wganalysis{
     m_cmesh_h1 = meshvec[1 + TPZAnisoWgma::H1Index()];
     m_cmesh_hcurl = meshvec[1 + TPZAnisoWgma::HCurlIndex()];
 
-    this->SetRenumber(new TPZCutHillMcKee());
+#ifdef PZ_USING_METIS
+    const auto renumtype = RenumType::EMetis;
+#else
+    const auto renumtype = RenumType::ECutHillMcKee;
+#endif
+    this->CreateRenumberObject(renumtype);
     this->SetCompMeshInit(m_cmesh_mf.operator->(), reorder_eqs);
 
     TPZAutoPointer<TPZStructMatrix> strmtrx{nullptr};
@@ -574,7 +584,12 @@ namespace wgma::wganalysis{
   {
     m_filter_bound = filter_bound;
 
-    this->SetRenumber(new TPZCutHillMcKee());
+#ifdef PZ_USING_METIS
+    const auto renumtype = RenumType::EMetis;
+#else
+    const auto renumtype = RenumType::ECutHillMcKee;
+#endif
+    this->CreateRenumberObject(renumtype);
     this->SetCompMeshInit(m_cmesh.operator->(),reorder_eqs);
 
     TPZAutoPointer<TPZStructMatrix> strmtrx{nullptr};
