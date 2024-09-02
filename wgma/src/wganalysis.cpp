@@ -255,7 +255,7 @@ namespace wgma::wganalysis{
   }
   
   void
-  Wgma2D::CountActiveEqs(int &neq,int &nH1Equations, int &nHCurlEquations)
+  Wgma2D::CountActiveEqs(int64_t &neq,int64_t &nH1Equations, int64_t &nHCurlEquations)
   {
     auto &cmesh = m_cmesh_mf;
     neq = nH1Equations = nHCurlEquations = 0;
@@ -449,7 +449,7 @@ namespace wgma::wganalysis{
   }
   
   void
-  WgmaAniso2D::CountActiveEqs(int &neq,int &nH1Equations, int &nHCurlEquations)
+  WgmaAniso2D::CountActiveEqs(int64_t &neq,int64_t &nH1Equations, int64_t &nHCurlEquations)
   {
     auto &cmesh = m_cmesh_mf;
     neq = nH1Equations = nHCurlEquations = 0;
@@ -614,7 +614,7 @@ namespace wgma::wganalysis{
            <<"\nnot yet implemented...\n";
   }
   
-  void WgmaPlanar::CountActiveEqs(int &neq)
+  void WgmaPlanar::CountActiveEqs(int64_t &neq)
   {
     auto eq_filt = this->StructMatrix()->EquationFilter();
     if(eq_filt.IsActive()){

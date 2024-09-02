@@ -140,9 +140,9 @@ namespace wgma::wganalysis{
     void WriteToCsv(std::string filename, STATE lambda) override;
 
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
-    void CountActiveEqs(int &neq, int&nh1, int &nhcurl);
+    void CountActiveEqs(int64_t &neq, int64_t&nh1, int64_t &nhcurl);
 
-    void GetActiveEqs(int &neq, int&nh1, int &nhcurl) const{
+    void GetActiveEqs(int64_t &neq, int64_t&nh1, int64_t &nhcurl) const{
       neq = m_n_dofs_mf;nh1=m_n_dofs_h1;nhcurl=m_n_dofs_hcurl;
     }
     [[nodiscard]] const TPZAutoPointer<TPZCompMesh> GetMesh() override{return m_cmesh_mf;}
@@ -168,11 +168,11 @@ namespace wgma::wganalysis{
     //! Hcurl mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh_hcurl{nullptr};
     //! Total number of dofs
-    int m_n_dofs_mf{-1};
+    int64_t m_n_dofs_mf{-1};
     //! Number of H1 dofs
-    int m_n_dofs_h1{-1};
+    int64_t m_n_dofs_h1{-1};
     //! Number of HCurl dofs
-    int m_n_dofs_hcurl{-1};
+    int64_t m_n_dofs_hcurl{-1};
   };
 
   class Wgma2D : public Wgma, private TPZEigenAnalysis{
@@ -206,9 +206,9 @@ namespace wgma::wganalysis{
     void WriteToCsv(std::string filename, STATE lambda) override;
 
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
-    void CountActiveEqs(int &neq, int&nh1, int &nhcurl);
+    void CountActiveEqs(int64_t &neq, int64_t&nh1, int64_t &nhcurl);
     
-    void GetActiveEqs(int &neq, int&nh1, int &nhcurl) const{
+    void GetActiveEqs(int64_t &neq, int64_t&nh1, int64_t &nhcurl) const{
       neq = m_n_dofs_mf;nh1=m_n_dofs_h1;nhcurl=m_n_dofs_hcurl;
     }
 
@@ -238,11 +238,11 @@ namespace wgma::wganalysis{
     //! Hcurl mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh_hcurl{nullptr};
     //! Total number of dofs
-    int m_n_dofs_mf{-1};
+    int64_t m_n_dofs_mf{-1};
     //! Number of H1 dofs
-    int m_n_dofs_h1{-1};
+    int64_t m_n_dofs_h1{-1};
     //! Number of HCurl dofs
-    int m_n_dofs_hcurl{-1};
+    int64_t m_n_dofs_hcurl{-1};
   };
 
   /**
@@ -279,7 +279,7 @@ namespace wgma::wganalysis{
     void WriteToCsv(std::string filename, STATE lambda) override;
 
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
-    void CountActiveEqs(int &neq);
+    void CountActiveEqs(int64_t &neq);
 
     [[nodiscard]] const TPZAutoPointer<TPZCompMesh> GetMesh() override{return m_cmesh;}
 
