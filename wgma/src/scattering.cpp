@@ -7,6 +7,7 @@
 #include <TPZSSpStructMatrix.h>
 #include <TPZStructMatrixOMPorTBB.h>
 #include <TPZCutHillMcKee.h>
+
 #include <pzstepsolver.h>
 #include <Electromagnetics/TPZPlanarWgScatt.h>
 #include <Electromagnetics/TPZPlanarWgScattSrc.h>
@@ -36,7 +37,12 @@ namespace wgma::scattering{
     TPZLinearAnalysis(),
     m_filter_bound(filter_bound), m_sym(is_sym){
 
-    this->SetRenumber(new TPZCutHillMcKee());
+#ifdef PZ_USING_METIS
+    const auto renumtype = RenumType::EMetis;
+#else
+    const auto renumtype = RenumType::ECutHillMcKee;
+#endif
+    this->CreateRenumberObject(renumtype);
     this->SetCompMesh(mesh.operator->(), reorder_eqs);
     m_cmesh = mesh;
 
