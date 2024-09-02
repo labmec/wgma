@@ -142,6 +142,9 @@ namespace wgma::wganalysis{
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
     void CountActiveEqs(int &neq, int&nh1, int &nhcurl);
 
+    void GetActiveEqs(int &neq, int&nh1, int &nhcurl) const{
+      neq = m_n_dofs_mf;nh1=m_n_dofs_h1;nhcurl=m_n_dofs_hcurl;
+    }
     [[nodiscard]] const TPZAutoPointer<TPZCompMesh> GetMesh() override{return m_cmesh_mf;}
 
     TPZQuadEigenSolver<CSTATE> & GetSolver(){
@@ -204,6 +207,10 @@ namespace wgma::wganalysis{
 
     /** @brief Counts active equations per approximation space for the 2D waveguide modal analysis.*/
     void CountActiveEqs(int &neq, int&nh1, int &nhcurl);
+    
+    void GetActiveEqs(int &neq, int&nh1, int &nhcurl) const{
+      neq = m_n_dofs_mf;nh1=m_n_dofs_h1;nhcurl=m_n_dofs_hcurl;
+    }
 
     [[nodiscard]] const TPZAutoPointer<TPZCompMesh> GetMesh() override{return m_cmesh_mf;}
 
