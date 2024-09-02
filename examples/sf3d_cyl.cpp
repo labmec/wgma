@@ -544,7 +544,7 @@ ComputeModalAnalysis(
 
   TPZAutoPointer<wgma::wganalysis::Wgma2D> an =
     new wgma::wganalysis::Wgma2D(modal_cmesh, simdata.n_threads,
-                                     simdata.optimize_bandwidth,
+                                     false,
                                      simdata.filter_bnd_eqs);
   an->SetSolver(*solver);
 
