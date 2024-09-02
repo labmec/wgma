@@ -609,19 +609,20 @@ ComputeModalAnalysis(
     
     //now we normalise them
     auto cmesh = an->GetMesh();
-    //leave empty for all valid matids
-    std::set<int> matids {};
-    constexpr bool conj{true};
-    auto norm =
-      wgma::post::WgNorm<wgma::post::MultiphysicsIntegrator>(cmesh,matids,
-                                                   conj,simdata.n_threads);
-    norm.SetNThreads(simdata.n_threads);    
-    norm.SetBeta(betavec);
-    norm.SetWavelength(simdata.lambda/simdata.scale);
-    norm.Normalise();
-    TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
-    //we update analysis object
-    an->SetEigenvectors(mesh_sol);
+    // //leave empty for all valid matids
+    // std::set<int> matids {};
+    // constexpr bool conj{true};
+    // auto norm =
+    //   wgma::post::WgNorm<wgma::post::MultiphysicsIntegrator>(cmesh,matids,
+    //                                                conj,simdata.n_threads);
+    // norm.SetNThreads(simdata.n_threads);    
+    // norm.SetBeta(betavec);
+    // norm.SetWavelength(simdata.lambda/simdata.scale);
+    // norm.Normalise();
+    // TPZSimpleTimer timer2("LoadAllSolutions",true);
+    // TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
+    // //we update analysis object
+    // an->SetEigenvectors(mesh_sol);
     an->LoadAllSolutions();
   }
   //we dont need them anymore, let us free up memory
