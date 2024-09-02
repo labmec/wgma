@@ -5,6 +5,8 @@
 #include "cmeshtools_impl.hpp"
 
 #include <TPZCutHillMcKee.h>
+
+#include "TPZLinearAnalysis.h"
 #include <TPZSpStructMatrix.h>
 #include <TPZStructMatrixOMPorTBB.h>
 #include <TPZKrylovEigenSolver.h>
@@ -180,6 +182,54 @@ namespace wgma::wganalysis{
   }
   
 
+  void RenumberMultiphysicsMesh(TPZAutoPointer<TPZCompMesh>m_cmesh_h1,
+                                TPZAutoPointer<TPZCompMesh>m_cmesh_hcurl,
+                                TPZAutoPointer<TPZCompMesh>m_cmesh_mf)
+  {
+#ifdef PZ_USING_METIS
+    const auto renumtype = RenumType::EMetis;
+#else
+    const auto renumtype = RenumType::ECutHillMcKee;
+#endif
+    //we create TPZLinearAnalysis objects just to reorder the eq of the atomic meshes
+    {
+      TPZLinearAnalysis an(m_cmesh_h1,renumtype);
+    }
+    {
+      TPZLinearAnalysis an(m_cmesh_hcurl,renumtype);
+    }
+    const auto ncon_h1 = m_cmesh_h1->NConnects();
+    const auto ncon_hcurl = m_cmesh_hcurl->NConnects();
+    const auto first_h1_con = ncon_hcurl*TPZWgma::H1Index();
+    const auto first_hcurl_con = ncon_h1*TPZWgma::HCurlIndex();
+
+    const auto nblocks_h1 = m_cmesh_h1->Block().NBlocks();
+    const auto nblocks_hcurl = m_cmesh_hcurl->Block().NBlocks();
+
+    const auto first_h1_block = nblocks_hcurl*TPZWgma::H1Index();
+    const auto first_hcurl_block = nblocks_h1*TPZWgma::HCurlIndex();
+    //now we reorder the connects
+    for(auto icon = 0; icon < ncon_h1;icon++){
+      auto &con_mf = m_cmesh_mf->ConnectVec()[first_h1_con+icon];
+      auto &con_atomic = m_cmesh_h1->ConnectVec()[icon];
+      if(con_atomic.SequenceNumber()>-1){
+        const auto newseq = con_atomic.SequenceNumber() +first_h1_block;
+        con_mf.SetSequenceNumber(newseq);
+      }
+    }
+
+    for(auto icon = 0; icon < ncon_hcurl;icon++){
+      auto &con_mf = m_cmesh_mf->ConnectVec()[first_hcurl_con+icon];
+      auto &con_atomic = m_cmesh_hcurl->ConnectVec()[icon];
+      if(con_atomic.SequenceNumber()>-1){
+        const auto newseq = con_atomic.SequenceNumber() +first_hcurl_block;
+        con_mf.SetSequenceNumber(newseq);
+      }
+    }
+    m_cmesh_mf->InitializeBlock();
+}
+
+  
   Wgma2D::Wgma2D(const TPZVec<TPZAutoPointer<TPZCompMesh>> &meshvec,
                  const int n_threads, const bool reorder_eqs,
                  const bool filter_bound)
@@ -197,13 +247,11 @@ namespace wgma::wganalysis{
     m_cmesh_h1 = meshvec[1 + TPZWgma::H1Index()];
     m_cmesh_hcurl = meshvec[1 + TPZWgma::HCurlIndex()];
 
-#ifdef PZ_USING_METIS
-    const auto renumtype = RenumType::EMetis;
-#else
-    const auto renumtype = RenumType::ECutHillMcKee;
-#endif
-    this->CreateRenumberObject(renumtype);
-    this->SetCompMeshInit(m_cmesh_mf.operator->(), reorder_eqs);
+    //we do not reorder eqs on multiphysics mesh
+    this->SetCompMeshInit(m_cmesh_mf.operator->(), false);
+    if(reorder_eqs){
+      RenumberMultiphysicsMesh(m_cmesh_h1, m_cmesh_hcurl, m_cmesh_mf);
+    }
 
     TPZAutoPointer<TPZStructMatrix> strmtrx{nullptr};
     if(using_tbb_mat){
@@ -398,13 +446,12 @@ namespace wgma::wganalysis{
     m_cmesh_h1 = meshvec[1 + TPZAnisoWgma::H1Index()];
     m_cmesh_hcurl = meshvec[1 + TPZAnisoWgma::HCurlIndex()];
 
-#ifdef PZ_USING_METIS
-    const auto renumtype = RenumType::EMetis;
-#else
-    const auto renumtype = RenumType::ECutHillMcKee;
-#endif
-    this->CreateRenumberObject(renumtype);
-    this->SetCompMeshInit(m_cmesh_mf.operator->(), reorder_eqs);
+    //we never reorder the mf mesh
+    this->SetCompMeshInit(m_cmesh_mf.operator->(),false);
+
+    if(reorder_eqs){
+      RenumberMultiphysicsMesh(m_cmesh_h1, m_cmesh_hcurl, m_cmesh_mf);
+    }
 
     TPZAutoPointer<TPZStructMatrix> strmtrx{nullptr};
     if(using_tbb_mat){
