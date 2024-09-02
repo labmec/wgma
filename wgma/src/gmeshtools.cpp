@@ -1069,7 +1069,8 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
       TPZManVector<REAL,3> axis = {cyldata.m_xaxis, cyldata.m_yaxis,cyldata.m_zaxis};
 
       TPZGeoEl *cyl{nullptr};
-      if(1){
+      //just for debugging TPZCylMap
+      if constexpr(1){
         cyl =
           TPZChangeEl::ChangeToCylinder(gmesh.operator->(), el->Index(), xc, axis,r);
         el = nullptr;
@@ -1215,13 +1216,11 @@ void wgma::gmeshtools::RotateMesh(TPZAutoPointer<TPZGeoMesh> &gmesh,
 
 void CheckCylMap(TPZGeoEl *cyl, const TPZVec<REAL> &axis,
                  const TPZVec<REAL> &xc, const REAL r,  const REAL tol) {
-  auto intrule = cyl->CreateSideIntegrationRule(cyl->NSides()-1, 8);
-  const int npts = intrule->NPoints();
   TPZManVector<REAL,3> pos(cyl->Dimension(),0), x(3,0);
   TPZFNMatrix<9, REAL>gradx(3,cyl->Dimension());
   REAL weight{0};
 
-  const int nnodes = cyl->NNodes();
+  const int nnodes = cyl->NCornerNodes();
   TPZFNMatrix<12, REAL>cornerco(3,nnodes);
   cyl->NodesCoordinates(cornerco);
   auto tri_cyl = dynamic_cast<pzgeom::TPZGeoTriangle*>(cyl);
@@ -1248,59 +1247,77 @@ void CheckCylMap(TPZGeoEl *cyl, const TPZVec<REAL> &axis,
     }
   }
   const REAL norm_axis = Norm(axis);
-  for(int ipt = 0; ipt<npts; ipt++){
-    intrule->Point(ipt,pos,weight);
-    cyl->X(pos,x);
-    for(int ix = 0; ix < 3; ix++){
-      x[ix]-=xc[ix];
-    }
-    const REAL dxa = Dot(x,axis)/norm_axis;
-    TPZManVector<REAL,3> x_orth = x;
-    for(int ix = 0; ix < 3; ix++){
-      x_orth[ix] -= dxa * axis[ix]/norm_axis;
-    }
-    const REAL radius = Norm(x_orth);
-    if(fabs(radius-r) > tol){
-      std::cout<<"x:";
-      for(int ix = 0; ix < 3; ix++){std::cout<<' '<<x[ix];}
-      std::cout<<"axis:";
-      for(int ix = 0; ix < 3; ix++){std::cout<<' '<<axis[ix];}
-      std::cout<<"dxa "<<dxa<<" norm axis "<<norm_axis<<std::endl;
-      std::cout<<"point is not in cylinder! r "<<r<<" radius "<<radius<<std::endl;
-      std::cout<<"x: ";
-      for(int ix = 0; ix < 3; ix++){std::cout<<' '<<x[ix]+xc[ix];}
-      std::cout<<"\nfor cylinder with radius "<<r<<" and center at ";
-      for(int ix = 0; ix < 3; ix++){std::cout<<' '<<xc[ix];}
-      std::cout<<std::endl;
-      std::cout<<"x orth :";
-      for(int ix = 0; ix < 3; ix++){std::cout<<' '<<x_orth[ix];}
-      std::cout<<std::endl;
-      DebugStop();
-    }
-    cyl->GradX(pos, gradx);
-    for(int ivec = 0; ivec < cyl->Dimension(); ivec++){
-      TPZManVector<REAL,3> vec(3,0), x_orth_normalised(3,0);
-      for(int ix = 0; ix < 3; ix++){vec[ix] = gradx.g(ix,ivec);}
-      //now we normalise
-      const auto normvec = Norm(vec);
-      for(int ix = 0; ix < 3; ix++){
-        vec[ix] /= normvec;
-        x_orth_normalised[ix] = x_orth[ix]/radius;
+  const int nsides = cyl->NSides();
+  for(auto iside = nnodes; iside< nsides; iside++){
+    const auto sidedim = cyl->SideDimension(iside);
+    TPZManVector<REAL,3> sidepos(sidedim,0);
+    auto intrule = cyl->CreateSideIntegrationRule(iside,6);
+    auto transf = [cyl,nnodes,iside](){
+      if(nnodes==3){
+        auto tri_cyl = dynamic_cast<pzgeom::TPZGeoTriangle*>(cyl);
+        return tri_cyl->TransformSideToElement(iside);
+      }else{
+        auto quad_cyl = dynamic_cast<pzgeom::TPZGeoQuad*>(cyl);
+        return quad_cyl->TransformSideToElement(iside);
       }
-      const REAL dot = Dot(vec,x_orth_normalised);
-      if(fabs(dot) > tol){
-        std::cout<<"gradient is not tangent to cylinder!dot "<<dot<<" for vec:";
-        for(int ix = 0; ix < 3; ix++){std::cout<<' '<<vec[ix];}
-        std::cout<<"\nx orth:";
-        for(int ix = 0; ix < 3; ix++){std::cout<<' '<<x_orth[ix];}
-        std::cout<<"\npoint x: ";
+    }();
+    const int npts = intrule->NPoints();
+  
+    for(int ipt = 0; ipt<npts; ipt++){
+      intrule->Point(ipt,sidepos,weight);
+      transf.Apply(sidepos,pos);
+      cyl->X(pos,x);
+      for(int ix = 0; ix < 3; ix++){
+        x[ix]-=xc[ix];
+      }
+      const REAL dxa = Dot(x,axis)/norm_axis;
+      TPZManVector<REAL,3> x_orth = x;
+      for(int ix = 0; ix < 3; ix++){
+        x_orth[ix] -= dxa * axis[ix]/norm_axis;
+      }
+      const REAL radius = Norm(x_orth);
+      if(fabs(radius-r) > tol){
+        std::cout<<"x:";
+        for(int ix = 0; ix < 3; ix++){std::cout<<' '<<x[ix];}
+        std::cout<<"axis:";
+        for(int ix = 0; ix < 3; ix++){std::cout<<' '<<axis[ix];}
+        std::cout<<"dxa "<<dxa<<" norm axis "<<norm_axis<<std::endl;
+        std::cout<<"point is not in cylinder! r "<<r<<" radius "<<radius<<std::endl;
+        std::cout<<"x: ";
         for(int ix = 0; ix < 3; ix++){std::cout<<' '<<x[ix]+xc[ix];}
         std::cout<<"\nfor cylinder with radius "<<r<<" and center at ";
         for(int ix = 0; ix < 3; ix++){std::cout<<' '<<xc[ix];}
         std::cout<<std::endl;
+        std::cout<<"x orth :";
+        for(int ix = 0; ix < 3; ix++){std::cout<<' '<<x_orth[ix];}
+        std::cout<<std::endl;
         DebugStop();
       }
+      cyl->GradX(pos, gradx);
+      for(int ivec = 0; ivec < cyl->Dimension(); ivec++){
+        TPZManVector<REAL,3> vec(3,0), x_orth_normalised(3,0);
+        for(int ix = 0; ix < 3; ix++){vec[ix] = gradx.g(ix,ivec);}
+        //now we normalise
+        const auto normvec = Norm(vec);
+        for(int ix = 0; ix < 3; ix++){
+          vec[ix] /= normvec;
+          x_orth_normalised[ix] = x_orth[ix]/radius;
+        }
+        const REAL dot = Dot(vec,x_orth_normalised);
+        if(fabs(dot) > tol){
+          std::cout<<"gradient is not tangent to cylinder!dot "<<dot<<" for vec:";
+          for(int ix = 0; ix < 3; ix++){std::cout<<' '<<vec[ix];}
+          std::cout<<"\nx orth:";
+          for(int ix = 0; ix < 3; ix++){std::cout<<' '<<x_orth[ix];}
+          std::cout<<"\npoint x: ";
+          for(int ix = 0; ix < 3; ix++){std::cout<<' '<<x[ix]+xc[ix];}
+          std::cout<<"\nfor cylinder with radius "<<r<<" and center at ";
+          for(int ix = 0; ix < 3; ix++){std::cout<<' '<<xc[ix];}
+          std::cout<<std::endl;
+          DebugStop();
+        }
+      }
     }
+    delete intrule;
   }
-  delete intrule;
 }
