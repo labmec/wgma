@@ -227,7 +227,11 @@ namespace wgma::wganalysis{
     using Wgma::Solve;
   private:
 
-    void Solve() override {TPZEigenAnalysis::Solve();}
+    void Solve() override;
+    //! Makes sure that the ez values are correct, computing Bzz^-1 Bzt et
+    void AdjustEz();
+    //! Computes residual of computed functions and return largest value
+    STATE ComputeResidual();
     void LoadSolutionInternal(const int isol, const int ncols) override;
     
     void AdjustSolver(TPZEigenSolver<CSTATE> *solv) override;

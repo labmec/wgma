@@ -20,7 +20,9 @@
 #include <TPZSimpleTimer.h>
 #include <pzbuildmultiphysicsmesh.h>
 #include <pzelctemp.h>
+#include <TPZYSMPPardiso.h>
 
+#include <numeric>
 #include <cassert>
 
 namespace wgma::wganalysis{
@@ -284,6 +286,117 @@ namespace wgma::wganalysis{
     this->SetStructuralMatrix(strmtrx);
   }
 
+  void Wgma2D::Solve(){
+    TPZEigenAnalysis::Solve();
+    const auto max_res = ComputeResidual();
+    if(max_res > 1e-10){
+      AdjustEz();
+      ComputeResidual();
+    }
+  }
+  
+  void Wgma2D::AdjustEz(){
+    TPZSimpleTimer timer("Adjust ez");
+    const auto amat =
+      TPZAutoPointerDynamicCast<TPZFYsmpMatrix<CSTATE>>(this->GetSolver().MatrixA());
+    const auto bmat =
+      TPZAutoPointerDynamicCast<TPZFYsmpMatrix<CSTATE>>(this->GetSolver().MatrixB());
+
+    if(!amat || !bmat){
+      DebugStop();
+    }
+    int pardiso_msg_level{0};
+    const int64_t &neq_mf = m_n_dofs_mf;
+    const int64_t &neq_hcurl = m_n_dofs_hcurl;
+    const int64_t &neq_h1 = m_n_dofs_h1;
+    
+    const int64_t first_h1 = neq_hcurl*TPZWgma::H1Index();
+    const int64_t first_hcurl = neq_h1*TPZWgma::HCurlIndex();
+    //now we need to split bzz and btz
+    TPZAutoPointer<TPZFYsmpMatrixPardiso<CSTATE>> bzz{nullptr}, bzt{nullptr};
+    {
+      TPZSimpleTimer timer("Creating sparse blocks");
+      TPZVec<int64_t> h1_indices(neq_h1,0.);
+      std::iota(h1_indices.begin(), h1_indices.end(), first_h1);
+      TPZVec<int64_t> hcurl_indices(neq_hcurl,0.);
+      std::iota(hcurl_indices.begin(), hcurl_indices.end(), first_hcurl);
+      //first we get bzz
+      {
+        TPZVec<int64_t> ia, ja;
+        TPZVec<CSTATE> aa;
+        bmat->GetSubSparseMatrix(h1_indices,ia,ja,aa);
+        bzz = new TPZFYsmpMatrixPardiso<CSTATE>(neq_h1,neq_h1);
+        bzz->SetData(std::move(ia), std::move(ja), std::move(aa));
+        auto &pardiso = bzz->GetPardisoControl();
+        pardiso_msg_level = pardiso.GetMessageLevel();
+      }
+      {
+        TPZVec<int64_t> ia, ja;
+        TPZVec<CSTATE> aa;
+        bmat->GetSubSparseMatrix(h1_indices,hcurl_indices,ia,ja,aa);
+        bzt = new TPZFYsmpMatrixPardiso<CSTATE>(neq_h1,neq_hcurl);
+        bzt->SetData(std::move(ia), std::move(ja), std::move(aa));
+      }
+    }
+  
+    auto &evs = this->GetEigenvectors();
+    const auto nev = evs.Cols();
+    const auto neq_scatt = evs.Rows();
+    auto &eqfilt = this->StructMatrix()->EquationFilter();
+    if(neq_mf != eqfilt.NActiveEquations()){
+      DebugStop();
+    }
+
+    std::cout<<"Computing ez..."<<std::flush;
+    TPZSimpleTimer timerfinal("Computing ez");
+    for(auto iev = 0; iev < nev; iev++){
+      //this actually changes evs
+      TPZFMatrix<CSTATE> evscatt(neq_scatt,1,evs.Elem()+neq_scatt*iev,neq_scatt);
+      TPZFMatrix<CSTATE> ev(neq_mf,1,0.);
+      eqfilt.Gather(evscatt, ev);
+      //note that they are directly accessing ev
+      TPZFMatrix<CSTATE> et(neq_hcurl,1,ev.Elem()+first_hcurl,neq_hcurl);
+      TPZFMatrix<CSTATE> ez(neq_h1,1,ev.Elem()+first_h1,neq_h1);
+      bzt->Multiply(et, ez);
+      ez*=-1;
+      bzz->SolveDirect(ez, ELU);
+      eqfilt.Scatter(ev, evscatt);
+    }
+    std::cout<<"Done!"<<std::endl;
+    auto &pardiso = bzz->GetPardisoControl();
+    pardiso.SetMessageLevel(pardiso_msg_level);
+  }
+
+STATE Wgma2D::ComputeResidual(){
+  const auto amat = this->GetSolver().MatrixA();
+  const auto bmat = this->GetSolver().MatrixB();
+  auto evs = this->GetEigenvectors();
+  const auto nev = evs.Cols();
+  const auto neq_scatt = evs.Rows();
+  auto &eqfilt = this->StructMatrix()->EquationFilter();
+  const auto neq = eqfilt.NActiveEquations();
+  STATE max_res{-1};
+  for(auto iev = 0; iev < nev; iev++){
+    const TPZFMatrix<CSTATE> evscatt(neq_scatt,1,evs.Elem()+neq_scatt*iev,neq_scatt);
+    const auto beta = this->GetEigenvalues()[iev];
+    TPZFMatrix<CSTATE> ev(neq,1,0), res(neq,1,0), aux(neq,1,0);
+    eqfilt.Gather(evscatt, ev);
+    amat->Multiply(ev, res);
+    bmat->Multiply(ev, aux);
+    aux*=beta;
+    res-=aux;
+    const STATE normres = Norm(res);
+    if(normres > max_res){max_res = normres;}
+  }
+
+  std::ios cout_state(nullptr);
+  cout_state.copyfmt(std::cout);
+  std::cout << std::setprecision(std::numeric_limits<STATE>::max_digits10);
+  std::cout<<"maximum residual: "<<max_res<<std::endl;
+  std::cout.copyfmt(cout_state);
+  return max_res;
+}
+  
   void Wgma2D::AdjustSolver(TPZEigenSolver<CSTATE> *solver){
     auto *krylov_solver =
       dynamic_cast<TPZKrylovEigenSolver<CSTATE>*> (solver);
