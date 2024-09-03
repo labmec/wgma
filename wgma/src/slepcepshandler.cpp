@@ -321,9 +321,8 @@ namespace wgma::slepc{
     }
 
     const PetscInt nInitVec = this->fInitVec.Cols();
-    
+    PetscScalar *vecMem = nullptr;
     if(nInitVec>0){
-      Vec x;
       const int neq = pzA.Rows();
       if(neq!=this->fInitVec.Rows()){
         DebugStop();
@@ -332,9 +331,27 @@ namespace wgma::slepc{
         DebugStop();
       }
       constexpr PetscInt blocksize{1};
+
+      // Vec x;
+      // VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize, neq,fInitVec.Elem(), &x);
+      // ierr = EPSSetDeflationSpace(eps,nInitVec,&x);
+      // PetscCall(VecDestroy(&x));
+
+
+      PetscBool is_computed;
+      STGetTransform(st,&is_computed);
+      if(!is_computed){
+        DebugStop();
+      }
+      Vec x;
       VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize, neq,fInitVec.Elem(), &x);
-      ierr = EPSSetDeflationSpace(eps,nInitVec,&x);
+      PetscMalloc1(neq,&vecMem);
+      Vec v;
+      VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize,neq, vecMem, &v);
+      STMatSolve(st,x,v);
+      PetscCall(EPSSetInitialSpace(eps, 1, &v));
       PetscCall(VecDestroy(&x));
+      PetscCall(VecDestroy(&v));
     }
 
     if(fVerbose){
@@ -486,6 +503,7 @@ namespace wgma::slepc{
     MatDestroy(&petscA);
     MatDestroy(&petscB);
 
+    if(vecMem!=nullptr){PetscFree(vecMem);}
 #ifndef WGMA_PETSC_64BIT
     //otherwise we havent copied the matrices
     if(iaP) PetscFree(iaP);
