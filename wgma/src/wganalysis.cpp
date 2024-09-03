@@ -289,21 +289,26 @@ namespace wgma::wganalysis{
       dynamic_cast<TPZKrylovEigenSolver<CSTATE>*> (solver);
     auto *eps_solver =
       dynamic_cast<slepc::EPSHandler<CSTATE>*>(solver);
-    if(
-      (krylov_solver && krylov_solver->KrylovInitialVector().Rows() == 0) ||
-       eps_solver){
-      /**this is to ensure that the eigenvector subspace is orthogonal to
+    if(krylov_solver){
+      /**the initial vector will be set as B.v, as to
+         ensure that the eigenvector subspace is orthogonal to
          the spurious solutions associated with et = 0 ez != 0*/
       TPZFMatrix<CSTATE> initVec(m_n_dofs_mf, 1, 0.);
       const auto firstHCurl = m_n_dofs_h1 * TPZWgma::HCurlIndex();
       for (int i = 0; i < m_n_dofs_hcurl; i++) {
         initVec(firstHCurl + i, 0) = 1;
       }
-      if(krylov_solver){
-        krylov_solver->SetKrylovInitialVector(initVec);
-      }else{
-        eps_solver->SetKrylovInitialVector(initVec);
+      krylov_solver->SetKrylovInitialVector(initVec);
+    }
+    else{
+      /**for slepc we can directly set a basis for the unwanted space,
+         so the solutions are sought in its orthogonal complement*/
+      TPZFMatrix<CSTATE> initVec(m_n_dofs_mf, 1, 0.);
+      const auto firstH1 = m_n_dofs_hcurl * TPZWgma::H1Index();
+      for (int i = 0; i < m_n_dofs_h1; i++) {
+        initVec(firstH1 + i, 0) = 1;
       }
+      eps_solver->SetKrylovInitialVector(initVec);
     }
   }
   
