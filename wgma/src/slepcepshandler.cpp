@@ -300,6 +300,10 @@ namespace wgma::slepc{
         ierr = EPSKrylovSchurSetLocking(eps, locking);
         ierr = EPSKrylovSchurSetRestart(eps, restart);
       }
+      EPSBalance bal = EPSBalance::EPS_BALANCE_TWOSIDE;
+      PetscInt its = PETSC_DEFAULT;
+      PetscReal cutoff = PETSC_DEFAULT;
+      EPSSetBalance(eps, bal,its, cutoff);
       CHKERRQ(ierr);
     }
     
