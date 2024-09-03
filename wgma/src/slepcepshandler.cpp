@@ -320,40 +320,21 @@ namespace wgma::slepc{
       CHKERRQ(ierr);
     }
 
-    Vec *initVecArray{nullptr};
-    PetscScalar **initVecMem{nullptr};
-    PetscInt nInitVec = this->fInitVec.Rows();
-    {
-      TPZSimpleTimer initvecs("Computing initial vectors");
-      if(nInitVec>0){
-        PetscBool is_computed;
-        STGetTransform(st,&is_computed);
-        if(!is_computed){
-          DebugStop();
-        }
-        std::cout<<"Creating PETSc initial vector...";
-        const int neq = pzA.Rows();
-        if(neq!=this->fInitVec.Rows()){
-          DebugStop();
-        }
-        initVecMem = new PetscScalar *[nInitVec];
-        constexpr PetscInt blocksize{1};
-        nInitVec = this->fInitVec.Cols();
-        initVecArray = new Vec[nInitVec];
-        for(int i = 0; i < nInitVec; i++){
-          PetscMalloc1(neq,&initVecMem[i]);
-          Vec x;
-          VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize, neq,
-                                fInitVec.Elem()+neq*i, &x);
-          initVecArray[i] = Vec{};
-          VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize,neq,
-                                initVecMem[i], &initVecArray[i]);
-          STMatSolve(st,x,initVecArray[i]);
-          VecDestroy(&x);
-        }
-        std::cout<<"Created!"<<std::endl;
-        ierr = EPSSetInitialSpace(eps,nInitVec,initVecArray);
+    const PetscInt nInitVec = this->fInitVec.Cols();
+    
+    if(nInitVec>0){
+      Vec x;
+      const int neq = pzA.Rows();
+      if(neq!=this->fInitVec.Rows()){
+        DebugStop();
       }
+      if(this->fInitVec.Cols()!=1){
+        DebugStop();
+      }
+      constexpr PetscInt blocksize{1};
+      VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize, neq,fInitVec.Elem(), &x);
+      ierr = EPSSetDeflationSpace(eps,nInitVec,&x);
+      PetscCall(VecDestroy(&x));
     }
 
     if(fVerbose){
@@ -514,15 +495,6 @@ namespace wgma::slepc{
     if(jbP) PetscFree(jbP);
     if(abP) PetscFree(abP);
 #endif
-    if(nInitVec){
-      for(int i = 0; i < nInitVec; i++){
-        VecDestroy(&initVecArray[i]);
-        PetscFree(initVecMem[i]);
-        initVecMem[i] = nullptr;
-      }
-      delete [] initVecMem;
-      delete [] initVecArray;
-    }
     return 0;
 #endif
     return -1;
