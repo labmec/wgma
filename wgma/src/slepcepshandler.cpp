@@ -218,6 +218,7 @@ namespace wgma::slepc{
     ::KSP ksp;
     ::ST st;
     ::EPS eps;
+    ::RG rg;  
     //PC settings
     {
       ierr = PCCreate(PETSC_COMM_WORLD, &pc);
@@ -300,10 +301,16 @@ namespace wgma::slepc{
         ierr = EPSKrylovSchurSetLocking(eps, locking);
         ierr = EPSKrylovSchurSetRestart(eps, restart);
       }
-      EPSBalance bal = EPSBalance::EPS_BALANCE_TWOSIDE;
-      PetscInt its = PETSC_DEFAULT;
-      PetscReal cutoff = PETSC_DEFAULT;
-      EPSSetBalance(eps, bal,its, cutoff);
+      // EPSBalance bal = EPSBalance::EPS_BALANCE_TWOSIDE;
+      // PetscInt its = PETSC_DEFAULT;
+      // PetscReal cutoff = PETSC_DEFAULT;
+      // EPSSetBalance(eps, bal,its, cutoff);
+
+      PetscCall(EPSGetRG(eps,&rg));
+      PetscCall(RGSetType(rg,RGELLIPSE));
+      PetscReal center{0}, radius{1e-1}, vscale{1};
+      PetscCall(RGEllipseSetParameters(rg,center,radius,vscale));
+      PetscCall(RGSetComplement(rg,PETSC_TRUE));
       CHKERRQ(ierr);
     }
     
