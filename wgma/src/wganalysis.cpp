@@ -51,7 +51,7 @@ namespace wgma::wganalysis{
     
       constexpr STATE eps_tol = 1e-15;//PETSC_DECIDE
       constexpr int eps_max_its = -1;//PETSC_DECIDE
-      constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_NORM;
+      constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_ABS;
     
       constexpr PC pc = PC::LU;
       constexpr KSPSolver linsolver = KSPSolver::PREONLY;
@@ -64,14 +64,14 @@ namespace wgma::wganalysis{
       constexpr EPSType eps_solver_type = EPSType::KRYLOVSCHUR;
       constexpr bool eps_krylov_locking = true;
       constexpr STATE eps_krylov_restart = 0.7;
-      constexpr STATE eps_mpd = -1;//PETSC_DECIDE
+      constexpr STATE eps_ncv = -1;//PETSC_DECIDE
       const bool eps_verbosity = verbose;
     
     
       auto eps_solver = new EPSHandler<CSTATE>;
       eps_solver->SetType(eps_solver_type);
       eps_solver->SetProblemType(eps_prob_type);
-      eps_solver->SetEPSDimensions(nEigen, krylovDim, eps_mpd);
+      eps_solver->SetEPSDimensions(nEigen, eps_ncv, krylovDim);
       eps_solver->SetTarget(target);
       eps_solver->SetTolerances(eps_tol,eps_max_its);
       eps_solver->SetConvergenceTest(eps_conv_test);
@@ -81,7 +81,7 @@ namespace wgma::wganalysis{
     
       eps_solver->SetLinearSolver(linsolver);
       eps_solver->SetLinearSolverTol(ksp_rtol,ksp_atol,ksp_dtol,ksp_max_its);
-      eps_solver->SetPrecond(pc, 1e-14);
+      eps_solver->SetPrecond(pc, 1e-15);
 
       solver = eps_solver;
     }else{
