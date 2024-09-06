@@ -61,14 +61,14 @@ class BoxData(VolData):
     represents a parallelepipedic box with lower left corner (xc,yc,zc)
     """
 
-    def __init__(self):
+    def __init__(self, x=0, y=0, z=0, dxval=0, dyval=0, dzval=0):
         VolData.__init__(self)
-        self.xc = 0.
-        self.yc = 0.
-        self.zc = 0.
-        self.dx = 0.
-        self.dy = 0.
-        self.dz = 0.
+        self.xc = x
+        self.yc = y
+        self.zc = z
+        self.dx = dxval
+        self.dy = dyval
+        self.dz = dzval
 
 
 class CylinderData(VolData):
