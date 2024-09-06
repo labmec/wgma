@@ -773,6 +773,26 @@ def apply_boolean_operation(
     return domain_map
 
 
+def fuse_domains(objs: list, tools: list):
+    """
+    Fuses (merges) domains
+
+
+
+    Parameters
+    ----------
+    objs: list
+        list of (dim,tag) of regions to be used as object
+    tools: list
+        list of (dim,tag) of regions to be used as tool
+
+    """
+    interfacemap = gmsh.model.occ.fuse(
+        objs, tools, removeObject=True, removeTool=True)[0]
+    gmsh.model.occ.synchronize()
+    return interfacemap
+
+
 def remap_tags(original_entity_list, bool_map):
     """
     Update tags of list of CircData,RectData,LineData after a boolean operation
