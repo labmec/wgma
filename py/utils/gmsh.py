@@ -566,6 +566,11 @@ def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
         return found, direction
     pml_regions = {}
     for dim, tag in dimtags:
+        # for 2d regions we check if the candidates lie in the same plane
+        surfnormal = []
+        if dim == 2:
+            surfnormal = gmsh.model.get_normal(tag, [0, 0])
+            surfnormal = abs(surfnormal)
         # get boundary
         bnd = gmsh.model.get_boundary([(dim, tag)], oriented=False)
         # check adjacencies of boundary to find entity contained in pml
@@ -576,6 +581,14 @@ def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
             # we are looking for a neighbour that is either a PML
             # or that all its adjacencies are PMLs
             for neightag in neightags:
+                if dim == 2:
+                    neighnormal = gmsh.model.get_normal(neightag, [0, 0])
+                    neighnormal = abs(neighnormal)
+                    diff = max(
+                        [neighnormal[i] - surfnormal[i]
+                         for i in range(len(surfnormal))])
+                    if diff > 0.001:
+                        continue
                 neighdim = b[0] + 1
                 found, direction = check_if_pml(neighdim, neightag, pmldim)
                 if found:
