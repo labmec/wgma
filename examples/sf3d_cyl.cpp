@@ -245,8 +245,8 @@ int main(int argc, char *argv[]) {
   constexpr TPZEigenSort sortingRule {TPZEigenSort::UserDefined};
   constexpr bool usingSLEPC {true};
 
-  const CSTATE target_left{-1.0001*simdata.ncore*simdata.ncore};
-  const CSTATE target_right{-1.0001*simdata.ncore*simdata.ncore};
+  const CSTATE target_left{-1.00001*simdata.ncore*simdata.ncore};
+  const CSTATE target_right{-1.00001*simdata.ncore*simdata.ncore};
   /*********
    * begin *
    *********/
@@ -556,7 +556,10 @@ ComputeModalAnalysis(
     static constexpr bool computeVectors{true};
   
 
-    an->Solve(computeVectors,verbose);
+    {
+      TPZSimpleTimer timer("Solve",true);
+      an->Solve(computeVectors,verbose);
+    }
   
     //load all obtained modes into the mesh
     an->LoadAllSolutions();
@@ -1137,7 +1140,7 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
     ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
                       match_data.wgbc_f,true, {},
                       simdata.n_threads);
-    src_an = nullptr;
+    match_an = nullptr;
   }
   
   TPZFMatrix<CSTATE> sol_wpbc = ref_sol;//just to have the same size
