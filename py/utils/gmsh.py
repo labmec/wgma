@@ -391,9 +391,11 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
     bpml = find_bnd(pmlreg, alldirs[1], signvec)
     # now we may or may not find a PML region after this boundary
     up, _ = gmsh.model.get_adjacencies(bpml[0], bpml[1])
+    pml_already_there = False
     if (len(up) > 1):
         # there is already a PML in that direction
         pmlreg = (dim, up[0] if up[1] == pmlreg[1] else up[1])
+        pml_already_there = True
     else:
         # there is no PML in this direction, we must extrude
         dx = [0, 0, 0]
@@ -416,6 +418,8 @@ whether to attenuate in the positive (p) or negative (m) direction for a given a
         height = [1]
         pmlreg = [(d, t) for d, t in gmsh.model.occ.extrude(
             [bpml], *dx, nel, height, True) if d == dim][0]
+    if pml_already_there and len(alldirs) != 3:
+        return {}
 
     return {(direction, pmlreg[1]): dimtag[1]}
 
