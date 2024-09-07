@@ -39,8 +39,9 @@ data["ncore"] = 1.4457
 data["nclad"] = 1.4378
 data["scale"] = wavelength/(2*np.pi)
 data["source_coeffs"] = [[0, 1]]
-pml_r = 0.4
-data["alpha_pml_r"] = [np.sqrt(pml_r**2+pml_r**2), 0]
+pml_r_real = 0.4
+pml_r_imag = 0.0
+data["alpha_pml_r"] = [pml_r_real, pml_r_imag]
 pml_z = 1.0
 data["alpha_pml_z"] = [pml_z, 0]
 
@@ -51,8 +52,8 @@ data["cylfile"] = "meshes/sf3d_disc_cyldata.csv"
 data["check_mode_propagation"] = False
 data["compare_pml"] = True
 data["direct_solver"] = False
-data["n_eigenpairs_left"] = 910
-data["n_eigenpairs_right"] = 950
-data["n_modes_right"] = [900]
-data["n_modes_left"] = [900]
+data["n_eigenpairs_left"] = 100
+data["n_eigenpairs_right"] = 1500
+data["n_modes_right"] = [1500]
+data["n_modes_left"] = [100]
 gen_script_and_run(data, scriptname, prefix)
