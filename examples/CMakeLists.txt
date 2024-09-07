@@ -126,3 +126,14 @@ add_pz_target(
   FILES meshes/meta_surf_1d.msh
 )
 target_link_libraries(meta_surf_1d PUBLIC wgma)
+
+list(APPEND ms2d_files ../py/scripts/arrow_validation.py  ../py/scripts/arrow_nmodes.py)
+foreach(file ${ms2d_files})
+  get_filename_component(filename ${file} NAME)
+  configure_file(${file} scripts/${filename})
+endforeach(file)
+add_pz_target(
+  NAME meta_surf_2d
+  SOURCES meta_surf_2d.cpp
+  )
+target_link_libraries(meta_surf_2d PUBLIC wgma)  
