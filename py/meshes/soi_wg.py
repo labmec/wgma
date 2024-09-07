@@ -25,17 +25,19 @@ from utils.gmsh import (
 #############################################
 
 
-def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
+def create_arrow_mesh(w_rib_in_1, w_rib_in_2, w_rib_in_3,
+                      w_rib_out_1, w_rib_out_2, w_rib_out_3,
+                      z_begin, z_mid, z_end,
                       el_small, el_large, filename):
-    w_domain = max(w_rib_in, w_rib_out)+5.2
-    h_domain = 6.5
-    h_sub = 1.7
-    h_1 = 0.95
-    h_2 = 1.6
-    h_3 = 0.4
-    h_4 = 0.1
-    h_5 = 1
-    d_pml = 1
+    w_domain = max(w_rib_in_1, w_rib_in_2, w_rib_in_3,
+                   w_rib_out_1, w_rib_out_2, w_rib_out_3)*1.5
+    h_domain = 20
+    h_sub = 3
+    h_1 = 0.8
+    h_2 = 0.7
+    h_3 = 2.5
+    h_4 = 6
+    d_pml = 2
     el_size = 0.1
     gmsh.initialize()
     gmsh.option.set_number("Geometry.Tolerance", 10**-14)
@@ -47,7 +49,7 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
     # We can log all messages for further processing with:
     gmsh.logger.start()
 
-    def CreateHalfDomain(z_begin, z_end, w_rib):
+    def CreateHalfDomain(z_begin, z_end, w_r_1, w_r_2, w_r_3):
         z_dist = z_end-z_begin
         domains = []
         # substrate domain
@@ -56,41 +58,36 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
         domains.append(sub)
         # 5% AlGaAs domain (left)
         algaas_5_left_in = BoxData(-w_domain/2, h_sub,
-                                   z_begin, w_domain/2-w_rib/2, h_5, z_dist)
+                                   z_begin, w_domain/2-w_r_1/2, h_1, z_dist)
         create_box(algaas_5_left_in, el_size)
         domains.append(algaas_5_left_in)
         # 5% AlGaAs domain (right)
         algaas_5_right_in = BoxData(
-            w_rib/2, h_sub, z_begin, w_domain/2-w_rib/2, h_5, z_dist)
+            w_r_1/2, h_sub, z_begin, w_domain/2-w_r_1/2, h_1, z_dist)
         create_box(algaas_5_right_in, el_size)
         domains.append(algaas_5_right_in)
         # 5% AlGaAs (center)
-        algaas_5_center_in = BoxData(-w_rib/2, h_sub,
-                                     z_begin, w_rib, h_5, z_dist)
+        algaas_5_center_in = BoxData(-w_r_1/2, h_sub,
+                                     z_begin, w_r_1, h_1, z_dist)
         create_box(algaas_5_center_in, el_size)
         domains.append(algaas_5_center_in)
         # 5% AlGaAs rib
-        algaas_5_rib_in = BoxData(-w_rib/2, h_sub+h_5,
-                                  z_begin, w_rib, h_4, z_dist)
+        algaas_5_rib_in = BoxData(-w_r_1/2, h_sub+h_1,
+                                  z_begin, w_r_1, h_2, z_dist)
         create_box(algaas_5_rib_in, el_size)
         domains.append(algaas_5_rib_in)
         # 20% AlGaAs rib(bottom)
-        layer_1 = BoxData(-w_rib/2, h_sub+h_5+h_4, z_begin, w_rib, h_3, z_dist)
+        layer_1 = BoxData(-w_r_2/2, h_sub+h_1+h_2, z_begin, w_r_2, h_3, z_dist)
         create_box(layer_1, el_size)
         domains.append(layer_1)
         # GaAs rib
-        layer_2 = BoxData(-w_rib/2, h_sub+h_5+h_4+h_3,
-                          z_begin, w_rib, h_2, z_dist)
+        layer_2 = BoxData(-w_r_3/2, h_sub+h_1+h_2+h_3,
+                          z_begin, w_r_3, h_4, z_dist)
         create_box(layer_2, el_size)
         domains.append(layer_2)
-        # 20% AlGaAs rib(top)
-        layer_3 = BoxData(-w_rib/2, h_sub+h_5+h_4+h_3+h_2,
-                          z_begin, w_rib, h_1, z_dist)
-        create_box(layer_3, el_size)
-        domains.append(layer_3)
         # air domain
-        h_air = h_domain - (h_sub+h_5)
-        air = BoxData(-w_domain/2, h_sub+h_5, z_begin, w_domain, h_air, z_dist)
+        h_air = h_domain - (h_sub+h_1)
+        air = BoxData(-w_domain/2, h_sub+h_1, z_begin, w_domain, h_air, z_dist)
         create_box(air, el_size)
         domains.append(air)
 
@@ -101,7 +98,7 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
         [objs.append((3, s)) for s in air.tag]
         tools = []
         [tools.append((3, s))
-         for surf in [layer_3, layer_2, layer_1, algaas_5_rib_in]
+         for surf in [layer_2, layer_1, algaas_5_rib_in]
          for s in surf.tag]
 
         air_map = apply_boolean_operation(objs, tools, "cut", False, el_size)
@@ -110,11 +107,11 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
         gmsh.model.occ.synchronize()
         return domains
 
-    sub_in, ag5_left_in, ag5_right_in, ag5_center_in, ag5_rib_in, l1_in, l2_in, l3_in, air_in = CreateHalfDomain(
-        z_begin, z_mid, w_rib_in)
+    sub_in, ag5_left_in, ag5_right_in, ag5_center_in, ag5_rib_in, l1_in, l2_in, air_in = CreateHalfDomain(
+        z_begin, z_mid, w_rib_in_1, w_rib_in_2, w_rib_in_3)
 
-    sub_out, ag5_left_out, ag5_right_out, ag5_center_out, ag5_rib_out, l1_out, l2_out, l3_out, air_out = CreateHalfDomain(
-        z_mid, z_end, w_rib_out)
+    sub_out, ag5_left_out, ag5_right_out, ag5_center_out, ag5_rib_out, l1_out, l2_out, air_out = CreateHalfDomain(
+        z_mid, z_end, w_rib_out_1, w_rib_out_2, w_rib_out_3)
 
     # merging domains
     sub = fuse_domains([(3, s) for s in sub_in.tag], [(3, s)
@@ -146,9 +143,6 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
 
     l2 = fuse_domains([(3, s) for s in l2_in.tag], [(3, s) for s in l2_out.tag])
     l2 = [t for _, t in l2]
-
-    l3 = fuse_domains([(3, s) for s in l3_in.tag], [(3, s) for s in l3_out.tag])
-    l3 = [t for _, t in l3]
 
     air = fuse_domains([(3, s) for s in air_in.tag], [(3, s)
                        for s in air_out.tag])
@@ -203,20 +197,22 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
         sl = [[surf_map[i]] for i in range(smsz)]
         return sl
 
-    vol_list = [air, l3, l2, l1, ag5_rib, ag5_center, ag5_left, ag5_right, sub]
+    vol_list = [air, l2, l1, ag5_rib, ag5_center, ag5_left, ag5_right, sub]
     # create 2d probe subdomains
 
     probe_dist_in = z_begin+abs(z_mid-z_begin)/2
-    air_probe_in, l3_probe_in, l2_probe_in, l1_probe_in, \
-        ag5_rib_probe_in, ag5_center_probe_in, ag5_left_probe_in, ag5_right_probe_in,\
+    air_probe_in, l2_probe_in, l1_probe_in, ag5_rib_probe_in, \
+        ag5_center_probe_in, ag5_left_probe_in, ag5_right_probe_in,\
         sub_probe_in = \
-        Create2Ddomain(-w_domain/2, 0, probe_dist_in, w_domain, h_domain, vol_list, 0.1)
+        Create2Ddomain(-w_domain/2, 0, probe_dist_in,
+                       w_domain, h_domain, vol_list, 0.1)
 
     probe_dist_out = z_end-abs(z_end-z_mid)/2
-    air_probe_out, l3_probe_out, l2_probe_out, l1_probe_out, \
-        ag5_rib_probe_out, ag5_center_probe_out, ag5_left_probe_out, ag5_right_probe_out,\
+    air_probe_out, l2_probe_out, l1_probe_out, ag5_rib_probe_out, \
+        ag5_center_probe_out, ag5_left_probe_out, ag5_right_probe_out,\
         sub_probe_out = \
-        Create2Ddomain(-w_domain/2, 0, probe_dist_out, w_domain, h_domain, vol_list, 0.1)
+        Create2Ddomain(-w_domain/2, 0, probe_dist_out,
+                       w_domain, h_domain, vol_list, 0.1)
 
     # find 2d ports
     def FindPorts(vol_list, sign):
@@ -243,13 +239,11 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
         sl = [[surf_map[i]] for i in range(smsz)]
         return sl
 
-    air_port_out, l3_port_out, l2_port_out, l1_port_out, \
-        ag5_rib_port_out, ag5_center_port_out, ag5_left_port_out, ag5_right_port_out,\
-        sub_port_out = FindPorts(vol_list, 1)
+    air_port_out, l2_port_out, l1_port_out, ag5_rib_port_out, ag5_center_port_out,\
+        ag5_left_port_out, ag5_right_port_out, sub_port_out = FindPorts(vol_list, 1)
 
-    air_port_in, l3_port_in, l2_port_in, l1_port_in, \
-        ag5_rib_port_in, ag5_center_port_in, ag5_left_port_in, ag5_right_port_in,\
-        sub_port_in = FindPorts(vol_list, -1)
+    air_port_in, l2_port_in, l1_port_in, ag5_rib_port_in, ag5_center_port_in,\
+        ag5_left_port_in, ag5_right_port_in, sub_port_in = FindPorts(vol_list, -1)
 
     # creating PMLs
 
@@ -378,7 +372,7 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
         pml_domains, combined=True, oriented=False, recursive=False)]
     pml_bounds = list(set(pml_bounds) & set(all_bounds))
 
-    port_in_mats = [(2, t) for t in air_port_in+l3_port_in+l2_port_in+l1_port_in +
+    port_in_mats = [(2, t) for t in air_port_in+l2_port_in+l1_port_in +
                     ag5_rib_port_in+ag5_center_port_in+ag5_left_port_in+ag5_right_port_in +
                     sub_port_in] + [(2, tag) for _, tag in pml_port_in.keys()]
 
@@ -386,7 +380,7 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
         port_in_mats,
         combined=True, oriented=False, recursive=False)]
 
-    port_out_mats = [(2, t) for t in air_port_out+l3_port_out+l2_port_out+l1_port_out +
+    port_out_mats = [(2, t) for t in air_port_out+l2_port_out+l1_port_out +
                      ag5_rib_port_out+ag5_center_port_out+ag5_left_port_out+ag5_right_port_out +
                      sub_port_out] + [(2, tag) for _, tag in pml_port_out.keys()]
 
@@ -394,7 +388,7 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
         port_out_mats,
         combined=True, oriented=False, recursive=False)]
 
-    probe_in_mats = [(2, t) for t in air_probe_in+l3_probe_in+l2_probe_in+l1_probe_in +
+    probe_in_mats = [(2, t) for t in air_probe_in+l2_probe_in+l1_probe_in +
                      ag5_rib_probe_in+ag5_center_probe_in+ag5_left_probe_in+ag5_right_probe_in +
                      sub_probe_in] + [(2, tag) for _, tag in pml_probe_in.keys()]
 
@@ -402,7 +396,7 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
         probe_in_mats,
         combined=True, oriented=False, recursive=False)]
 
-    probe_out_mats = [(2, t) for t in air_probe_out+l3_probe_out+l2_probe_out+l1_probe_out +
+    probe_out_mats = [(2, t) for t in air_probe_out+l2_probe_out+l1_probe_out +
                       ag5_rib_probe_out+ag5_center_probe_out+ag5_left_probe_out+ag5_right_probe_out +
                       sub_probe_out] + [(2, tag) for _, tag in pml_probe_out.keys()]
 
@@ -411,16 +405,16 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
         combined=True, oriented=False, recursive=False)]
 
     # and make the probes periodic to the ports (we exclude the pml tags for now
-    port_in_mats = [(2, t) for t in air_port_in+l3_port_in+l2_port_in+l1_port_in +
+    port_in_mats = [(2, t) for t in air_port_in+l2_port_in+l1_port_in +
                     ag5_rib_port_in+ag5_center_port_in+ag5_left_port_in+ag5_right_port_in +
                     sub_port_in]
-    probe_in_mats = [(2, t) for t in air_probe_in+l3_probe_in+l2_probe_in+l1_probe_in +
+    probe_in_mats = [(2, t) for t in air_probe_in+l2_probe_in+l1_probe_in +
                      ag5_rib_probe_in+ag5_center_probe_in+ag5_left_probe_in+ag5_right_probe_in +
                      sub_probe_in]
-    port_out_mats = [(2, t) for t in air_port_out+l3_port_out+l2_port_out+l1_port_out +
+    port_out_mats = [(2, t) for t in air_port_out+l2_port_out+l1_port_out +
                      ag5_rib_port_out+ag5_center_port_out+ag5_left_port_out+ag5_right_port_out +
                      sub_port_out]
-    probe_out_mats = [(2, t) for t in air_probe_out+l3_probe_out+l2_probe_out+l1_probe_out +
+    probe_out_mats = [(2, t) for t in air_probe_out+l2_probe_out+l1_probe_out +
                       ag5_rib_probe_out+ag5_center_probe_out+ag5_left_probe_out+ag5_right_probe_out +
                       sub_probe_out]
 
@@ -442,7 +436,7 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
     indep_right = [t for _, t in port_out_mats]
     gmsh.model.mesh.set_periodic(dim, dep_right, indep_right, affine)
 
-    rib_vols = ag5_rib+l1+l2+l3
+    rib_vols = ag5_rib+l1+l2
 
     rib_boundaries = gmsh.model.get_boundary(
         [(3, t) for t in rib_vols],
@@ -467,7 +461,7 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
     gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
     # gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
     gmsh.model.mesh.field.set_number(field_ct, "DistMin", 0)
-    gmsh.model.mesh.field.set_number(field_ct, "DistMax", w_rib_in)
+    gmsh.model.mesh.field.set_number(field_ct, "DistMax", w_domain/6)
     gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_small)
     gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_large)
 
@@ -481,35 +475,30 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
     gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
 
     domain_physical_ids_3d = {
-        "AlGaAs_20": 1,
-        "GaAs": 2,
-        "AlGaAs_5": 3,
-        "air": 4
+        "Si": 1,
+        "SiO2": 2,
+        "air": 3
     }
 
     domain_physical_ids_2d = {
-        "AlGaAs_20_port_in": 10,
-        "GaAs_port_in": 11,
-        "AlGaAs_5_port_in": 12,
-        "air_port_in": 13,
+        "Si_port_in": 10,
+        "SiO2_port_in": 11,
+        "air_port_in": 12,
 
-        "AlGaAs_20_probe_in": 14,
-        "GaAs_probe_in": 15,
-        "AlGaAs_5_probe_in": 16,
-        "air_probe_in": 17,
+        "Si_probe_in": 13,
+        "SiO2_probe_in": 14,
+        "air_probe_in": 15,
 
-        "AlGaAs_20_port_out": 18,
-        "GaAs_port_out": 19,
-        "AlGaAs_5_port_out": 20,
-        "air_port_out": 21,
+        "Si_port_out": 16,
+        "SiO2_port_out": 17,
+        "air_port_out": 18,
 
-        "AlGaAs_20_probe_out": 22,
-        "GaAs_probe_out": 23,
-        "AlGaAs_5_probe_out": 24,
-        "air_probe_out": 25,
+        "Si_probe_out": 19,
+        "SiO2_probe_out": 20,
+        "air_probe_out": 21,
 
-        "bound_vol": 26,
-        "bound_behind_ports": 27,
+        "bound_vol": 22,
+        "bound_behind_ports": 23
     }
 
     domain_physical_ids_1d = {
@@ -528,23 +517,19 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
                            domain_physical_ids_3d]
 
     domain_regions = {
-        "AlGaAs_20": l3 + l1, "GaAs": l2 + sub, "AlGaAs_5": ag5_left + ag5_right +
-        ag5_center + ag5_rib, "air": air, "AlGaAs_20_port_in": l3_port_in +
-        l1_port_in, "GaAs_port_in": l2_port_in + sub_port_in,
-        "AlGaAs_5_port_in": ag5_left_port_in + ag5_right_port_in +
-        ag5_center_port_in + ag5_rib_port_in, "air_port_in": air_port_in,
-        "AlGaAs_20_probe_in": l3_probe_in + l1_probe_in,
-        "GaAs_probe_in": l2_probe_in + sub_probe_in,
-        "AlGaAs_5_probe_in": ag5_left_probe_in + ag5_right_probe_in +
-        ag5_center_probe_in + ag5_rib_probe_in, "air_probe_in": air_probe_in,
-        "AlGaAs_20_port_out": l3_port_out + l1_port_out,
-        "GaAs_port_out": l2_port_out + sub_port_out,
-        "AlGaAs_5_port_out": ag5_left_port_out + ag5_right_port_out +
-        ag5_center_port_out + ag5_rib_port_out, "air_port_out": air_port_out,
-        "AlGaAs_20_probe_out": l3_probe_out + l1_probe_out,
-        "GaAs_probe_out": l2_probe_out + sub_probe_out,
-        "AlGaAs_5_probe_out": ag5_left_probe_out + ag5_right_probe_out +
-        ag5_center_probe_out + ag5_rib_probe_out, "air_probe_out": air_probe_out,
+        "Si": l1 + l2 + ag5_left + ag5_center + ag5_right + ag5_rib, "SiO2": sub,
+        "air": air, "Si_port_in": l1_port_in + l2_port_in + ag5_left_port_in +
+        ag5_center_port_in + ag5_right_port_in + ag5_rib_port_in,
+        "SiO2_port_in": sub_port_in, "air_port_in": air_port_in,
+        "Si_probe_in": l1_probe_in + l2_probe_in + ag5_left_probe_in +
+        ag5_center_probe_in + ag5_right_probe_in + ag5_rib_probe_in,
+        "SiO2_probe_in": sub_probe_in, "air_probe_in": air_probe_in,
+        "Si_port_out": l1_port_out + l2_port_out + ag5_left_port_out +
+        ag5_center_port_out + ag5_right_port_out + ag5_rib_port_out,
+        "SiO2_port_out": sub_port_out, "air_port_out": air_port_out,
+        "Si_probe_out": l1_probe_out + l2_probe_out + ag5_left_probe_out +
+        ag5_center_probe_out + ag5_right_probe_out + ag5_rib_probe_out,
+        "SiO2_probe_out": sub_probe_out, "air_probe_out": air_probe_out,
         "bound_port_in": port_in_bounds, "bound_port_out": port_out_bounds,
         "bound_probe_in": probe_in_bounds, "bound_probe_out": probe_out_bounds,
         "bound_vol": wpbc_bounds, "bound_behind_ports": pml_bounds}
@@ -612,12 +597,6 @@ def create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
 
     gmsh.model.mesh.reverse([(dim, t) for t in invert])
 
-    # if __name__ == "__main__":
-    #     abspath = os.path.abspath(__file__)
-    #     dname = os.path.dirname(abspath)
-    #     os.chdir(dname)
-    #     filename = "arrow_wg"
-    #     gmsh.write(filename+".msh")
     gmsh.write(filename+".msh")
 
     if '-nopopup' not in sys.argv:
@@ -629,19 +608,30 @@ z_begin = -1
 z_mid = 0
 z_end = 1
 
+nel = 3
 
 wavelength = 1.55
-el_small = (wavelength/3.590)/4
-el_large = wavelength/4
+el_small = (wavelength/1.44)/nel
+el_large = wavelength/nel
 
-w_rib_in = 2.6
-w_rib_out = 2.6
-filename = "../../build/examples/meshes/arrow_validation"
-create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
-                  el_small, el_large, filename)
+w_r_in_1 = 12
+w_r_in_2 = 11
+w_r_in_3 = 10
+w_r_out_1 = 12
+w_r_out_2 = 11
+w_r_out_3 = 10
+filename = "../../build/examples/meshes/soi_wg_validation"
+create_arrow_mesh(
+    w_r_in_1, w_r_in_2, w_r_in_3, w_r_out_1, w_r_out_2, w_r_out_3, z_begin,
+    z_mid, z_end, el_small, el_large, filename)
 
-w_rib_in = 2.6
-w_rib_out = 3.6
-filename = "../../build/examples/meshes/arrow_wg"
-create_arrow_mesh(w_rib_in, w_rib_out, z_begin, z_mid, z_end,
-                  el_small, el_large, filename)
+w_r_in_1 = 12
+w_r_in_2 = 11
+w_r_in_3 = 10
+w_r_out_1 = 12
+w_r_out_2 = 11
+w_r_out_3 = 10
+filename = "../../build/examples/meshes/soi_wg_disc"
+create_arrow_mesh(
+    w_r_in_1, w_r_in_2, w_r_in_3, w_r_out_1, w_r_out_2, w_r_out_3, z_begin,
+    z_mid, z_end, el_small, el_large, filename)
