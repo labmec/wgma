@@ -120,3 +120,14 @@ add_pz_target(
   FILES meshes/meta_surf_1d.msh
 )
 target_link_libraries(meta_surf_1d PUBLIC wgma)
+
+list(APPEND arrow_files ../py/scripts/arrow_validation.py  ../py/scripts/arrow_nmodes.py)
+foreach(file ${arrow_files})
+  get_filename_component(filename ${file} NAME)
+  configure_file(${file} scripts/${filename})
+endforeach(file)
+add_pz_target(
+  NAME arrow_wg
+  SOURCES arrow.cpp
+  )
+target_link_libraries(arrow_wg PUBLIC wgma)  
