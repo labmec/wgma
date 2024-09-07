@@ -472,20 +472,21 @@ def create_sf3d_mesh(
 
 if __name__ == "__main__":
     wl = 1.55  # wavelength (in microns)
-    nel = 8  # number of elements/wavelength
+    nel = 4  # number of elements/wavelength
     # refractive indices
     nclad = 1.4378
     ncore = 1.4457
     l_domain = 2.0*(wl/nclad)
+    bound_dist = 4*(wl/nclad)
     r_left = 2  # core radius
     r_right = 4  # core radius
-    r_box = max(r_left, r_right) + 4*(wl/nclad)
+    r_box = max(r_left, r_right) + bound_dist
     create_sf3d_mesh(r_left, r_right, r_box, ncore, nclad, l_domain,
                      wl, nel, "../../build/examples/meshes/sf3d_disc")
 
     l_domain = 4.0*(wl/nclad)/nel
     r_left = 2  # core radius
     r_right = 2  # core radius
-    r_box = max(r_left, r_right) + 4*(wl/nclad)
+    r_box = max(r_left, r_right) + bound_dist
     create_sf3d_mesh(r_left, r_right, r_box, ncore, nclad, l_domain,
                      wl, nel,  "../../build/examples/meshes/sf3d_validation")
