@@ -15,7 +15,7 @@ namespace wgma::post{
     const int size_res = std::max(this->NThreads(),1);
     const int ncols = this->Mesh()->Solution().Cols();
     //if we deal with the adjoint problem as well, we have 2n solutions
-    const int nsol = m_adj ? ncols/2 : ncols;
+    const int nsol = ncols;
     if(m_coeff.size() != 0 && m_coeff.size() != nsol){
       DebugStop();
     }
@@ -113,7 +113,6 @@ namespace wgma::post{
         fmat.AddContribution(0, 0, rot_et, conj_trans, sol_mat, no_trans, cte*2.0);
       }
     }else{
-      const STATE sign = m_pos_z ? 1 : -1;
       //we expect a TPZWgma material
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
 
@@ -154,18 +153,14 @@ namespace wgma::post{
         appropriate -z propagating modes
        */
       for(auto isol = 0; isol < nsol; isol++){
-        const CSTATE v0 = sign*rot_grad_ez.Get(0,isol);
-        const CSTATE v1 = sign*rot_grad_ez.Get(1,isol);
+        const CSTATE v0 = rot_grad_ez.Get(0,isol);
+        const CSTATE v1 = rot_grad_ez.Get(1,isol);
         rot_grad_ez.Put(0,isol,v1);
         rot_grad_ez.Put(1,isol,-v0);
       }
 
       TPZFNMatrix<3000,CSTATE> tmp(et_beta);
-      if(m_pos_z){
-        tmp += rot_grad_ez;
-      }else{
-        tmp -= rot_grad_ez;
-      }
+      tmp += rot_grad_ez;
       ur.Substitution(&tmp);
       this->m_k_scratch[index].AddContribution(0, 0, rot_et, conj_trans, tmp, no_trans,cte);
       //src term
@@ -179,7 +174,7 @@ namespace wgma::post{
           const auto beta = m_beta[is];
           for(auto x = 0; x < 3; x++){
             const auto val = sol_mat.Get(x,0);
-            const auto src = et_beta.Get(x,is)+sign*rot_grad_ez.Get(x,is);
+            const auto src = et_beta.Get(x,is)+rot_grad_ez.Get(x,is);
             sol_mat.Put(x, 0, val + src*coeff);
           }
         }

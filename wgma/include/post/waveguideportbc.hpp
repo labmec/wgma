@@ -28,8 +28,6 @@ namespace wgma::post{
     WaveguidePortBC(TPZAutoPointer<TPZCompMesh> mesh,
                  TPZVec<TPZCompEl*> elvec,
                  int nThreads = 4) : TSPACE(mesh,elvec,nThreads) {}
-    //! Computes coupling between original and adjoint problem
-    void SetAdjoint(bool m){m_adj = m;}
     //! Computes contribution of all modes in mesh
     void ComputeContribution();
     //! Gets contributions associated with each mode of the waveguide
@@ -51,10 +49,6 @@ namespace wgma::post{
     void SetSrcCoeff(const TPZVec<CSTATE> &coeff) {m_coeff = coeff;}
     //! Gets source coeff
     void GetSrcCoeff(TPZVec<CSTATE> &coeff) const {coeff = m_coeff;}
-    //! Sets direction
-    void SetPositiveZ(const bool b){m_pos_z = b;}
-    //! Sets direction
-    [[nodiscard]] bool GetPositiveZ() const{return m_pos_z;}
     //! Sets TE/TM
     void SetTE(bool te){m_te = te;}
     //! Gets TE/TM
@@ -74,10 +68,6 @@ namespace wgma::post{
     TPZVec<CSTATE> m_beta;
     //! Coefficients of source term as combination of modes
     TPZVec<CSTATE> m_coeff;
-    //! Whether we are comparing solutions of one problem or problem + adjoint
-    bool m_adj{false};
-    //! Whether boundary is +z or -z
-    bool m_pos_z{true};
     //! Whether solving TE/TM case in 1D
     bool m_te{true};
     
