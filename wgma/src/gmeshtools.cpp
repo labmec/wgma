@@ -1173,6 +1173,16 @@ void wgma::gmeshtools::DirectionalRefinement(TPZAutoPointer<TPZGeoMesh>& gmesh,
       }
     }
   }
+  //we check for pyramids
+  for(auto el : gmesh->ElementVec()){
+    if(el->Type() == EPiramide){
+      auto refp = gRefDBase.FindRefPattern("PyrTwoTets");
+      el->SetRefPattern(refp);
+      TPZManVector<TPZGeoEl*,2> sons;
+      el->Divide(sons);
+    }
+  }
+ 
 }
 
 void wgma::gmeshtools::RotateMesh(TPZAutoPointer<TPZGeoMesh> &gmesh,
