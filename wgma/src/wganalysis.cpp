@@ -196,39 +196,19 @@ namespace wgma::wganalysis{
     //we create TPZLinearAnalysis objects just to reorder the eq of the atomic meshes
     {
       TPZLinearAnalysis an(m_cmesh_h1,renumtype);
+      m_cmesh_h1->ExpandSolution();
     }
     {
       TPZLinearAnalysis an(m_cmesh_hcurl,renumtype);
+      m_cmesh_hcurl->ExpandSolution();
     }
-    const auto ncon_h1 = m_cmesh_h1->NConnects();
-    const auto ncon_hcurl = m_cmesh_hcurl->NConnects();
-    const auto first_h1_con = ncon_hcurl*TPZWgma::H1Index();
-    const auto first_hcurl_con = ncon_h1*TPZWgma::HCurlIndex();
-
-    const auto nblocks_h1 = m_cmesh_h1->Block().NBlocks();
-    const auto nblocks_hcurl = m_cmesh_hcurl->Block().NBlocks();
-
-    const auto first_h1_block = nblocks_hcurl*TPZWgma::H1Index();
-    const auto first_hcurl_block = nblocks_h1*TPZWgma::HCurlIndex();
-    //now we reorder the connects
-    for(auto icon = 0; icon < ncon_h1;icon++){
-      auto &con_mf = m_cmesh_mf->ConnectVec()[first_h1_con+icon];
-      auto &con_atomic = m_cmesh_h1->ConnectVec()[icon];
-      if(con_atomic.SequenceNumber()>-1){
-        const auto newseq = con_atomic.SequenceNumber() +first_h1_block;
-        con_mf.SetSequenceNumber(newseq);
-      }
-    }
-
-    for(auto icon = 0; icon < ncon_hcurl;icon++){
-      auto &con_mf = m_cmesh_mf->ConnectVec()[first_hcurl_con+icon];
-      auto &con_atomic = m_cmesh_hcurl->ConnectVec()[icon];
-      if(con_atomic.SequenceNumber()>-1){
-        const auto newseq = con_atomic.SequenceNumber() +first_hcurl_block;
-        con_mf.SetSequenceNumber(newseq);
-      }
-    }
-    m_cmesh_mf->InitializeBlock();
+    TPZVec<TPZCompMesh*> atomicmeshes(2,nullptr);
+    atomicmeshes[TPZWgma::H1Index()] = m_cmesh_h1.operator->();
+    atomicmeshes[TPZWgma::HCurlIndex()] = m_cmesh_hcurl.operator->();
+    
+    TPZBuildMultiphysicsMesh::AddConnects(atomicmeshes, m_cmesh_mf.operator->());
+    TPZBuildMultiphysicsMesh::TransferFromMeshes(atomicmeshes, m_cmesh_mf.operator->());
+    m_cmesh_mf->ExpandSolution();
 }
 
   
