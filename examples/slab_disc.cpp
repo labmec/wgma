@@ -1219,9 +1219,6 @@ void ComputeWpbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
   const bool is_te = mode == wgma::planarwg::mode::TE;
   TPZVec<CSTATE> &betavec = an.GetEigenvalues();
   wgbc.SetTE(is_te);
-  wgbc.SetPositiveZ(positive_z);
-  constexpr bool adj{false};
-  wgbc.SetAdjoint(adj);
   if(coeff.size()){
     wgbc.SetSrcCoeff(coeff);
   }

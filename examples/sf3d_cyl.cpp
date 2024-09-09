@@ -1513,9 +1513,6 @@ void ComputeWpbcCoeffs(wgma::wganalysis::Wgma2D& an,
   wgbc.SetNThreads(nthreads);
   TPZManVector<CSTATE,1000> betavec = an.GetEigenvalues();
   for(auto &b : betavec){b = std::sqrt(-b);}
-  wgbc.SetPositiveZ(positive_z);
-  constexpr bool adj{false};
-  wgbc.SetAdjoint(adj);
   if(coeff.size()){
     wgbc.SetSrcCoeff(coeff);
   }

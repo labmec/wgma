@@ -919,8 +919,6 @@ void ComputeWgbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
   
   wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(mesh);
   const TPZVec<CSTATE> betavec = an.GetEigenvalues();
-  wgbc.SetPositiveZ(positive_z);
-  wgbc.SetAdjoint(false);
   if(coeff.size()){
     wgbc.SetSrcCoeff(coeff);
   }
