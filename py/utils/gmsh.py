@@ -85,7 +85,7 @@ class CylinderData(VolData):
         self.axis = []
 
 
-def create_line(line: LineData, elsize: float):
+def create_line(line: LineData, elsize: float = 0.1):
     """
     Creates a 1D line and insert it in the model
 
@@ -104,7 +104,7 @@ def create_line(line: LineData, elsize: float):
     line.tag = [gmsh.model.occ.add_line(ptl1, ptl2)]
 
 
-def create_rect(rect, elsize: float, normal: str = 'z'):
+def create_rect(rect, elsize: float = 0.1, normal: str = 'z'):
     """
     Creates a rectangular region and insert it in the model
 
@@ -134,7 +134,7 @@ def create_rect(rect, elsize: float, normal: str = 'z'):
         gmsh.model.occ.rotate([(2, t)], xc, yc, zc, 1, 0, 0,  pi/2)
 
 
-def create_circle(data: CircleData, elsize: float):
+def create_circle(data: CircleData, elsize: float = 0.1):
     """
     Creates a circular region and insert it in the model
 
@@ -239,7 +239,7 @@ them into lists of physical_ids and regions
         new_physical_id += 1
 
 
-def create_box(box, elsize: float):
+def create_box(box, elsize: float = 0.1):
     """
     Creates a parallelepipedic region and insert it in the model
 
@@ -715,7 +715,7 @@ zero)
 
 
 def apply_boolean_operation(
-        objs: list, tools: list, op: str, removetool: bool, elsize: float):
+        objs: list, tools: list, op: str, removetool: bool, elsize: float = 0.1):
     """
     Applies a boolean operation (cut or fragment), optionally removing tool
 
