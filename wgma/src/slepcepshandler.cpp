@@ -506,6 +506,9 @@ namespace wgma::slepc{
     }
 
     EPSDestroy(&eps);
+    STDestroy(&st);
+    KSPDestroy(&ksp);
+    PCDestroy(&pc);
     
     MatDestroy(&petscA);
     MatDestroy(&petscB);
