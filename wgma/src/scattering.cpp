@@ -588,7 +588,7 @@ namespace wgma::scattering{
   CMeshScattering2DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
                             const wgma::planarwg::mode mode, int pOrder,
                             wgma::cmeshtools::PhysicalData &data,
-                            const std::map<int64_t,int64_t> &periodic_els,
+                            const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
                             const std::set<int> src_id_set,
                             const STATE lambda, const REAL scale, bool verbose)
   {
@@ -794,8 +794,8 @@ namespace wgma::scattering{
       scatt_cmesh->AutoBuild(src_id_set);
     }
     
-    if(periodic_els.size()){
-      wgma::cmeshtools::SetPeriodic(scatt_cmesh, periodic_els);
+    for(auto periodic_els : el_map){
+      wgma::cmeshtools::SetPeriodic(scatt_cmesh,periodic_els);
     }
     
     return scatt_cmesh;
@@ -805,7 +805,7 @@ namespace wgma::scattering{
   CMeshScattering3DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
                             int pOrder,
                             wgma::cmeshtools::PhysicalData &data,
-                            const std::map<int64_t,int64_t> &periodic_els,
+                            const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
                             const std::set<int> src_id_set,
                             const STATE lambda, const REAL scale,
                             bool verbose)
@@ -1014,7 +1014,7 @@ namespace wgma::scattering{
       scatt_cmesh->AutoBuild(src_id_set);
     }
 
-    if(periodic_els.size()){
+    for(auto periodic_els : el_map){
       wgma::cmeshtools::SetPeriodic(scatt_cmesh,periodic_els);
     }
 

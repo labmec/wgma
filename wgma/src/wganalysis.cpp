@@ -1362,7 +1362,7 @@ STATE Wgma2D::ComputeResidual(){
   TPZVec<TPZAutoPointer<TPZCompMesh>>
   CMeshWgma2DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh, int pOrder,
                       cmeshtools::PhysicalData &data,
-                      const std::map<int64_t,int64_t> &periodic_els,
+                      const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
                       const STATE lambda, const REAL &scale,
                       bool verbose)
   {
@@ -1385,7 +1385,9 @@ STATE Wgma2D::ComputeResidual(){
       Now we add the periodicity
      */
 
-    wgma::cmeshtools::SetPeriodic(cmeshH1,periodic_els);
+    for(auto periodic_els : el_map){
+      wgma::cmeshtools::SetPeriodic(cmeshH1,periodic_els);
+    }
     /*
       Then we create the computational mesh associated with the HCurl space
     */
@@ -1395,7 +1397,9 @@ STATE Wgma2D::ComputeResidual(){
     /*
       Now we add the periodicity
      */
-    wgma::cmeshtools::SetPeriodic(cmeshHCurl,periodic_els);
+    for(auto periodic_els : el_map){
+      wgma::cmeshtools::SetPeriodic(cmeshHCurl,periodic_els);
+    }
     /*
       Now we create the MF mesh
     */
@@ -1437,7 +1441,7 @@ STATE Wgma2D::ComputeResidual(){
   CMeshWgma1DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
                       wgma::planarwg::mode mode, int pOrder,
                       wgma::cmeshtools::PhysicalData &data,
-                      const std::map<int64_t,int64_t> periodic_els,
+                      const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
                       const STATE lambda, const REAL scale, bool verbose)
   {
   
@@ -1561,9 +1565,11 @@ STATE Wgma2D::ComputeResidual(){
     cmeshH1->SetDefaultOrder(pOrder);
     cmeshH1->AutoBuild(allmats);
 
-    if(!periodic_els.size()) return cmeshH1;
+    if(!el_map.size()) return cmeshH1;
 
-    wgma::cmeshtools::SetPeriodic(cmeshH1,periodic_els);
+    for(auto periodic_els : el_map){
+      wgma::cmeshtools::SetPeriodic(cmeshH1,periodic_els);
+    }
     return cmeshH1;
   }
 
@@ -1572,7 +1578,7 @@ STATE Wgma2D::ComputeResidual(){
   CMeshWgmaPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
                     const wgma::planarwg::mode mode, int pOrder,
                     wgma::cmeshtools::PhysicalData &data,
-                    const std::map<int64_t,int64_t> periodic_els,
+                    const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
                     const STATE lambda,
                     const REAL scale)
   {
@@ -1676,7 +1682,9 @@ STATE Wgma2D::ComputeResidual(){
     cmeshH1->SetDefaultOrder(pOrder);
     cmeshH1->AutoBuild(allmats);
 
-    wgma::cmeshtools::SetPeriodic(cmeshH1, periodic_els);
+    for(auto periodic_els : el_map){
+      wgma::cmeshtools::SetPeriodic(cmeshH1,periodic_els);
+    }
     
     return cmeshH1;
   }

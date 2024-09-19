@@ -140,7 +140,7 @@ namespace wgma::scattering{
   CMeshScattering2DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
                             const planarwg::mode mode, int pOrder,
                             cmeshtools::PhysicalData &data,
-                            const std::map<int64_t,int64_t> &periodic_els,
+                            const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
                             const std::set<int> source_ids,
                             const STATE lambda, const REAL scale,bool verbose=false);
 
@@ -188,7 +188,7 @@ Usually the source will be the result of a previously computed modal analysis.
   CMeshScattering3DPeriodic(TPZAutoPointer<TPZGeoMesh> gmesh,
                             int pOrder,
                             cmeshtools::PhysicalData &data,
-                            const std::map<int64_t,int64_t> &periodic_els,
+                            const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
                             const std::set<int> source_ids,
                             const STATE lambda, const REAL scale,
                             const bool verbose=false);

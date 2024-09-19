@@ -209,13 +209,16 @@ cmeshtools::FilterBoundaryEquations(TPZAutoPointer<TPZCompMesh>& cmesh,
 }
 
 void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
-                             const std::map<int64_t,int64_t> &periodic_els)
+                             const std::map<int64_t,int64_t> &periodic_els,
+                             CSTATE phase)
 {
+
+  
   auto gmesh = cmesh->Reference();
   gmesh->ResetReference();
   cmesh->LoadReferences();
   const bool complex_mesh = cmesh->GetSolType() == ESolType::EComplex;
-  //let us copy the connects
+
   for(auto [dep, indep] : periodic_els){
     //geometric elements
     auto *dep_gel = gmesh->Element(dep);
@@ -263,10 +266,14 @@ void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
       if(complex_mesh){
         TPZFNMatrix<400,CSTATE> mat(ndof,ndof);
         mat.Identity();
+        mat*=std::exp(-1i*phase);
         dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
       }else{
         TPZFNMatrix<400,STATE> mat(ndof,ndof);
         mat.Identity();
+        if(phase!=0.0){
+          DebugStop();
+        }
         dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
       }
     } 

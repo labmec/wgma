@@ -8,6 +8,9 @@
 
 #include <functional>
 #include <optional>
+
+struct SPZPeriodicData;
+
 namespace wgma::gmeshtools{
 
   enum class ElType {Tri, Quad};
@@ -101,7 +104,7 @@ namespace wgma::gmeshtools{
      @param[in] filename name of the .msh file to be read
      @param[in] scale factor (characteristic length) to be applied in the mesh
      @param[out] matids on exit, it stores the pairs (name, matid) indexed by dimension
-     @param[out] periodic_els corresponding indexes of periodic elements.
+     @param[out] periodic_data (see SPZPeriodicData)
      @param[in] verbose whether to output information about read materials
      @note position [x] of matids will contain the materials of dimension x.
    */
@@ -109,7 +112,7 @@ namespace wgma::gmeshtools{
   ReadPeriodicGmshMesh(const std::string filename,
                        const REAL scale,
                        TPZVec<std::map<std::string,int>> & matids,
-                       std::map<int64_t,int64_t> &periodic_els,
+                       TPZAutoPointer<SPZPeriodicData> &periodic_data,
                        bool verbose = true);
 
   /**
@@ -251,8 +254,20 @@ void DirectionalRefinement(TPZAutoPointer<TPZGeoMesh>& gmesh,
      @param axis rotation axis
      @param theta rotation angle
    */
-void RotateMesh(TPZAutoPointer<TPZGeoMesh>& gmesh,
-                const TPZVec<REAL> &axis, const REAL theta);
+  void RotateMesh(TPZAutoPointer<TPZGeoMesh>& gmesh,
+                  const TPZVec<REAL> &axis, const REAL theta);
+
+  /**
+     @brief Compute map of periodic elements for materials given in desired_mats
+     @param [in] gmesh geometrical mesh
+     @param [in] desired_mats periodic materials of interest
+     @param [in] data periodic data obtained from gmsh
+     @param [out] periodic_els mapping of periodic elements
+   */
+  void GetPeriodicElements(TPZGeoMesh *gmesh,
+                           const TPZVec<std::pair<int,int>> &desired_mats,
+                           const TPZAutoPointer<SPZPeriodicData> &data,
+                           TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els);
 };
 
 #endif /* _GMESHTOOLS_HPP_ */

@@ -1,6 +1,7 @@
 #include "gmeshtools.hpp"
 
 #include <pzgmesh.h>
+#include <TPZGeoMeshTools.h>
 #include <pzvec_extras.h>
 #include <TPZRefPattern.h>
 #include <TPZRefPatternDataBase.h>
@@ -593,7 +594,7 @@ wgma::gmeshtools::ReadGmshMesh(const std::string filename,
                                TPZVec<std::map<std::string,int>> & matids,
                                const bool verbose)
 {
-  std::map<int64_t,int64_t> dummy;
+  TPZAutoPointer<SPZPeriodicData>  dummy;
   return ReadPeriodicGmshMesh(filename,scale,matids,dummy, verbose);
 }
 
@@ -601,7 +602,7 @@ TPZAutoPointer<TPZGeoMesh>
 wgma::gmeshtools::ReadPeriodicGmshMesh(const std::string filename,
                                        const REAL scale,
                                        TPZVec<std::map<std::string,int>> & matids,
-                                       std::map<int64_t,int64_t> &periodic_bcs,
+                                       TPZAutoPointer<SPZPeriodicData> &periodic_data,
                                        const bool verbose)
 {
   
@@ -621,8 +622,8 @@ wgma::gmeshtools::ReadPeriodicGmshMesh(const std::string filename,
       }
     }
   }
-  
-  periodic_bcs = meshReader.GetPeriodicEls();
+
+  periodic_data = meshReader.GetPeriodicData();
   return gmesh;
 }
 
@@ -1224,6 +1225,55 @@ void wgma::gmeshtools::RotateMesh(TPZAutoPointer<TPZGeoMesh> &gmesh,
   }
 }
 
+
+void
+wgma::gmeshtools::GetPeriodicElements(TPZGeoMesh *gmesh,
+                                      const TPZVec<std::pair<int,int>> &desired_mats,
+                                      const TPZAutoPointer<SPZPeriodicData> &data,
+                                      TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els)
+{
+
+  //structures to be filled
+  TPZVec<int> dep_id_vec;
+  TPZVec<int> indep_id_vec;
+  TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> periodic_node_map;
+  
+  for(auto [dep_id, indep_id] : desired_mats){
+  
+    const auto &dep_vec = data->dep_mat_ids;
+    const auto &indep_vec = data->indep_mat_ids;
+    const auto nperiodic = dep_vec.size();
+    int pos{0};
+    for(; pos < nperiodic; pos++){
+      if(dep_vec[pos] == dep_id){
+        if(indep_vec[pos] == indep_id){
+          break;
+        }
+      }
+    }
+    if(pos == nperiodic)
+    {
+      PZError<<__PRETTY_FUNCTION__
+             <<"\nCould not find dependent material id "<<dep_id
+             <<" and independent material id "<<indep_id
+             <<"\nAre you sure that dependent and independent have not been"
+             <<" inverted?"<<std::endl;
+      DebugStop();
+    }
+    dep_id_vec.push_back(dep_id);
+    indep_id_vec.push_back(indep_id);
+    periodic_node_map.push_back(data->nodes_map[pos]);
+  }
+
+  
+  TPZGeoMeshTools::FindPeriodicElements(gmesh,
+                                        dep_id_vec,
+                                        indep_id_vec,
+                                        periodic_node_map,
+                                        periodic_els);
+}
+
+
 void CheckCylMap(TPZGeoEl *cyl, const TPZVec<REAL> &axis,
                  const TPZVec<REAL> &xc, const REAL r,  const REAL tol) {
   TPZManVector<REAL,3> pos(cyl->Dimension(),0), x(3,0);
@@ -1330,4 +1380,5 @@ void CheckCylMap(TPZGeoEl *cyl, const TPZVec<REAL> &axis,
     }
     delete intrule;
   }
+    
 }
