@@ -4,13 +4,14 @@
 #include "bctypes.hpp"
 #include "pmltypes.hpp"
 #include "modetypes.hpp"
+
+#include <pzvec.h>
 #include <pzreal.h>
 #include <set>
 #include <vector>
 #include <map>
 
-template<class T>
-class TPZVec;
+
 template<class T>
 class TPZAutoPointer;
 template<class T>
@@ -163,8 +164,9 @@ void SetupGmshMaterialData(const TPZVec<std::map<std::string,int>> &gmshmats,
   /**
      @brief Sets given elements as periodic
    */
-  void SetPeriodic(TPZAutoPointer<TPZCompMesh>& cmesh,
-                   const std::map<int64_t,int64_t> &periodic_els);
+  void SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
+                   const std::map<int64_t,int64_t> &periodic_els,
+                   CSTATE phase = 0.);
   /**
      @brief Ensures correct destruction of a periodic computational mesh.
      This routine should be called before destroying a periodic mesh in
