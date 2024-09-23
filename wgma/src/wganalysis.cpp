@@ -202,14 +202,69 @@ namespace wgma::wganalysis{
       TPZLinearAnalysis an(m_cmesh_hcurl,renumtype);
       m_cmesh_hcurl->ExpandSolution();
     }
-    TPZVec<TPZCompMesh*> atomicmeshes(2,nullptr);
-    atomicmeshes[TPZWgma::H1Index()] = m_cmesh_h1.operator->();
-    atomicmeshes[TPZWgma::HCurlIndex()] = m_cmesh_hcurl.operator->();
+
+    //first we compute the number of independent connects in each mesh
+    const auto n_h1_con = m_cmesh_h1->NConnects();
+    int64_t n_indep_h1{0};
+    int64_t n_h1_eqs{0};
+    for(auto &c : m_cmesh_h1->ConnectVec()){
+      if (!c.HasDependency() && c.NElConnected() && !c.IsCondensed()) {
+        n_indep_h1++;
+        n_h1_eqs += c.NDof();
+      }
+    }
+    const int64_t n_dep_h1 = n_h1_con - n_indep_h1;
+
     
-    TPZBuildMultiphysicsMesh::AddConnects(atomicmeshes, m_cmesh_mf.operator->());
-    TPZBuildMultiphysicsMesh::TransferFromMeshes(atomicmeshes, m_cmesh_mf.operator->());
-    m_cmesh_mf->ExpandSolution();
-}
+    const auto n_hcurl_con = m_cmesh_hcurl->NConnects();
+    int64_t n_indep_hcurl{0};
+    int64_t n_hcurl_eqs{0};
+    for(auto &c : m_cmesh_hcurl->ConnectVec()){
+      if (!c.HasDependency() && c.NElConnected() && !c.IsCondensed()) {
+        n_indep_hcurl++;
+        n_hcurl_eqs += c.NDof();
+      }
+    }
+    const int64_t n_dep_hcurl = n_hcurl_con - n_indep_hcurl;
+
+    
+    const auto first_h1_con = n_hcurl_con*TPZWgma::H1Index();
+    const auto first_hcurl_con = n_h1_con*TPZWgma::HCurlIndex();
+
+    const auto first_h1_seqnum = n_indep_hcurl*TPZWgma::H1Index();
+    const auto first_hcurl_seqnum = n_indep_h1*TPZWgma::HCurlIndex();
+
+    //seqnumber counter of dependent connects
+    int64_t dep_count = n_indep_hcurl + n_indep_h1;
+    
+
+    auto AdaptConnects = [m_cmesh_mf, &dep_count](TPZCompMesh *atomic_mesh,
+                                                  const auto ncon,
+                                                  const auto first_con,
+                                                  const auto first_seqnum){
+      for(auto ic = 0; ic < ncon;ic++){
+        const auto &refc = atomic_mesh->ConnectVec()[ic];
+        auto &c = m_cmesh_mf->ConnectVec()[first_con+ic];
+        if (!c.HasDependency() && c.NElConnected() && !c.IsCondensed()) {
+          const auto seqnum = refc.SequenceNumber();
+          c.SetSequenceNumber(first_seqnum+seqnum);
+        }else{
+          c.SetSequenceNumber(dep_count++);
+        }
+        if(c.SequenceNumber() >= 0){
+          m_cmesh_mf->Block().Set(c.SequenceNumber(),c.NDof());
+        }
+      }
+    };
+    
+    AdaptConnects(m_cmesh_h1.operator->(),
+                  n_h1_con,first_h1_con,first_h1_seqnum);
+    AdaptConnects(m_cmesh_hcurl.operator->(),
+                  n_hcurl_con,first_hcurl_con,first_hcurl_seqnum);
+
+    m_cmesh_mf->InitializeBlock();
+    return ;
+  }
 
   
   Wgma2D::Wgma2D(const TPZVec<TPZAutoPointer<TPZCompMesh>> &meshvec,
