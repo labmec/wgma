@@ -21,6 +21,7 @@ light illuminating a meta surface
 #include <post/orthowgsol.hpp>
 #include "post/wgnorm.hpp"         // for WgNorm
 // pz includes
+#include <SPZPeriodicData.h>
 #include <MMeshType.h>      //for MMeshType
 #include <TPZSimpleTimer.h> //for TPZSimpleTimer
 #include <pzlog.h>          //for TPZLogger
@@ -112,7 +113,7 @@ TPZAutoPointer<wgma::wganalysis::WgmaPlanar>
 ComputeModalAnalysis(
   TPZAutoPointer<TPZGeoMesh> gmesh,
   const TPZVec<std::map<std::string, int>> &gmshmats,
-  const std::map<int64_t,int64_t> &periodic_els,
+  const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
   const CSTATE epsilon_mat,
   const SimData& simdata,
   const CSTATE target,
@@ -125,7 +126,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
                      TPZAutoPointer<wgma::wganalysis::WgmaPlanar> src_an,
                      TPZAutoPointer<wgma::wganalysis::WgmaPlanar> match_an,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
-                     const std::map<int64_t,int64_t> &periodic_els,
+                     const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                      const CSTATE epsilon_rib,
                      const CSTATE epsilon_copper,
                      const CSTATE epsilon_air,
@@ -231,12 +232,27 @@ int main(int argc, char *argv[]) {
 
   TPZVec<std::map<std::string, int>> gmshmats;
   constexpr bool verbosity_lvl{false};
-  std::map<int64_t,int64_t> periodic_els;
+  TPZAutoPointer<SPZPeriodicData> periodic_data;
   auto gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(simdata.meshfile,
                                                       simdata.scale,
-                                                      gmshmats,periodic_els,
+                                                      gmshmats,periodic_data,
                                                       verbosity_lvl);
 
+  TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> periodic_els;
+  {
+    TPZVec<std::pair<int,int>> desired_mats;
+    const auto np = periodic_data->dep_mat_ids.size();
+    for(auto i = 0; i < np; i++){
+      const auto dep = periodic_data->dep_mat_ids[i];
+      const auto indep = periodic_data->indep_mat_ids[i];
+      desired_mats.push_back({dep,indep});
+    }
+    wgma::gmeshtools::GetPeriodicElements(gmesh.operator->(),
+                                          desired_mats,
+                                          periodic_data,
+                                          periodic_els);
+  }
+  
   //first we rotate the mesh
 
   wgma::gmeshtools::RotateMesh(gmesh,{0,0,1},M_PI/2);
@@ -432,7 +448,7 @@ TPZAutoPointer<wgma::wganalysis::WgmaPlanar>
 ComputeModalAnalysis(
   TPZAutoPointer<TPZGeoMesh> gmesh,
   const TPZVec<std::map<std::string, int>> &gmshmats,
-  const std::map<int64_t,int64_t> &periodic_els,
+  const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
   const CSTATE epsilon_mat,
   const SimData& simdata,
   const CSTATE target,
@@ -640,7 +656,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh>gmesh,
                      TPZAutoPointer<wgma::wganalysis::WgmaPlanar> src_an,
                      TPZAutoPointer<wgma::wganalysis::WgmaPlanar> match_an,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
-                     const std::map<int64_t,int64_t> &periodic_els,
+                     const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                      const CSTATE epsilon_rib,
                      const CSTATE epsilon_copper,
                      const CSTATE epsilon_air,
