@@ -26,6 +26,7 @@ J. Lightwave Technol. 20, 463- (2002)
 #include <TPZSimpleTimer.h> //for TPZSimpleTimer
 #include <pzlog.h>          //for TPZLogger
 #include <TPZVTKGenerator.h>
+#include <SPZPeriodicData.h>
 
 #include <regex>//for string search
 
@@ -143,10 +144,10 @@ int main(int argc, char *argv[]) {
   **/
   const std::string arcfile{"meshes/"+basisName+"_circdata.csv"};
   TPZVec<std::map<std::string, int>> gmshmats;
-  std::map<int64_t,int64_t> periodic_els;
+  TPZAutoPointer<SPZPeriodicData> periodic_data;
   constexpr bool verbosity_lvl{false};
   auto gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(meshfile, scale,
-                                                      gmshmats,periodic_els,
+                                                      gmshmats,periodic_data,
                                                       verbosity_lvl);
 
   if(arc3D){
@@ -162,11 +163,21 @@ int main(int argc, char *argv[]) {
     wgma::gmeshtools::PrintGeoMesh(gmesh, filename);
   }
 
-
   /**************************
    * cmesh(modal analysis)  *
    **************************/
 
+  //first we get periodic els mapping
+  TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> periodic_els;
+  {
+    TPZVec<std::pair<int,int>> desired_mats;
+    desired_mats.push_back({gmshmats[1]["gamma_2"],gmshmats[1]["gamma_1"]});
+    wgma::gmeshtools::GetPeriodicElements(gmesh.operator->(),
+                                          desired_mats,
+                                          periodic_data,
+                                          periodic_els);
+  }
+  
   auto modal_cmesh = [gmesh,&gmshmats,&periodic_els](){
     // setting up cmesh data
     wgma::cmeshtools::PhysicalData modal_data;
