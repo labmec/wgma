@@ -24,6 +24,7 @@ It consists of a "shrinked" version on slab_disc.cpp.
 #include "util.hpp"                // for CreatePath, ExtractPath
 #include <json_util.hpp>
 
+#include <SPZPeriodicData.h>
 #include <TPZKrylovEigenSolver.h>  // for TPZKrylovEigenSolver
 #include <TPZMatrixSolver.h>       // for TPZPardisoSolver
 #include <TPZSimpleTimer.h>        // for TPZSimpleTimer
@@ -133,14 +134,14 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                 wgma::wganalysis::WgmaPlanar &src_an,
                 wgma::wganalysis::WgmaPlanar &match_an,
                 const TPZVec<std::map<std::string, int>> &gmshmats,
-                const std::map<int64_t,int64_t> &periodic_els,
+                const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                 const SimData &simdata);
 void
 SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
                        wgma::wganalysis::WgmaPlanar &src_an,
                        wgma::wganalysis::WgmaPlanar &match_an,
                        const TPZVec<std::map<std::string, int>> &gmshmats,
-                       const std::map<int64_t,int64_t> &periodic_els,
+                       const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                        const SimData &simdata);
 
 SimData GetSimData()
@@ -189,7 +190,6 @@ SimData GetSimData()
 }
 
 int main(int argc, char *argv[]) {
-
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
    * the log should be initialised as:*/
@@ -240,11 +240,10 @@ int main(int argc, char *argv[]) {
 
   TPZVec<std::map<std::string, int>> gmshmats;
   constexpr bool verbosity_lvl{false};
-  std::map<int64_t,int64_t> periodic_els;
+  TPZAutoPointer<SPZPeriodicData> periodic_data;
   auto gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(simdata.meshfile, simdata.scale,
-                                                      gmshmats, periodic_els,
+                                                      gmshmats, periodic_data,
                                                       verbosity_lvl);
-
   // print wgma_gmesh to .txt and .vtk format
   if (simdata.print_gmesh) {
     // prefix for the wgma_gmesh files
@@ -275,7 +274,23 @@ int main(int argc, char *argv[]) {
                                        nEigenpairs_left,sortingRule,
                                        usingSLEPC,"source_right");
   }
+  //now we get all periodic els
 
+  TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> periodic_els;
+  {
+    TPZVec<std::pair<int,int>> desired_mats;
+    const auto np = periodic_data->dep_mat_ids.size();
+    for(auto i = 0; i < np; i++){
+      const auto dep = periodic_data->dep_mat_ids[i];
+      const auto indep = periodic_data->indep_mat_ids[i];
+      desired_mats.push_back({dep,indep});
+    }
+    wgma::gmeshtools::GetPeriodicElements(gmesh.operator->(),
+                                          desired_mats,
+                                          periodic_data,
+                                          periodic_els);
+  }
+  
   if(!simdata.compare_pml){
     SolveScattering(gmesh, modal_l_an,  modal_r_an, gmshmats, periodic_els, simdata);
   }else{
@@ -303,7 +318,7 @@ void ComputeWpbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
 void
 TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
                                       TPZAutoPointer<TPZCompMesh> src_mesh,
-                                      const std::map<int64_t,int64_t>& periodic_els);
+                                      const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els);
 
 void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
                   wgma::wganalysis::WgmaPlanar& src_an,
@@ -540,7 +555,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      wgma::wganalysis::WgmaPlanar &src_an,
                      wgma::wganalysis::WgmaPlanar &match_an,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
-                     const std::map<int64_t,int64_t> &periodic_els,
+                     const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                      const SimData &simdata)
 {
 
@@ -745,7 +760,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
                             wgma::wganalysis::WgmaPlanar &src_an,
                             wgma::wganalysis::WgmaPlanar &match_an,
                             const TPZVec<std::map<std::string, int>> &gmshmats,
-                            const std::map<int64_t,int64_t> &periodic_els,
+                            const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                             const SimData &simdata)
 {
   /*********************
@@ -1304,7 +1319,7 @@ ReplaceMaterialsForProjection(TPZAutoPointer<TPZCompMesh> proj_mesh)
 void
 TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
                                       TPZAutoPointer<TPZCompMesh> src_mesh,
-                                      const std::map<int64_t,int64_t>& periodic_els)
+                                      const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els)
 {
   TPZGeoMesh *gmesh = dest_mesh->Reference();
   const TPZFMatrix<CSTATE> &src_sol = src_mesh->Solution();
@@ -1329,14 +1344,21 @@ TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
       return;
     }
     const int64_t dest_gel_index = dest_cel->ReferenceIndex();
-    auto periodic_it = periodic_els.find(dest_gel_index);
-    if(periodic_it==periodic_els.end()){
+
+    int64_t src_gel_index{-1};
+    for(auto periodic_map : periodic_els){
+      auto periodic_it = periodic_map->find(dest_gel_index);
+      if(periodic_it!=periodic_map->end()){
+        src_gel_index = periodic_it->second;
+        break;
+      }
+    }
+    if(src_gel_index < 0){
       std::cout<<__PRETTY_FUNCTION__
                <<"\nCould not find periodic pair of element "
                <<dest_gel_index<<std::endl;
       DebugStop();
     }
-    const int64_t src_gel_index = periodic_it->second;
     auto src_cel = gmesh->ElementVec()[src_gel_index]->Reference();
     if(!src_cel){
       DebugStop();
