@@ -461,7 +461,7 @@ ComputeModalAnalysis(
       std::ostringstream eigeninfo;
       typedef std::numeric_limits< double > dbl;
       eigeninfo.precision(dbl::max_digits10);
-      for(auto &b : betavec){
+      for(const auto &b : betavec){
         const auto pos_sign = std::imag(b) > 0 ? "+" : "-";
         eigeninfo<<std::fixed<<std::real(b)<<pos_sign<<std::abs(std::imag(b))<<"j\n";
       }
@@ -1218,7 +1218,7 @@ void ComputeWpbcCoeffs(wgma::wganalysis::WgmaPlanar& an,
   wgma::post::WaveguidePortBC<wgma::post::SingleSpaceIntegrator> wgbc(mesh);
   wgbc.SetNThreads(nthreads);
   const bool is_te = mode == wgma::planarwg::mode::TE;
-  TPZVec<CSTATE> &betavec = an.GetEigenvalues();
+  const TPZVec<CSTATE> &betavec = an.GetEigenvalues();
   wgbc.SetTE(is_te);
   if(coeff.size()){
     wgbc.SetSrcCoeff(coeff);
@@ -1489,7 +1489,7 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
   for(int isol = 0; isol < nsol; isol++){
     if(IsZero(src_coeffs[isol])){continue;}
     src_an.LoadSolution(isol);
-    auto beta = src_an.GetEigenvalues()[isol];
+    const auto beta = src_an.GetEigenvalues()[isol];
     wgma::scattering::LoadSource1D(scatt_cmesh, src, src_coeffs[isol]);
     wgma::scattering::SetPropagationConstant(scatt_cmesh, beta);
     if(first_assemble){
