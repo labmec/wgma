@@ -223,8 +223,9 @@ int main(int argc, char *argv[]) {
   const int nEigenpairs_left = simdata.n_eigenpairs_left;
   const int nEigenpairs_right = simdata.n_eigenpairs_right;
 
-  const CSTATE target_left{simdata.ncore*simdata.ncore/simdata.scale/simdata.scale};
-  const CSTATE target_right{simdata.ncore*simdata.ncore/simdata.scale/simdata.scale};
+  const CSTATE k0scale = 2*M_PI/simdata.lambda*simdata.scale;
+  const CSTATE target_left{k0scale*k0scale*simdata.ncore*simdata.ncore};
+  const CSTATE target_right{k0scale*k0scale*simdata.ncore*simdata.ncore};
   /*********
    * begin *
    *********/
