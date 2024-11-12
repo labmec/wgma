@@ -470,7 +470,6 @@ ComputeModalAnalysis(
       eigenfile.close();
     }
     norm.SetWavelength(simdata.lambda/simdata.scale);
-    norm.Normalise();
     auto norms = norm.Normalise();
     const int nmodes = norms.size();
     for(int i = 0; i < std::min(10,nmodes); i++){
