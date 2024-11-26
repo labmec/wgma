@@ -931,6 +931,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
       }
     }
 
+    wgma::cmeshtools::PrintCompMesh(error_mesh, simdata.prefix+"_cmesh.txt");
     error_mesh->LoadSolution(ref_sol);
     auto normsol =
       wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
