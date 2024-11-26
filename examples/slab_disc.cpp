@@ -134,6 +134,7 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                 wgma::wganalysis::WgmaPlanar &src_an,
                 wgma::wganalysis::WgmaPlanar &match_an,
                 const TPZVec<std::map<std::string, int>> &gmshmats,
+                const TPZAutoPointer<SPZPeriodicData> & periodic_data,
                 const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                 const SimData &simdata);
 void
@@ -141,6 +142,7 @@ SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
                        wgma::wganalysis::WgmaPlanar &src_an,
                        wgma::wganalysis::WgmaPlanar &match_an,
                        const TPZVec<std::map<std::string, int>> &gmshmats,
+                       const TPZAutoPointer<SPZPeriodicData> & periodic_data,
                        const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                        const SimData &simdata);
 
@@ -293,9 +295,11 @@ int main(int argc, char *argv[]) {
   }
   
   if(!simdata.compare_pml){
-    SolveScattering(gmesh, modal_l_an,  modal_r_an, gmshmats, periodic_els, simdata);
+    SolveScattering(gmesh, modal_l_an,  modal_r_an, gmshmats,
+                    periodic_data,periodic_els, simdata);
   }else{
-    SolveScatteringWithPML(gmesh, modal_l_an,  modal_r_an, gmshmats, periodic_els, simdata);
+    SolveScatteringWithPML(gmesh, modal_l_an,  modal_r_an, gmshmats,
+                           periodic_data, periodic_els, simdata);
   }
   return 0;
 }
@@ -555,6 +559,7 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      wgma::wganalysis::WgmaPlanar &src_an,
                      wgma::wganalysis::WgmaPlanar &match_an,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
+                     const TPZAutoPointer<SPZPeriodicData> & periodic_data,
                      const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                      const SimData &simdata)
 {
@@ -642,19 +647,36 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   
 
   auto CreateErrorMesh = [&simdata, &gmesh, &gmshmats, &fvars,
-                          &periodic_els](TPZAutoPointer<TPZCompMesh> &error_mesh,
-                                         TPZFMatrix<CSTATE> &projected_modes,
-                                         wgma::wganalysis::WgmaPlanar &modal_an,
-                                         TPZAutoPointer<TPZVTKGenerator> &vtk_error,
-                                         const std::string &name)
+                          &periodic_data, &periodic_els]
+    (TPZAutoPointer<TPZCompMesh> &error_mesh,
+     TPZFMatrix<CSTATE> &projected_modes,
+     wgma::wganalysis::WgmaPlanar &modal_an,
+     TPZAutoPointer<TPZVTKGenerator> &vtk_error,
+     const std::string &name)
   {
     const auto &nclad = simdata.nclad;
     const auto &ncore = simdata.ncore;
     
     error_mesh = CreateModalAnalysisMesh(gmesh, gmshmats, simdata, nclad*nclad, ncore*ncore, name);
-    //now we transfer the modal solution from the WPBC to the error mesh and store it
-    TransferSolutionBetweenPeriodicMeshes(error_mesh, modal_an.GetMesh(), periodic_els);
-    projected_modes = error_mesh->Solution();
+
+
+    {
+      //now we get only the desired periodic_els
+      TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> my_periodic_els;
+      const int ndep = periodic_data->dep_mat_ids.size();
+      for(auto idep = 0; idep < ndep; idep++){
+        const auto depid = periodic_data->dep_mat_ids[idep];
+        if(error_mesh->FindMaterial(depid) != nullptr){
+          my_periodic_els.push_back(periodic_els[idep]);
+        }
+        
+      }
+      //now we transfer the modal solution from the WPBC to the error mesh and store it
+      TransferSolutionBetweenPeriodicMeshes(error_mesh, modal_an.GetMesh(),
+                                            my_periodic_els);
+      projected_modes = error_mesh->Solution();
+    
+    }
     const int neq = error_mesh->Solution().Rows();
     error_mesh->Solution().Resize(neq, 1);
     if(simdata.export_vtk_error){
@@ -760,6 +782,7 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
                             wgma::wganalysis::WgmaPlanar &src_an,
                             wgma::wganalysis::WgmaPlanar &match_an,
                             const TPZVec<std::map<std::string, int>> &gmshmats,
+                            const TPZAutoPointer<SPZPeriodicData> & periodic_data,
                             const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                             const SimData &simdata)
 {
@@ -868,8 +891,22 @@ void SolveScatteringWithPML(TPZAutoPointer<TPZGeoMesh> gmesh,
     //just to set size
     sol_pml = error_mesh->Solution();
 
-    //now error mesh will contain all the modes
-    TransferSolutionBetweenPeriodicMeshes(error_mesh, src_an.GetMesh(), periodic_els);
+
+    {
+      //now we get only the desired periodic_els
+      TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> my_periodic_els;
+      const int ndep = periodic_data->dep_mat_ids.size();
+      for(auto idep = 0; idep < ndep; idep++){
+        const auto depid = periodic_data->dep_mat_ids[idep];
+        if(error_mesh->FindMaterial(depid) != nullptr){
+          my_periodic_els.push_back(periodic_els[idep]);
+        }
+        
+      }
+      //now we transfer the modal solution from the WPBC to the error mesh and store it
+      TransferSolutionBetweenPeriodicMeshes(error_mesh, src_an.GetMesh(),
+                                            my_periodic_els);
+    }
     //let us get the distance between src and error mesh
     const STATE dist =
       error_mesh->Element(0)->Reference()->Node(0).Coord(0)-
