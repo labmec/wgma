@@ -37,6 +37,7 @@ set(headers
   include/materials/acousticmodesomega.hpp
   include/materials/massmat.hpp
   include/materials/solutionprojection.hpp
+  include/materials/planewaveprojection.hpp
   )
 
 set(sources
@@ -63,6 +64,7 @@ set(sources
   src/materials/acousticmodesomega.cpp
   src/materials/massmat.cpp
   src/materials/solutionprojection.cpp
+  src/materials/planewaveprojection.cpp
   )
 
 target_sources(wgma PUBLIC ${headers})
