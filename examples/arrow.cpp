@@ -11,6 +11,7 @@
 #include "gmeshtools.hpp"
 #include "post/waveguidecoupling.hpp"
 #include "post/orthowgsol.hpp"
+#include "materials/planewaveprojection.hpp"
 #include "util.hpp"                // for CreatePath, ExtractPath
 #include <json_util.hpp>
 
@@ -126,6 +127,10 @@ ComputeModalAnalysis(
 
 std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &modal_mesh,
                                          std::set<int> &all_matids);
+
+void
+ReplaceMaterialsForProjection(TPZAutoPointer<TPZCompMesh> proj_mesh,
+                              const REAL theta);
 
 void
 SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
@@ -281,6 +286,48 @@ int main(int argc, char *argv[]) {
   }
   for(auto [old_mat,new_mat] : modal_r_map){
     split_mats[new_mat] = old_mat;
+  }
+
+  //now we project the incident field onto the computed modes
+  {
+    TPZAutoPointer<TPZCompMesh> hcurl_mesh =
+      modal_an_in->GetHCurlMesh()->Clone();
+    std::cout<<"hcurl sol r c "<<hcurl_mesh->Solution().Rows()<<" "<<hcurl_mesh->Solution().Cols()<<std::endl;
+    std::set<int64_t> bc_connects;
+    // wgma::cmeshtools::FindDirichletConnects(hcurl_mesh, bc_connects);
+    //two modes are enough
+    constexpr int nmodes{2};
+    //index of connect associated with solution restriction
+    auto connect_idx =
+      wgma::cmeshtools::RestrictDofs(hcurl_mesh, hcurl_mesh, nmodes, bc_connects);
+    const REAL theta{0};
+    ReplaceMaterialsForProjection(hcurl_mesh, theta);
+    //now we compute projection
+    constexpr bool sym{false};
+    auto proj_an = wgma::scattering::Analysis(hcurl_mesh, simdata.n_threads,
+                                              simdata.optimize_bandwidth,
+                                              simdata.filter_bnd_eqs,
+                                              sym);
+    proj_an.Assemble();
+    proj_an.Solve();
+
+    const std::string vtk_file = simdata.prefix+"_incident";
+    auto vtk = TPZVTKGenerator(hcurl_mesh, {"Solution"}, vtk_file, simdata.vtk_res);
+    vtk.SetNThreads(simdata.n_threads);
+    vtk.Do();
+    
+    const auto &indep_con = hcurl_mesh->ConnectVec()[connect_idx];
+    const auto seqnum = indep_con.SequenceNumber();
+    const auto &block = hcurl_mesh->Block();
+    const auto pos = block.Position(seqnum);
+    TPZFMatrix<CSTATE> &sol = hcurl_mesh->Solution();
+    simdata.source_coeffs.resize(nmodes);
+    for(int im = 0; im < nmodes; im++){
+      const auto val = std::abs(sol.GetVal(pos+im,0));
+      std::cout<<"mode "<<im<<" sol "<<val<<std::endl;
+      simdata.source_coeffs[im] = {im,val};
+    }
+    wgma::cmeshtools::RemovePeriodicity(hcurl_mesh);
   }
 
   
@@ -737,6 +784,35 @@ std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &moda
   return matid_map;
 }
 
+
+void
+ReplaceMaterialsForProjection(TPZAutoPointer<TPZCompMesh> proj_mesh,
+                              const REAL theta)
+{
+  //replace all materials for L2 projection
+  TPZMaterialT<CSTATE> *last_mat{nullptr};
+  for(auto [id,mat] : proj_mesh->MaterialVec()){
+    auto bnd = dynamic_cast<TPZBndCond*>(mat);
+    if(!bnd){
+      constexpr int dim{1};
+      constexpr int soldim{1};
+      auto newmat = new wgma::materials::PlanewaveProjection<CSTATE>(id,theta);
+      delete mat;
+      proj_mesh->MaterialVec()[id]=newmat;
+      last_mat = newmat;
+    }
+  }
+  for(auto [id,mat] : proj_mesh->MaterialVec()){
+    auto bnd = dynamic_cast<TPZBndCond*>(mat);
+    if(bnd){
+      TPZFMatrix<CSTATE> v1;
+      TPZVec<CSTATE> v2;
+      auto newmat = last_mat->CreateBC(last_mat,id,bnd->Type(),v1,v2);
+      delete bnd;
+      proj_mesh->MaterialVec()[id]=dynamic_cast<TPZMaterial*>(newmat);
+    }
+  }
+}
 
 void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      TPZAutoPointer<wgma::wganalysis::Wgma2D> &src_an,
