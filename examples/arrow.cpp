@@ -47,6 +47,10 @@ struct SimData{
   TPZVec<std::string> mats_probe_in;
   //!materials used in the probe associated with the outgoing waveguide port
   TPZVec<std::string> mats_probe_out;
+  //!whether the first two modes of the input port should be in the x and y direction (plane wave)
+  bool planewave_in;
+  //!whether the first two modes of the output port should be in the x and y direction (plane wave)
+  bool planewave_out;
   //!map of refractive indices
   std::map<std::string,CSTATE> refractive_indices;
   //!map of domain regions and number of directional refinement steps
@@ -119,6 +123,7 @@ ComputeModalAnalysis(
   const SimData& simdata,
   const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
   const TPZVec<std::string> &mats,
+  const bool planewave,
   int &nEigenpairs,
   const TPZEigenSort sortingRule,
   bool usingSLEPC,
@@ -154,7 +159,7 @@ int main(int argc, char *argv[]) {
    * the log should be initialised as:*/
   TPZLogger::InitializePZLOG();
 #endif
-  if(argc!=2){
+  if(argc<2){
     PZError<<"Unexpected number of parameters. USAGE: ./arrow param_file"<<std::endl;
     return -1;
   }
@@ -187,7 +192,7 @@ int main(int argc, char *argv[]) {
   TPZSimpleTimer total("Total");
 
   TPZVec<std::map<std::string, int>> gmshmats;
-  constexpr bool verbosity_lvl{true};
+  constexpr bool verbosity_lvl{false};
   TPZAutoPointer<TPZGeoMesh> gmesh{nullptr};
   TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> periodic_els;
   {
@@ -245,6 +250,7 @@ int main(int argc, char *argv[]) {
   {
     modal_an_in =  ComputeModalAnalysis(gmesh,gmshmats,simdata, periodic_els,
                                         simdata.mats_port_in,
+                                        simdata.planewave_in,
                                         simdata.n_eigenpairs_left,sortingRule,
                                         usingSLEPC,"_port_in");
   }
@@ -255,6 +261,7 @@ int main(int argc, char *argv[]) {
   if(simdata.n_eigenpairs_right){
     modal_an_out = ComputeModalAnalysis(gmesh,gmshmats,simdata, periodic_els,
                                         simdata.mats_port_out,
+                                        simdata.planewave_out,
                                         simdata.n_eigenpairs_right,sortingRule,
                                         usingSLEPC,"_port_out");
   }
@@ -283,7 +290,6 @@ int main(int argc, char *argv[]) {
     split_mats[new_mat] = old_mat;
   }
 
-  
   if(!simdata.check_mode_propagation){
     SolveScattering(gmesh, modal_an_in,  modal_an_out, gmshmats,
                     split_mats,periodic_els, simdata);
@@ -297,9 +303,11 @@ int main(int argc, char *argv[]) {
 
 #include "post/solutionnorm.hpp"
 #include "post/waveguideportbc.hpp"
+#include "post/planewave.hpp"
 #include "precond.hpp"
 
 #include "TPZParallelUtils.h"
+#include <TPZMatrixWindow.h>
 #include <TPZSpStructMatrix.h>
 #include <TPZStructMatrixOMPorTBB.h>
 #include "TPZYSMPMatrix.h"
@@ -426,6 +434,9 @@ SimData ReadSimData(const std::string &dataname){
   tmpvec_str = data.value("mats_probe_out",std::vector<std::string>{});
   for(auto mat : tmpvec_str){sd.mats_probe_out.push_back(mat);}
 
+  sd.planewave_in = data.value("planewave_in",false);
+  sd.planewave_out = data.value("planewave_out",false);
+
   
   auto tmpvec_map =
     data["refractive indices"].get<std::map<std::string,std::vector<double>>>();
@@ -520,6 +531,7 @@ ComputeModalAnalysis(
   const SimData& simdata,
   const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
   const TPZVec<std::string> &mats,
+  const bool planewave,
   int &nEigenpairs,
   const TPZEigenSort sortingRule,
   bool usingSLEPC,
@@ -587,6 +599,32 @@ ComputeModalAnalysis(
     //load all obtained modes into the mesh
     an->LoadAllSolutions();
 
+    if(planewave){
+      using namespace wgma::post;
+      auto decomp = PlanewaveDecomposition<SingleSpaceIntegrator>(an->GetHCurlMesh());
+      decomp.SetNThreads(simdata.n_threads);
+      CSTATE v11{0}, v12{0};
+      CSTATE v21{0}, v22{0};
+      decomp.ComputeCoefficients(v11, v12, v21, v22);
+
+      int64_t neq_total{0}, neq_h1{0}, neq_hcurl{0};
+      an->CountActiveEqs(neq_total, neq_h1, neq_hcurl);
+      TPZFMatrix<CSTATE> &ev = an->GetEigenvectors();
+      //now we need to change the first two solutions
+
+      TPZMatrixWindow<CSTATE> first_mode(ev.Elem(), neq_total,1,neq_total,neq_total);
+      TPZMatrixWindow<CSTATE> second_mode(ev.Elem()+neq_total, neq_total,1,neq_total,neq_total);
+      TPZFMatrix<CSTATE> first_mode_cp = first_mode;
+      TPZFMatrix<CSTATE> second_mode_cp = second_mode;
+
+      std::cout<<"v11 "<<v11<<" v12 "<<v12<<std::endl;
+      std::cout<<"v21 "<<v21<<" v22 "<<v22<<std::endl;
+
+      first_mode = v11*first_mode_cp + v12*second_mode_cp;
+      second_mode = v21*first_mode_cp + v22*second_mode_cp;
+      an->LoadAllSolutions();
+    }
+
     TPZVec<CSTATE> betavec = an->GetEigenvalues();
     nEigenpairs = betavec.size();
     std::cout<<nEigenpairs<<" eigenpairs have converged"<<std::endl;
@@ -612,8 +650,10 @@ ComputeModalAnalysis(
       eigenfile<<eigeninfo.str();
       eigenfile.close();
     }
-    
-    {
+
+
+    constexpr bool ortho{true};
+    if(ortho){
       TPZSimpleTimer timer("Ortho",true);
       constexpr STATE tol{1e-14};
       constexpr bool conj{false};
@@ -963,6 +1003,9 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
 
       TPZFMatrix<CSTATE> &sol = scatt_mesh_wpbc->Solution();
       if(simdata.compute_reflection_norm){
+        for(int i = 0; i < 2; i++){
+          std::cout<<"sol "<<sol.GetVal(refl_pos+i,0)<<" src "<<src_coeffs[i]<<std::endl;
+        }
         const CSTATE ref = sol.GetVal(refl_pos,0)-src_coeffs[0];
         const CSTATE trans = trans_pos >= 0 ? sol.GetVal(trans_pos,0) : 0;
         std::string outputfile = simdata.prefix+"_reflection.csv";
@@ -1377,7 +1420,15 @@ void TransformModes(wgma::wganalysis::Wgma2D& an)
   TPZBuildMultiphysicsMesh::TransferFromMeshes(meshvec,mf_mesh);
   //we update analysis object
   TPZFMatrix<CSTATE> &mesh_sol=mf_mesh->Solution();
-  an.SetEigenvectors(mesh_sol);
+  const auto neq_full = mesh_sol.Rows();
+  const auto neq_indep = mf_mesh->NEquations();
+  TPZFMatrix<CSTATE> reduced_sol(neq_indep,nsol,0);
+  for(auto isol = 0; isol < nsol; isol++){
+    TPZFMatrix<CSTATE> r_sol(neq_indep,1,reduced_sol.Elem()+neq_indep*isol,neq_indep);
+    TPZFMatrix<CSTATE> f_sol(neq_indep,1,mesh_sol.Elem()+neq_full*isol,neq_indep);
+    r_sol = f_sol;
+  }
+  an.SetEigenvectors(reduced_sol);
   an.LoadAllSolutions();
 }
 
@@ -1537,7 +1588,7 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     wgma::scattering::CMeshScattering3DPeriodic(gmesh, pOrder, scatt_data,
                                                 el_map,
                                                 src_ids,
-                                                lambda,scale,true);
+                                                lambda,scale,false);
   return cmesh;
 }
 
