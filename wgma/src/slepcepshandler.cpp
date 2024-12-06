@@ -55,7 +55,7 @@ namespace wgma::slepc{
   void EPSHandler<TVar>::InitSLEPc(){
     //initialize SLEPc
 #ifdef WGMA_USING_SLEPC    
-    SlepcInitialize((int *)0, (char ***)0, (const char*)0,(const char*)0 );
+    PetscCallVoid(SlepcInitialize((int *)0, (char ***)0, (const char*)0,(const char*)0 ));
     fSlepcInit = true;
 #else
     std::cerr <<"WARNING:The EPSHandler module is only available if the wgma"
@@ -68,7 +68,7 @@ namespace wgma::slepc{
   template<class TVar>
   void EPSHandler<TVar>::FinalizeSLEPc(){
 #ifdef WGMA_USING_SLEPC    
-    SlepcFinalize();
+    PetscCallAbort(PETSC_COMM_WORLD,SlepcFinalize());
 #else
     std::cerr <<"WARNING:The EPSHandler module is only available if the wgma"
               <<"was configured with SLEPc library. Aborting..."<<std::endl;
@@ -250,8 +250,8 @@ namespace wgma::slepc{
       CHKERRQ(ierr);
       //ST settings
       
-      STCreate(PETSC_COMM_WORLD, &st);
-      STSetKSP(st, ksp);
+      PetscCall(STCreate(PETSC_COMM_WORLD, &st));
+      PetscCall(STSetKSP(st, ksp));
       const ::STType st_type = STSINVERT;
       ierr = STSetType(st, st_type);
       CHKERRQ(ierr);
@@ -279,7 +279,8 @@ namespace wgma::slepc{
         ierr = EPSSetEigenvalueComparison(eps,
                                           [](PetscScalar ar, PetscScalar ai,
                                              PetscScalar br, PetscScalar bi,
-                                             PetscInt *res, void *ctx){
+                                             PetscInt *res, void *ctx) -> PetscErrorCode{
+                                            PetscFunctionBeginUser;
                                             auto locfunc
                                               = *(std::function<bool(CTVar,CTVar)>*)(ctx);
                                             const bool bool_res = locfunc(ar,br);
@@ -318,8 +319,7 @@ namespace wgma::slepc{
     /**
        BEGINNING OF THE OPERATIONS
      */
-    
-    EPSSetOperators(eps, petscA, petscB);
+    PetscCall(EPSSetOperators(eps, petscA, petscB));
 
     {
       TPZSimpleTimer setup("EPSSetUp");
@@ -329,6 +329,7 @@ namespace wgma::slepc{
 
     const PetscInt nInitVec = this->fInitVec.Cols();
     PetscScalar *vecMem = nullptr;
+
     if(nInitVec>0){
       const int neq = pzA.Rows();
       if(neq!=this->fInitVec.Rows()){
@@ -345,30 +346,31 @@ namespace wgma::slepc{
       // PetscCall(VecDestroy(&x));
 
 
-      PetscBool is_computed;
-      STGetTransform(st,&is_computed);
+      PetscBool is_computed{PETSC_FALSE};
+      PetscCall(STGetTransform(st,&is_computed));
       if(!is_computed){
         DebugStop();
       }
       Vec x;
-      VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize, neq,fInitVec.Elem(), &x);
-      PetscMalloc1(neq,&vecMem);
+      PetscCall(VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize, neq,fInitVec.Elem(), &x));
+      PetscCall(PetscMalloc1(neq,&vecMem));
       Vec v;
-      VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize,neq, vecMem, &v);
-      STMatSolve(st,x,v);
+      PetscCall(VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize,neq, vecMem, &v));
+      PetscCall(VecSet(v, 0.0));
+      PetscCall(STMatSolve(st,x,v));
       PetscCall(EPSSetInitialSpace(eps, 1, &v));
       PetscCall(VecDestroy(&x));
       PetscCall(VecDestroy(&v));
     }
 
     if(fVerbose){
-      EPSView(eps,PETSC_VIEWER_STDOUT_WORLD);
+      PetscCall(EPSView(eps,PETSC_VIEWER_STDOUT_WORLD));
       PetscViewerAndFormat *vf;
-      PetscViewerAndFormatCreate(PETSC_VIEWER_STDOUT_WORLD, PETSC_VIEWER_DEFAULT, &vf);
-      EPSMonitorSet(eps,
-                    (PetscErrorCode (*)(EPS,PetscInt,PetscInt,PetscScalar*,PetscScalar*,
-                                        PetscReal*,PetscInt,void*))EPSMonitorFirst,vf,
-                    (PetscErrorCode (*)(void**))PetscViewerAndFormatDestroy);
+      PetscCall(PetscViewerAndFormatCreate(PETSC_VIEWER_STDOUT_WORLD, PETSC_VIEWER_DEFAULT, &vf));
+      PetscCall(EPSMonitorSet(eps,(PetscErrorCode (*)(EPS,PetscInt,PetscInt,PetscScalar*,
+                                                      PetscScalar*,PetscReal*,PetscInt,void*))
+                              EPSMonitorFirst,vf,
+                              (PetscErrorCode (*)(void**))PetscViewerAndFormatDestroy));
     }
     /*****************************
      *  SOLVE
@@ -413,7 +415,7 @@ namespace wgma::slepc{
     */
     ::EPSConv eps_conv_test;
     EPSErrorType eps_error_type = EPS_ERROR_RELATIVE;
-    EPSGetConvergenceTest(eps, &eps_conv_test);
+    PetscCall(EPSGetConvergenceTest(eps, &eps_conv_test));
     switch(eps_conv_test){
     case EPS_CONV_ABS:
       eps_error_type = EPS_ERROR_ABSOLUTE;
@@ -438,7 +440,7 @@ namespace wgma::slepc{
       ierr = EPSErrorView(eps,eps_error_type,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
     }
     PetscInt nconv;
-    EPSGetConverged(eps, &nconv);
+    PetscCall(EPSGetConverged(eps, &nconv));
     if(nconv < this->fNEigenpairs){
       this->fNEigenpairs = nconv;
     }
@@ -450,7 +452,7 @@ namespace wgma::slepc{
       int count{0};
       for(int i = 0; i < nconv; i++){
         if(count>=this->fNEigenpairs){break;}
-        EPSGetEigenvalue(eps,i, &eigr, &eigi);
+        PetscCall(EPSGetEigenvalue(eps,i, &eigr, &eigi));
         CSTATE val{0};
         if constexpr(std::is_same_v<PetscScalar,STATE>){
           val = eigr + 1i * eigi;
@@ -494,34 +496,34 @@ namespace wgma::slepc{
       }else{
         Vec eigVec;
         PetscScalar  *eigVecArray;
-        MatCreateVecs(petscA,&eigVec,nullptr);
-        EPSGetEigenvector(eps,i,eigVec,nullptr);
-        VecGetArray(eigVec,&eigVecArray);
+        PetscCall(MatCreateVecs(petscA,&eigVec,nullptr));
+        PetscCall(EPSGetEigenvector(eps,i,eigVec,nullptr));
+        PetscCall(VecGetArray(eigVec,&eigVecArray));
         for (int j = 0; j < pzA.Rows(); ++j) {
           eigenVectors(j,count) = eigVecArray[j];
         }
-        VecRestoreArray(eigVec,&eigVecArray);
+        PetscCall(VecRestoreArray(eigVec,&eigVecArray));
       }
       count++;
     }
 
-    EPSDestroy(&eps);
-    STDestroy(&st);
-    KSPDestroy(&ksp);
-    PCDestroy(&pc);
+    PetscCall(EPSDestroy(&eps));
+    PetscCall(STDestroy(&st));
+    PetscCall(KSPDestroy(&ksp));
+    PetscCall(PCDestroy(&pc));
     
-    MatDestroy(&petscA);
-    MatDestroy(&petscB);
+    PetscCall(MatDestroy(&petscA));
+    PetscCall(MatDestroy(&petscB));
 
-    if(vecMem!=nullptr){PetscFree(vecMem);}
+    if(vecMem!=nullptr){PetscCall(PetscFree(vecMem));}
 #ifndef WGMA_PETSC_64BIT
     //otherwise we havent copied the matrices
-    if(iaP) PetscFree(iaP);
-    if(jaP) PetscFree(jaP);
-    if(aaP) PetscFree(aaP);
-    if(ibP) PetscFree(ibP);
-    if(jbP) PetscFree(jbP);
-    if(abP) PetscFree(abP);
+    if(iaP) PetscCall(PetscFree(iaP));
+    if(jaP) PetscCall(PetscFree(jaP));
+    if(aaP) PetscCall(PetscFree(aaP));
+    if(ibP) PetscCall(PetscFree(ibP));
+    if(jbP) PetscCall(PetscFree(jbP));
+    if(abP) PetscCall(PetscFree(abP));
 #endif
     return 0;
 #endif
