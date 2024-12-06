@@ -56,6 +56,7 @@ namespace wgma::slepc{
     //initialize SLEPc
 #ifdef WGMA_USING_SLEPC    
     PetscCallVoid(SlepcInitialize((int *)0, (char ***)0, (const char*)0,(const char*)0 ));
+    PetscCallVoid(PetscFPTrapPush(PETSC_FP_TRAP_ON));
     fSlepcInit = true;
 #else
     std::cerr <<"WARNING:The EPSHandler module is only available if the wgma"
@@ -358,6 +359,12 @@ namespace wgma::slepc{
       PetscCall(VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize,neq, vecMem, &v));
       PetscCall(VecSet(v, 0.0));
       PetscCall(STMatSolve(st,x,v));
+      PetscReal v_norm{0};
+      PetscCall(VecNorm(v, NORM_2 , &v_norm));
+      if(v_norm < 0.01){
+        PetscCall(SlepcFinalize());
+        exit(0);
+      }
       PetscCall(EPSSetInitialSpace(eps, 1, &v));
       PetscCall(VecDestroy(&x));
       PetscCall(VecDestroy(&v));
