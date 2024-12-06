@@ -159,7 +159,7 @@ int main(int argc, char *argv[]) {
    * the log should be initialised as:*/
   TPZLogger::InitializePZLOG();
 #endif
-  if(argc!=2){
+  if(argc<2){
     PZError<<"Unexpected number of parameters. USAGE: ./arrow param_file"<<std::endl;
     return -1;
   }
@@ -288,49 +288,6 @@ int main(int argc, char *argv[]) {
     split_mats[new_mat] = old_mat;
   }
 
-  //now we project the incident field onto the computed modes
-  {
-    TPZAutoPointer<TPZCompMesh> hcurl_mesh =
-      modal_an_in->GetHCurlMesh()->Clone();
-    std::cout<<"hcurl sol r c "<<hcurl_mesh->Solution().Rows()<<" "<<hcurl_mesh->Solution().Cols()<<std::endl;
-    std::set<int64_t> bc_connects;
-    // wgma::cmeshtools::FindDirichletConnects(hcurl_mesh, bc_connects);
-    //two modes are enough
-    constexpr int nmodes{2};
-    //index of connect associated with solution restriction
-    auto connect_idx =
-      wgma::cmeshtools::RestrictDofs(hcurl_mesh, hcurl_mesh, nmodes, bc_connects);
-    const REAL theta{0};
-    ReplaceMaterialsForProjection(hcurl_mesh, theta);
-    //now we compute projection
-    constexpr bool sym{false};
-    auto proj_an = wgma::scattering::Analysis(hcurl_mesh, simdata.n_threads,
-                                              simdata.optimize_bandwidth,
-                                              simdata.filter_bnd_eqs,
-                                              sym);
-    proj_an.Assemble();
-    proj_an.Solve();
-
-    const std::string vtk_file = simdata.prefix+"_incident";
-    auto vtk = TPZVTKGenerator(hcurl_mesh, {"Solution"}, vtk_file, simdata.vtk_res);
-    vtk.SetNThreads(simdata.n_threads);
-    vtk.Do();
-    
-    const auto &indep_con = hcurl_mesh->ConnectVec()[connect_idx];
-    const auto seqnum = indep_con.SequenceNumber();
-    const auto &block = hcurl_mesh->Block();
-    const auto pos = block.Position(seqnum);
-    TPZFMatrix<CSTATE> &sol = hcurl_mesh->Solution();
-    simdata.source_coeffs.resize(nmodes);
-    for(int im = 0; im < nmodes; im++){
-      const auto val = std::abs(sol.GetVal(pos+im,0));
-      std::cout<<"mode "<<im<<" sol "<<val<<std::endl;
-      simdata.source_coeffs[im] = {im,val};
-    }
-    wgma::cmeshtools::RemovePeriodicity(hcurl_mesh);
-  }
-
-  
   if(!simdata.check_mode_propagation){
     SolveScattering(gmesh, modal_an_in,  modal_an_out, gmshmats,
                     split_mats,periodic_els, simdata);
@@ -601,7 +558,7 @@ ComputeModalAnalysis(
   /******************************
    * solve(modal analysis left) *
    ******************************/
-  constexpr bool verbose{false};
+  constexpr bool verbose{true};
   const int krylovDim =
     nEigenpairs < 20 ? nEigenpairs*5 : (int)std::ceil(1.25*nEigenpairs);
   auto solver = wgma::wganalysis::SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC,krylovDim,verbose);
@@ -633,6 +590,81 @@ ComputeModalAnalysis(
     }
     //load all obtained modes into the mesh
     an->LoadAllSolutions();
+
+    constexpr bool is_planewave{true};
+    if(is_planewave){
+      TPZAutoPointer<TPZCompMesh> hcurl_mesh =
+        an->GetHCurlMesh()->Clone();
+      std::cout<<"hcurl sol r c "<<hcurl_mesh->Solution().Rows()<<" "<<hcurl_mesh->Solution().Cols()<<std::endl;
+      std::set<int64_t> bc_connects;
+      wgma::cmeshtools::FindDirichletConnects(hcurl_mesh, bc_connects);
+      //two modes are enough
+      constexpr int nmodes{2};
+      //index of connect associated with solution restriction
+      auto connect_idx =
+        wgma::cmeshtools::RestrictDofs(hcurl_mesh, hcurl_mesh, nmodes, bc_connects);
+      const REAL theta{0};
+      ReplaceMaterialsForProjection(hcurl_mesh, theta);
+      //now we compute projection
+      constexpr bool sym{false};
+      auto proj_an = wgma::scattering::Analysis(hcurl_mesh, simdata.n_threads,
+                                                simdata.optimize_bandwidth,
+                                                simdata.filter_bnd_eqs,
+                                                sym);
+      proj_an.Assemble();
+      proj_an.Solve();
+      const auto &indep_con = hcurl_mesh->ConnectVec()[connect_idx];
+      const auto seqnum = indep_con.SequenceNumber();
+      const auto &block = hcurl_mesh->Block();
+      const auto pos = block.Position(seqnum);
+      TPZFMatrix<CSTATE> &sol = hcurl_mesh->Solution();
+
+      CSTATE v11{0}, v12{0};
+      v11 = sol.GetVal(pos+0,0);
+      v12 = sol.GetVal(pos+1,0);
+
+      // for(int im = 0; im < nmodes; im++){
+      //   const auto val = std::abs(sol.GetVal(pos+im,0));
+      //   std::cout<<"mode "<<im<<" sol "<<val<<std::endl;
+      // }
+
+      for(auto [id,mat] : hcurl_mesh->MaterialVec()){
+        using namespace wgma::materials;
+        auto mat_proj = dynamic_cast<PlanewaveProjection<CSTATE>*>(mat);
+        if(mat_proj){
+          mat_proj->SetTheta(M_PI/2);
+        }
+      }
+
+      proj_an.Assemble();
+      proj_an.Solve();
+
+      CSTATE v21{0}, v22{0};
+      v21 = sol.GetVal(pos+0,0);
+      v22 = sol.GetVal(pos+1,0);
+      
+
+      TPZFMatrix<CSTATE> &sol_full = an->GetHCurlMesh()->Solution();
+      const auto neq_full = sol_full.Rows();
+      TPZFMatrix<CSTATE> first_mode(neq_full,1,sol_full.Elem(), neq_full);
+      TPZFMatrix<CSTATE> second_mode(neq_full,1,sol_full.Elem()+neq_full, neq_full);
+      TPZFMatrix<CSTATE> first_mode_cp = first_mode;
+      TPZFMatrix<CSTATE> second_mode_cp = second_mode;
+
+
+      first_mode = v11*first_mode_cp + v12*second_mode_cp;
+      second_mode = v21*first_mode_cp + v22*second_mode_cp;
+
+
+      TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshvec(2);
+      meshvec[TPZWgma::H1Index()] = an->GetH1Mesh();
+      meshvec[TPZWgma::HCurlIndex()] = an->GetHCurlMesh();
+      TPZBuildMultiphysicsMesh::TransferFromMeshes(meshvec,an->GetMesh());
+
+      TPZFMatrix<CSTATE> &mfsol = an->GetMesh()->Solution();
+      an->SetEigenvectors(mfsol);
+      wgma::cmeshtools::RemovePeriodicity(hcurl_mesh);
+    }
 
     TPZVec<CSTATE> betavec = an->GetEigenvalues();
     nEigenpairs = betavec.size();
@@ -1039,6 +1071,9 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
 
       TPZFMatrix<CSTATE> &sol = scatt_mesh_wpbc->Solution();
       if(simdata.compute_reflection_norm){
+        for(int i = 0; i < 2; i++){
+          std::cout<<"sol "<<sol.GetVal(refl_pos+i,0)<<" src "<<src_coeffs[i]<<std::endl;
+        }
         const CSTATE ref = sol.GetVal(refl_pos,0)-src_coeffs[0];
         const CSTATE trans = trans_pos >= 0 ? sol.GetVal(trans_pos,0) : 0;
         std::string outputfile = simdata.prefix+"_reflection.csv";
