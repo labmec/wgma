@@ -161,8 +161,7 @@ namespace wgma::slepc{
                              PetscInt *&ja,
                              PetscScalar *&aa) ->int{
       const int nRows = pzmat.Rows();
-      const int nCols = pzmat.Cols();
-      PetscErrorCode ierr;
+      const int nCols = pzmat.Cols();      
 #ifdef WGMA_PETSC_64BIT
       pzmat.GetData(ia,ja,aa);
 #else
@@ -170,9 +169,9 @@ namespace wgma::slepc{
       TPZVec<TVar> A;
       pzmat.GetData(I,J,A);
       
-      ierr = PetscMalloc1(I.size(),&ia);CHKERRQ(ierr);
-      ierr = PetscMalloc1(J.size(),&ja);CHKERRQ(ierr);
-      ierr = PetscMalloc1(J.size(),&aa);CHKERRQ(ierr);
+      PetscCall(PetscMalloc1(I.size(),&ia));
+      PetscCall(PetscMalloc1(J.size(),&ja));
+      PetscCall(PetscMalloc1(J.size(),&aa));
 
       for (int j = 0; j < I.size(); ++j) {
         ia[j]=I[j];
@@ -182,9 +181,8 @@ namespace wgma::slepc{
         aa[j]=A[j];
       }
 #endif
-      ierr = MatCreateSeqAIJWithArrays(MPI_COMM_WORLD,nRows,nCols,ia,ja,
-                                       aa,&mat);
-      CHKERRQ(ierr);
+      PetscCall(MatCreateSeqAIJWithArrays(MPI_COMM_WORLD,nRows,nCols,ia,ja,
+                                          aa,&mat));
       return 0;
     };
     Mat petscA{nullptr}, petscB{nullptr};
@@ -213,7 +211,7 @@ namespace wgma::slepc{
     /**
        SET UP PC, KSP, ST and EPS based on user options
      **/
-    PetscErrorCode ierr;
+    
     ::PC pc;
     ::KSP ksp;
     ::ST st;
@@ -221,98 +219,95 @@ namespace wgma::slepc{
     ::RG rg;  
     //PC settings
     {
-      ierr = PCCreate(PETSC_COMM_WORLD, &pc);
+      PetscCall(PCCreate(PETSC_COMM_WORLD, &pc));
 
       const PCType pc_type = ConvertPrecond(fPc);
-      ierr = PCSetType(pc, pc_type);
+      PetscCall(PCSetType(pc, pc_type));
 
       const STATE pc_zero = fPcZero > 0 ? fPcZero : PETSC_DECIDE;
-      ierr = PCFactorSetZeroPivot(pc,pc_zero);
+      PetscCall(PCFactorSetZeroPivot(pc,pc_zero));
       if(!strcmp(pc_type,"lu")||!strcmp(pc_type,"cholesky")){
 #ifdef PETSC_HAVE_MKL_PARDISO
-        ierr = PCFactorSetMatSolverType(pc,MATSOLVERMKL_PARDISO);
+        PetscCall(PCFactorSetMatSolverType(pc,MATSOLVERMKL_PARDISO));
 #elif defined(PETSC_HAVE_MUMPS)
-        ierr = PCFactorSetMatSolverType(pc,MATSOLVERMUMPS);
+        PetscCall(PCFactorSetMatSolverType(pc,MATSOLVERMUMPS));
 #endif
       }
-      CHKERRQ(ierr);
       //KSP settings
     
-      ierr = KSPCreate(PETSC_COMM_WORLD, &ksp);
-      ierr = KSPSetPC(ksp, pc);
+      PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp));
+      PetscCall(KSPSetPC(ksp, pc));
       const ::KSPType ksp_type = ConvertKSP(fKsp);
-      ierr = KSPSetType(ksp,ksp_type);
+      PetscCall(KSPSetType(ksp,ksp_type));
       const STATE ksp_rtol = fKspRtol > 0 ? fKspRtol : PETSC_DEFAULT;
       const STATE ksp_atol = fKspAtol > 0 ? fKspAtol : PETSC_DEFAULT;
       const STATE ksp_dtol = fKspDtol > 0 ? fKspDtol : PETSC_DEFAULT;
       const int ksp_max_ints = fKspMaxIts > 0 ? fKspMaxIts : PETSC_DEFAULT;
-      ierr = KSPSetTolerances(ksp, ksp_rtol, ksp_atol, ksp_dtol, ksp_max_ints);
-      CHKERRQ(ierr);
+      PetscCall(KSPSetTolerances(ksp, ksp_rtol, ksp_atol, ksp_dtol, ksp_max_ints));
+      
       //ST settings
       
       PetscCall(STCreate(PETSC_COMM_WORLD, &st));
       PetscCall(STSetKSP(st, ksp));
       const ::STType st_type = STSINVERT;
-      ierr = STSetType(st, st_type);
-      CHKERRQ(ierr);
+      PetscCall(STSetType(st, st_type));
       
       //EPS settings
-      ierr = EPSCreate(PETSC_COMM_WORLD, &eps);
-      ierr = EPSSetST(eps, st);
+      PetscCall(EPSCreate(PETSC_COMM_WORLD, &eps));
+      PetscCall(EPSSetST(eps, st));
       const ::EPSType eps_type = ConvertType(fEpsType);
-      ierr = EPSSetType(eps, eps_type);
+      PetscCall(EPSSetType(eps, eps_type));
       const ::EPSProblemType eps_prob_type = ConvertProblemType(fProbType);
-      ierr = EPSSetProblemType(eps, eps_prob_type);
+      PetscCall(EPSSetProblemType(eps, eps_prob_type));
       const STATE eps_tol = fEpsTol > 0 ? fEpsTol : PETSC_DEFAULT;
       const STATE eps_max_its = fEpsMaxIts > 0 ? fEpsMaxIts : PETSC_DEFAULT;
-      ierr = EPSSetTolerances(eps, eps_tol, eps_max_its);
+      PetscCall(EPSSetTolerances(eps, eps_tol, eps_max_its));
       const ::EPSConv eps_conv = ConvertConv(fConvTest);
-      ierr = EPSSetConvergenceTest(eps, eps_conv);
+      PetscCall(EPSSetConvergenceTest(eps, eps_conv));
       const ::EPSWhich eps_which = ConvertWhich(this->EigenSorting());
-      ierr = EPSSetWhichEigenpairs(eps, eps_which);
+      PetscCall(EPSSetWhichEigenpairs(eps, eps_which));
 
       if(eps_which == ::EPSWhich::EPS_WHICH_USER){
         stdfunc = this->UserSortingFunc();
         if(stdfunc==nullptr){
           DebugStop();
         }
-        ierr = EPSSetEigenvalueComparison(eps,
-                                          [](PetscScalar ar, PetscScalar ai,
-                                             PetscScalar br, PetscScalar bi,
-                                             PetscInt *res, void *ctx) -> PetscErrorCode{
-                                            PetscFunctionBeginUser;
-                                            auto locfunc
-                                              = *(std::function<bool(CTVar,CTVar)>*)(ctx);
-                                            const bool bool_res = locfunc(ar,br);
-                                            *res = bool_res ? -1 : 1;
-                                            PetscFunctionReturn(PETSC_SUCCESS);
-                                          },&stdfunc);
+        PetscCall(EPSSetEigenvalueComparison(eps,
+                                             [](PetscScalar ar, PetscScalar ai,
+                                                PetscScalar br, PetscScalar bi,
+                                                PetscInt *res, void *ctx) -> PetscErrorCode{
+                                               PetscFunctionBeginUser;
+                                               auto locfunc
+                                                 = *(std::function<bool(CTVar,CTVar)>*)(ctx);
+                                               const bool bool_res = locfunc(ar,br);
+                                               *res = bool_res ? -1 : 1;
+                                               PetscFunctionReturn(PETSC_SUCCESS);
+                                             },&stdfunc));
       }
       const auto eps_target = this->fTarget;
-      ierr = EPSSetTarget(eps, eps_target);
+      PetscCall(EPSSetTarget(eps, eps_target));
       const PetscBool eps_true_res = fTrueResidual ? PETSC_TRUE : PETSC_FALSE;
-      ierr = EPSSetTrueResidual(eps, eps_true_res);
+      PetscCall(EPSSetTrueResidual(eps, eps_true_res));
       const PetscInt nev = this->fNEigenpairs;
       const PetscInt ncv = fNcv > 0 ? fNcv : PETSC_DEFAULT;
       const PetscInt mpd = fMpd > 0 ? fMpd : PETSC_DEFAULT;
-      ierr = EPSSetDimensions(eps, nev, ncv, mpd);
+      PetscCall(EPSSetDimensions(eps, nev, ncv, mpd));
       if(!strcmp(eps_type,EPSKRYLOVSCHUR)){
         const PetscBool locking = fLocking ? PETSC_TRUE : PETSC_FALSE;
         const PetscReal restart = fRestart > 0 ? fRestart : PETSC_DEFAULT;
-        ierr = EPSKrylovSchurSetLocking(eps, locking);
-        ierr = EPSKrylovSchurSetRestart(eps, restart);
+        PetscCall(EPSKrylovSchurSetLocking(eps, locking));
+        PetscCall(EPSKrylovSchurSetRestart(eps, restart));
       }
       // EPSBalance bal = EPSBalance::EPS_BALANCE_TWOSIDE;
       // PetscInt its = PETSC_DEFAULT;
       // PetscReal cutoff = PETSC_DEFAULT;
-      // EPSSetBalance(eps, bal,its, cutoff);
+      // PetscCall(EPSSetBalance(eps, bal,its, cutoff);
 
       PetscCall(EPSGetRG(eps,&rg));
       PetscCall(RGSetType(rg,RGELLIPSE));
       PetscReal center{0}, radius{1e-1}, vscale{1};
       PetscCall(RGEllipseSetParameters(rg,center,radius,vscale));
       PetscCall(RGSetComplement(rg,PETSC_TRUE));
-      CHKERRQ(ierr);
     }
     
 
@@ -323,8 +318,7 @@ namespace wgma::slepc{
 
     {
       TPZSimpleTimer setup("EPSSetUp");
-      ierr = EPSSetUp(eps);
-      CHKERRQ(ierr);
+      PetscCall(EPSSetUp(eps));
     }
 
     const PetscInt nInitVec = this->fInitVec.Cols();
@@ -341,8 +335,8 @@ namespace wgma::slepc{
       constexpr PetscInt blocksize{1};
 
       // Vec x;
-      // VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize, neq,fInitVec.Elem(), &x);
-      // ierr = EPSSetDeflationSpace(eps,nInitVec,&x);
+      // PetscCall(VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize, neq,fInitVec.Elem(), &x));
+      // PetscCall(EPSSetDeflationSpace(eps,nInitVec,&x));
       // PetscCall(VecDestroy(&x));
 
 
@@ -378,11 +372,10 @@ namespace wgma::slepc{
     {
       TPZSimpleTimer solver("EPSSolve");
       PetscLogDouble t1,t2;
-      ierr = PetscTime(&t1);CHKERRQ(ierr);
-      ierr = EPSSolve(eps);CHKERRQ(ierr);
-      ierr = PetscTime(&t2);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD," Elapsed Time in EPSSolve: %f\n",t2-t1);CHKERRQ(ierr);
-      
+      PetscCall(PetscTime(&t1));
+      PetscCall(EPSSolve(eps));
+      PetscCall(PetscTime(&t2));
+      PetscCall(PetscPrintf(PETSC_COMM_WORLD," Elapsed Time in EPSSolve: %f\n",t2-t1));
     }
     /*
       Optional: Get some information from the solver and display it
@@ -393,18 +386,18 @@ namespace wgma::slepc{
       ::EPSType type;
       ::KSP ksp;
       ::ST st;
-      ierr = EPSGetIterationNumber(eps, &its);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD," Number of iterations of the method: %ld\n",its);CHKERRQ(ierr);
-      ierr = EPSGetST(eps,&st);CHKERRQ(ierr);
-      ierr = STGetKSP(st,&ksp);CHKERRQ(ierr);
-      ierr = KSPGetTotalIterations(ksp, &lits);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD," Number of linear iterations of the method: %ld\n",lits);CHKERRQ(ierr);
-      ierr = EPSGetType(eps, &type);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n\n",type);CHKERRQ(ierr);
-      ierr = EPSGetDimensions(eps,&nev,NULL,NULL);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD, " Number of requested eigenvalues: %ld\n", nev);CHKERRQ(ierr);
-      ierr = EPSGetTolerances(eps,&tol,&maxit);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD," Stopping condition: tol=%.4g, maxit=%ld\n",(double)tol,maxit);CHKERRQ(ierr);
+      PetscCall(EPSGetIterationNumber(eps, &its));
+      PetscCall(PetscPrintf(PETSC_COMM_WORLD," Number of iterations of the method: %ld\n",its));
+      PetscCall(EPSGetST(eps,&st));
+      PetscCall(STGetKSP(st,&ksp));
+      PetscCall(KSPGetTotalIterations(ksp, &lits));
+      PetscCall(PetscPrintf(PETSC_COMM_WORLD," Number of linear iterations of the method: %ld\n",lits));
+      PetscCall(EPSGetType(eps, &type));
+      PetscCall(PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n\n",type));
+      PetscCall(EPSGetDimensions(eps,&nev,NULL,NULL));
+      PetscCall(PetscPrintf(PETSC_COMM_WORLD, " Number of requested eigenvalues: %ld\n", nev));
+      PetscCall(EPSGetTolerances(eps,&tol,&maxit));
+      PetscCall(PetscPrintf(PETSC_COMM_WORLD," Stopping condition: tol=%.4g, maxit=%ld\n",(double)tol,maxit));
     }
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
        Display solution and clean up
@@ -432,12 +425,12 @@ namespace wgma::slepc{
       DebugStop();
     }
     if (fVerbose) {
-      ierr = PetscViewerPushFormat(PETSC_VIEWER_STDOUT_WORLD,PETSC_VIEWER_ASCII_INFO_DETAIL);CHKERRQ(ierr);
-      ierr = EPSConvergedReasonView(eps,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-      ierr = EPSErrorView(eps,eps_error_type,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-      ierr = PetscViewerPopFormat(PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+      PetscCall(PetscViewerPushFormat(PETSC_VIEWER_STDOUT_WORLD,PETSC_VIEWER_ASCII_INFO_DETAIL));
+      PetscCall(EPSConvergedReasonView(eps,PETSC_VIEWER_STDOUT_WORLD));
+      PetscCall(EPSErrorView(eps,eps_error_type,PETSC_VIEWER_STDOUT_WORLD));
+      PetscCall(PetscViewerPopFormat(PETSC_VIEWER_STDOUT_WORLD));
     } else {
-      ierr = EPSErrorView(eps,eps_error_type,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+      PetscCall(EPSErrorView(eps,eps_error_type,PETSC_VIEWER_STDOUT_WORLD));
     }
     PetscInt nconv;
     PetscCall(EPSGetConverged(eps, &nconv));
@@ -483,16 +476,16 @@ namespace wgma::slepc{
         Vec eigVecRe, eigVecIm;
         PetscScalar *eigVecReArray, *eigVecImArray;
         
-        MatCreateVecs(petscA,&eigVecRe,nullptr);
-        MatCreateVecs(petscA,&eigVecIm,nullptr);
-        EPSGetEigenvector(eps,i,eigVecRe,eigVecIm);
-        VecGetArray(eigVecRe,&eigVecReArray);
-        VecGetArray(eigVecIm,&eigVecImArray);
+        PetscCall(MatCreateVecs(petscA,&eigVecRe,nullptr));
+        PetscCall(MatCreateVecs(petscA,&eigVecIm,nullptr));
+        PetscCall(EPSGetEigenvector(eps,i,eigVecRe,eigVecIm));
+        PetscCall(VecGetArray(eigVecRe,&eigVecReArray));
+        PetscCall(VecGetArray(eigVecIm,&eigVecImArray));
         for (int j = 0; j < pzA.Rows(); ++j) {
           eigenVectors(j,count) = eigVecReArray[j] + 1i * eigVecImArray[j];
         }
-        VecRestoreArray(eigVecRe,&eigVecReArray);
-        VecRestoreArray(eigVecIm,&eigVecImArray);
+        PetscCall(VecRestoreArray(eigVecRe,&eigVecReArray));
+        PetscCall(VecRestoreArray(eigVecIm,&eigVecImArray));
       }else{
         Vec eigVec;
         PetscScalar  *eigVecArray;
