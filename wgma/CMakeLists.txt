@@ -31,6 +31,7 @@ set(headers
   include/post/orthowgsol.hpp
   include/post/wgnorm.hpp
   include/post/reflectivity.hpp
+  include/post/planewave.hpp
   include/materials/twisted_wgma.hpp
   include/materials/acousticmodesbase.hpp
   include/materials/acousticmodesbeta.hpp
@@ -57,6 +58,7 @@ set(sources
   src/post/orthowgsol.cpp
   src/post/wgnorm.cpp
   src/post/reflectivity.cpp
+  src/post/planewave.cpp
   src/materials/twisted_wgma.cpp
   src/materials/acousticmodesbase.cpp
   src/materials/acousticmodesbeta.cpp
