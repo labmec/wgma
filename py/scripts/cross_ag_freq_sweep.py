@@ -21,9 +21,12 @@ data = {
     "vtk_res": 0
 }
 
+
 data["mats_3d"] = ["Ag", "air"]
 data["mats_port_in"] = ["air_port_in"]
+data["planewave_in"] = True
 data["mats_port_out"] = ["Ag_port_out", "air_port_out"]
+data["planewave_out"] = True
 
 data["source_coeffs"] = [[0, 1]]
 

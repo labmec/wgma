@@ -37,7 +37,9 @@ data = {
 
 data["mats_3d"] = ["Ag", "air"]
 data["mats_port_in"] = ["air_port_in"]
+data["planewave_in"] = True
 data["mats_port_out"] = ["Ag_port_out", "air_port_out"]
+data["planewave_out"] = True
 wavelength = 1.045
 data["wavelength"] = wavelength
 data["refractive indices"] = {
@@ -47,7 +49,7 @@ data["refractive indices"] = {
 
 
 data["refine_regions"] = {
-    "refine_edges": 2
+    # "refine_edges": 2
 }
 data["scale"] = wavelength/(2*np.pi)
 data["source_coeffs"] = [[0, 1]]
