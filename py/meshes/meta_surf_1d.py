@@ -36,7 +36,7 @@ k_az = 0
 
 max_n = max(n_az, n_copper, n_air)
 
-nel_lambda = 50
+nel_lambda = 20
 el_copper = (min_wl/n_copper)/nel_lambda/4
 el_rib = (min_wl/max_n)/nel_lambda
 el_air = 3*(min_wl/n_air)/nel_lambda
@@ -243,9 +243,9 @@ for r, l in zip(bnd_right+bnd_pml_right, bnd_left+bnd_pml_left):
         invert.append(l)
 
 print("invert {}\nbnd_left {}".format(invert, bnd_left))
-# gmsh.model.mesh.reverse([(dim, t) for t in invert])
+gmsh.model.mesh.reverse([(dim, t) for t in invert])
 
-gmsh.model.mesh.reverse([(dim, t) for t in bnd_left])
+# gmsh.model.mesh.reverse([(dim, t) for t in bnd_left])
 
 if __name__ == "__main__":
     abspath = os.path.abspath(__file__)
