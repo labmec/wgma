@@ -257,6 +257,8 @@ void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
       const auto dep_ci = dep_cel->ConnectIndex(ic);
 
       auto &dep_con = dep_cel->Connect(ic);
+      //TODO: think of a more robust way on how to proceed in this scenario
+      if(dep_con.HasDependency()){continue;}
       const auto ndof = dep_con.NDof(cmesh);
       if(ndof==0) {continue;}
       constexpr int64_t ipos{0};
