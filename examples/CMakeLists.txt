@@ -98,7 +98,7 @@ add_pz_target(
 target_link_libraries(acoustic_pcf2 PUBLIC wgma)
 
 
-set(material_data ../py/scripts/data/AZ.dat ../py/scripts/data/Cu1.dat)
+set(material_data ../py/scripts/data/AZ.dat ../py/scripts/data/Cu1.dat ../py/scripts/data/Ag.dat)
 configure_file(../py/scripts/mat_indices.py scripts/mat_indices.py)
 foreach(file ${material_data})
   get_filename_component(filename ${file} NAME)
