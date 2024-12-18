@@ -175,6 +175,13 @@ namespace wgma::post{
       const auto &axes = datavec[0].axes;
       TPZAxesTools<CSTATE>::Axes2XYZ(grad_ez_axes, rot_grad_ez, axes);
 
+      for(auto isol = 0; isol < nsol; isol++){
+        const CSTATE v0 = rot_grad_ez.Get(0,isol);
+        const CSTATE v1 = rot_grad_ez.Get(1,isol);
+        rot_grad_ez.Put(0,isol,v1);
+        rot_grad_ez.Put(1,isol,-v0);
+      }
+      
       TPZFNMatrix<3000,CSTATE> h_field;
       h_field = rot_et_beta;
       h_field+= rot_grad_ez;
