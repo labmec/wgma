@@ -112,11 +112,11 @@ foreach(file ${material_data})
 endforeach(file)
 
 
-file(GLOB meta_surf_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "../py/scripts/meta_surf*json")
-list(APPEND meta_surf_files ../py/scripts/meta_surf_1d.py)
-list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_freq_sweep.py)
+file(GLOB ms1d_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "../py/scripts/meta_surf*json")
+list(APPEND ms1d_files ../py/scripts/meta_surf_1d.py)
+list(APPEND ms1d_files ../py/scripts/meta_surf_1d_freq_sweep.py)
 
-foreach(file ${meta_surf_files})
+foreach(file ${ms1d_files})
   get_filename_component(filename ${file} NAME)
 endforeach(file)
 
