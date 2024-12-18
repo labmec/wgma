@@ -626,7 +626,7 @@ ComputeModalAnalysis(
       an->LoadAllSolutions();
     }
 
-    TPZVec<CSTATE> betavec = an->GetEigenvalues();
+    TPZVec<CSTATE> &betavec = an->GetEigenvalues();
     nEigenpairs = betavec.size();
     std::cout<<nEigenpairs<<" eigenpairs have converged"<<std::endl;
     
@@ -1178,7 +1178,7 @@ void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
         TPZFMatrix<CSTATE> &mode = error_mesh->Solution();
         const auto neq = mode.Rows();
         const auto offset = neq*i;
-        const auto beta = std::sqrt(-src_an->GetEigenvalues()[i]);
+        const auto beta = src_an->GetEigenvalues()[i];
         const auto coeff = src_coeffs[i]*std::exp(-1i*beta*dist);
         std::cout<<"beta "<<beta<<" dist "<<dist<<std::endl;
         CSTATE *mode_ptr = mode.Elem() + offset;
