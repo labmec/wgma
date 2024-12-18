@@ -1,9 +1,14 @@
 import numpy as np
 from scipy.interpolate import interp1d
 
+ag_data = np.array(np.genfromtxt("data/Ag.dat", delimiter=' ', dtype=np.float64))
 az_data = np.array(np.genfromtxt("data/AZ.dat", delimiter=' ', dtype=np.float64))
 cu_data = np.array(np.genfromtxt("data/Cu1.dat", delimiter=' ', dtype=np.float64))
 
+def ag_n(wl):
+    return interp1d(ag_data[:,0],ag_data[:,1])(wl)[()]
+def ag_k(wl):
+    return interp1d(ag_data[:,0],ag_data[:,2])(wl)[()]
 def az_n(wl):
     return interp1d(az_data[:,0],az_data[:,1])(wl)[()]
 def az_k(wl):

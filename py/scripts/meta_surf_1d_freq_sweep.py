@@ -3,7 +3,7 @@ import numpy as np
 import os
 import subprocess
 import sys
-from meta_surf_1d_indices import az_n, az_k, cu_n, cu_k
+from mat_indices import az_n, az_k, cu_n, cu_k
 
 data = {
     "meshfile": "meshes/meta_surf_1d.msh",

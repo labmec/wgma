@@ -98,20 +98,20 @@ add_pz_target(
 target_link_libraries(acoustic_pcf2 PUBLIC wgma)
 
 
+set(material_data ../py/scripts/data/AZ.dat ../py/scripts/data/Cu1.dat)
+configure_file(../py/scripts/mat_indices.py scripts/mat_indices.py)
+foreach(file ${material_data})
+  get_filename_component(filename ${file} NAME)
+  configure_file(${file} scripts/data/${filename})
+endforeach(file)
+
 
 file(GLOB meta_surf_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "../py/scripts/meta_surf*json")
 list(APPEND meta_surf_files ../py/scripts/meta_surf_1d.py)
 list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_freq_sweep.py)
-list(APPEND meta_surf_files ../py/scripts/meta_surf_1d_indices.py)
-set(meta_surf_data ../py/scripts/data/AZ.dat ../py/scripts/data/Cu1.dat)
 
 foreach(file ${meta_surf_files})
   get_filename_component(filename ${file} NAME)
-  configure_file(${file} scripts/${filename})
-endforeach(file)
-foreach(file ${meta_surf_data})
-  get_filename_component(filename ${file} NAME)
-  configure_file(${file} scripts/data/${filename})
 endforeach(file)
 
 add_pz_target(
