@@ -626,7 +626,7 @@ ComputeModalAnalysis(
       an->LoadAllSolutions();
     }
 
-    TPZVec<CSTATE> betavec = an->GetEigenvalues();
+    TPZVec<CSTATE> &betavec = an->GetEigenvalues();
     nEigenpairs = betavec.size();
     std::cout<<nEigenpairs<<" eigenpairs have converged"<<std::endl;
     
