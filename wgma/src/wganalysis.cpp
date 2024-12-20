@@ -523,15 +523,7 @@ STATE Wgma2D::ComputeResidual(){
     meshVecPost[1] = m_cmesh_hcurl;
 
     //we dont have a proper way of setting multiple kz yet
-    const CSTATE currentKz = [&ev,isol](){
-      auto tmp = std::sqrt(-1.0*ev[isol]);
-      constexpr auto epsilon = std::numeric_limits<STATE>::epsilon()/
-        (10*std::numeric_limits<STATE>::digits10);
-      //let us discard extremely small imag parts
-      if (tmp.imag() < epsilon)
-        {tmp = tmp.real();}
-      return tmp;
-    }();
+    const CSTATE currentKz = std::sqrt(-1.0*ev[isol]);
 
     
 
