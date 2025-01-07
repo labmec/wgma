@@ -3,7 +3,52 @@ import numpy as np
 import os
 import subprocess
 import sys
-from mat_indices import ag_n, ag_k
+from mat_indices import ag_n, ag_k, al_n, al_k, glass_n, glass_k
+
+
+def sweep_frequencies(data,wl_list,mat_n,mat_k):
+    outfile = prefix+"_output.txt"
+    if data["compute_reflection_norm"]:
+        try:
+            os.remove("../"+prefix+"_reflection.csv")
+            os.remove("../"+outfile)
+        except FileNotFoundError:
+            pass
+    for i, wavelength in enumerate(wl_list):
+        data["wavelength"] = wavelength
+        data["refractive indices"] = {
+            "Ag": [mat_n(wavelength), -mat_k(wavelength)],
+            "air": [1.0, 0],
+            "sub": [glass_n(wavelength), -glass_k(wavelength)]
+        }
+        data["scale"] = wavelength/(2*np.pi)
+        data["scale"] = 1
+
+        filename = 'cross_sweep_'+str(i)+'.json'
+        with open(filename, 'w+') as jsonfile:
+            # create json
+            json.dump(data, jsonfile, indent=4, sort_keys=True)
+            # now we check if we are in build or source directory
+        p = subprocess.Popen('test -f ../meta_surf_2d',
+                             stdout=subprocess.PIPE, shell=True)
+        status = p.wait()
+        # found executable
+        if status == 0:
+            # run program
+            print("\rrunning {} out of {}...".format(i+1, len(wl_list)), end='')
+            if '-verbose' in sys.argv:
+                os.system(
+                    'cd .. && ./meta_surf_2d scripts/' + filename + ' >> ' +
+                    outfile)
+            else:
+                os.system(
+                    'cd .. && ./meta_surf_2d scripts/' + filename +
+                    ' >> /dev/null')
+        try:
+            os.remove(filename)
+        except FileNotFoundError:
+            pass
+    print("\rDone!                      ")
 
 data = {
     "porder": 3,
@@ -23,71 +68,50 @@ data = {
 
 
 data["mats_3d"] = ["Ag", "air", "sub"]
-# data["mats_3d"] = ["Ag", "air"]
 data["mats_port_in"] = ["air_port_in"]
 data["planewave_in"] = True
 data["mats_port_out"] = ["sub_port_out"]
-# data["mats_port_out"] = ["Ag_port_out"]
 data["planewave_out"] = True
 
 data["source_coeffs"] = [[0, 1]]
 
 
-scriptname = "cross_ag.json"
-prefix = "res_cross_ag_freq_sweep/cross_ag"
-data["prefix"] = prefix
-data["meshfile"] = "meshes/cross_ag.msh"
 data["check_mode_propagation"] = False
-data["direct_solver"] = False
+data["direct_solver"] = True
 data["n_eigenpairs_left"] = 200
 data["n_eigenpairs_right"] = 200
 data["n_modes_left"] = [200]
 data["n_modes_right"] = [200]
 
 
-# wl_list = [wl / 1000 for wl in np.arange(500, 1500, 10)]
-wl_list = [wl / 1000 for wl in np.arange(1000, 1100, 5)]
+wl_list = [wl / 1000 for wl in np.arange(1000, 1500, 20)]
+# wl_list = [wl / 1000 for wl in np.arange(1000, 1100, 5)]
 
 
-outfile = prefix+"_output.txt"
-if data["compute_reflection_norm"]:
-    try:
-        os.remove("../"+prefix+"_reflection.csv")
-        os.remove("../"+outfile)
-    except FileNotFoundError:
-        pass
 
-for i, wavelength in enumerate(wl_list):
-    data["wavelength"] = wavelength
-    data["refractive indices"] = {
-        "Ag": [ag_n(wavelength), -ag_k(wavelength)],
-        "air": [1.0, 0],
-        "sub": [1.0, 0]
-    }
-    data["scale"] = wavelength/(2*np.pi)
+#testing NOT FULL
+data["meshfile"] = "meshes/cross_ag.msh"
 
-    filename = 'cross_ag_'+str(i)+'.json'
-    with open(filename, 'w+') as jsonfile:
-        # create json
-        json.dump(data, jsonfile, indent=4, sort_keys=True)
-    # now we check if we are in build or source directory
-    p = subprocess.Popen('test -f ../meta_surf_2d',
-                         stdout=subprocess.PIPE, shell=True)
-    status = p.wait()
-    # found executable
-    if status == 0:
-        # run program
-        print("\rrunning {} out of {}...".format(i+1, len(wl_list)), end='')
-        if '-verbose' in sys.argv:
-            os.system(
-                'cd .. && ./meta_surf_2d scripts/' + filename + ' >> ' +
-                outfile)
-        else:
-            os.system(
-                'cd .. && ./meta_surf_2d scripts/' + filename +
-                ' >> /dev/null')
-    try:
-        os.remove(filename)
-    except FileNotFoundError:
-        pass
-print("\rDone!")
+prefix = "res_cross_freq_sweep/cross_ag"
+data["prefix"] = prefix
+print("Running with silver")
+sweep_frequencies(data, wl_list, ag_n, ag_k)
+
+prefix = "res_cross_freq_sweep/cross_al"
+data["prefix"] = prefix
+print("Running with aluminum")
+sweep_frequencies(data, wl_list, al_n, al_k)
+
+
+#testing FULL
+data["meshfile"] = "meshes/cross_ag_full.msh"
+
+prefix = "res_cross_freq_sweep/cross_ag_full"
+data["prefix"] = prefix
+print("Running with silver")
+sweep_frequencies(data, wl_list, ag_n, ag_k)
+
+prefix = "res_cross_freq_sweep/cross_al_full"
+data["prefix"] = prefix
+print("Running with aluminum")
+sweep_frequencies(data, wl_list, al_n, al_k)
