@@ -97,6 +97,8 @@ struct SimData{
   bool export_vtk_scatt{false};
   //!post process error of scatt field at waveguide port
   bool export_vtk_error{false};
+  //!whether eigensolver is verbose
+  bool eigen_verbose{false};
   //!vtk resolution
   int vtk_res{0};
   //!number of threads
@@ -520,6 +522,7 @@ SimData ReadSimData(const std::string &dataname){
   sd.export_vtk_modes = data.value("export_vtk_modes",false);
   sd.export_vtk_scatt = data.value("export_vtk_scatt",true);
   sd.export_vtk_error = data.value("export_vtk_error",true);
+  sd.eigen_verbose = data.value("eigen_verbose",false);
   sd.vtk_res = data.value("vtk_res",(int)0);
   sd.n_threads = data.value("n_threads",(int)std::thread::hardware_concurrency());
   return sd;
@@ -553,10 +556,10 @@ ComputeModalAnalysis(
   const auto &p_order = simdata.porder;
   const auto &lambda = simdata.lambda;
   const auto &scale = simdata.scale;
-  
+  const bool verbose = simdata.eigen_verbose;
   auto modal_cmesh = wgma::wganalysis::CMeshWgma2DPeriodic(gmesh,p_order,modal_data,
                                                            el_map,
-                                                           lambda, scale,true);
+                                                           lambda, scale,verbose);
 
   constexpr bool print_cmesh{false};
   if(print_cmesh){
@@ -567,7 +570,6 @@ ComputeModalAnalysis(
   /******************************
    * solve(modal analysis left) *
    ******************************/
-  constexpr bool verbose{false};
   const int krylovDim =
     nEigenpairs < 20 ? nEigenpairs*5 : (int)std::ceil(1.25*nEigenpairs);
   auto solver = wgma::wganalysis::SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC,krylovDim,verbose);
