@@ -53,7 +53,6 @@ data = {
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
     "compute_reflection_norm": True,
-    "vtk_res": 0
 }
 
 
@@ -67,13 +66,17 @@ data["source_coeffs"] = [[0, 1]]
 
 
 data["check_mode_propagation"] = False
-data["direct_solver"] = False
+data["direct_solver"] = True
 data["n_eigenpairs_left"] = 200
 data["n_eigenpairs_right"] = 200
 data["n_modes_left"] = [50]
 data["n_modes_right"] = [50]
 data["eigen_verbose"] = False
 
+
+data["refine_regions"] = {
+    "refine_points" : 1
+    }
 
 wavelength = 0.35
 for i in [1,2,3]:

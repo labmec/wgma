@@ -63,7 +63,6 @@ data = {
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
     "compute_reflection_norm": True,
-    "vtk_res": 0
 }
 
 
@@ -82,6 +81,9 @@ data["n_eigenpairs_left"] = 300
 data["n_eigenpairs_right"] = 300
 data["n_modes_left"] = [50]
 data["n_modes_right"] = [50]
+data["refine_regions"] = {
+    "refine_points" : 1
+    }
 
 
 wl_list = [wl / 1000 for wl in np.arange(350, 700, 10)]
