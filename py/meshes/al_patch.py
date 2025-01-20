@@ -181,6 +181,24 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
                   gmsh.model.get_boundary([(3, tag)
                                            for tag in metal],
                                           combined=True, oriented=False)]
+    air_bnds = [t for _, t in
+                  gmsh.model.get_boundary([(3, tag)
+                                           for tag in air],
+                                          combined=True, oriented=False)]
+    select_faces = list(set(metal_bnds) & set(air_bnds))
+
+    metal_edges = gmsh.model.get_boundary([(2,t) for t in metal_bnds],combined=False,
+                                          oriented=False)
+    select_edges = []
+    for d, t in metal_edges:
+        d_l = gmsh.model.get_derivative(d, t, [0])
+        if d_l[0] == 0 and d_l[1] == 0:
+            select_edges.append(t)
+
+    select_points = gmsh.model.get_boundary([(1,t) for t in select_edges],
+                                            combined=False,
+                                            oriented=False)
+    select_points = [t for _,t in select_points]
     
     field_ct = 1
     gmsh.model.mesh.field.add("Constant", field_ct)
@@ -203,16 +221,16 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     field_ct += 1
     gmsh.model.mesh.field.add("Distance", field_ct)
     gmsh.model.mesh.field.set_numbers(
-        field_ct, "SurfacesList", metal_bnds)
+        field_ct, "PointsList", select_points)
 
     field_ct += 1
     gmsh.model.mesh.field.add("Threshold", field_ct)
     gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
     gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
     gmsh.model.mesh.field.set_number(field_ct, "DistMin", 0)
-    gmsh.model.mesh.field.set_number(field_ct, "DistMax", W/4)
-    gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_metal)
-    gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_air)
+    gmsh.model.mesh.field.set_number(field_ct, "DistMax", h_metal/2)
+    gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_metal/8)
+    gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_metal)
     field_ct += 1
     gmsh.model.mesh.field.add("Min", field_ct)
     gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList",
@@ -236,7 +254,8 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
         "bound_periodic_xm": 12,
         "bound_periodic_xp": 13,
         "bound_periodic_ym": 14,
-        "bound_periodic_yp": 15
+        "bound_periodic_yp": 15,
+        "refine_faces": 16,
     }
 
     domain_physical_ids_1d = {
@@ -247,10 +266,11 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
         "bound_port_out_periodic_xm": 24,
         "bound_port_out_periodic_xp": 25,
         "bound_port_out_periodic_ym": 26,
-        "bound_port_out_periodic_yp": 27
+        "bound_port_out_periodic_yp": 27,
     }
 
     domain_physical_ids_0d = {
+        "refine_points": 30,
     }
 
     domain_physical_ids = [domain_physical_ids_0d,
@@ -274,7 +294,9 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
         "bound_port_out_periodic_xm": xm_bnd_port_out,
         "bound_port_out_periodic_xp": xp_bnd_port_out,
         "bound_port_out_periodic_ym": ym_bnd_port_out,
-        "bound_port_out_periodic_yp": yp_bnd_port_out
+        "bound_port_out_periodic_yp": yp_bnd_port_out,
+        "refine_faces": select_faces,
+        "refine_points": select_points,
     }
 
     generate_physical_ids(domain_physical_ids, domain_regions)
@@ -295,9 +317,9 @@ min_wavelength = 0.35
 h_sub = 0.1
 h_metal = 0.04
 h_air = 0.1
-el_metal = 0.5*min_wavelength/nel
+el_metal = min_wavelength/(nel*2)
 el_air = min_wavelength/nel
-el_sub = min_wavelength/nel
+el_sub = min_wavelength/(nel*1.5)
 
 P=0.4
 W = P/2
