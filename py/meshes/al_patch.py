@@ -4,8 +4,9 @@ import sys
 from utils.gmsh import (
     apply_boolean_operation,
     create_box,
+    create_rect,
     BoxData,
-    fuse_domains,
+    RectData,
     generate_physical_ids,
     remap_tags,
     split_region_dir
@@ -69,6 +70,42 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     gmsh.model.occ.remove_all_duplicates()
     gmsh.model.occ.synchronize()
 
+    h_domain = h_sub+h_air+h_metal
+    plane_y = RectData()
+    plane_y.xc = -P/2
+    plane_y.yc = 0
+    plane_y.zc = 0
+    plane_y.h = h_domain
+    plane_y.w = P
+
+    create_rect(plane_y, el_air, 'y')
+
+    plane_x = RectData()
+    plane_x.xc = 0
+    plane_x.yc = -P/2
+    plane_x.zc = h_domain
+    plane_x.h = P
+    plane_x.w = h_domain
+
+    create_rect(plane_x, el_air, 'x')
+    gmsh.model.occ.remove_all_duplicates()
+    gmsh.model.occ.synchronize()
+        
+    objs = []
+    [objs.append((3, v)) for vol in [air,metal,sub] for v in vol.tag]
+    tools = []
+    [tools.append((2, t)) for plane in [plane_x,plane_y] for t in plane.tag]
+    [tools.append(b)
+     for plane in [plane_x,plane_y]
+     for s in plane.tag
+     for b in gmsh.model.get_boundary([(2, s)],
+                                      oriented=False)]
+    plane_map = apply_boolean_operation(objs, tools, "fragment", True)
+    remap_tags([air,metal,sub]+[plane_x,plane_y], plane_map)
+    # now we cut the cross from the silver
+    gmsh.model.occ.remove_all_duplicates()
+    gmsh.model.occ.synchronize()
+    
     # we dont need the box data anymore, so
     metal = metal.tag
     air = air.tag
