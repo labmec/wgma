@@ -181,6 +181,11 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
                   gmsh.model.get_boundary([(3, tag)
                                            for tag in metal],
                                           combined=True, oriented=False)]
+    metal_inner_bnds = [t for _, t in
+                  gmsh.model.get_boundary([(3, tag)
+                                           for tag in metal],
+                                          combined=False, oriented=False)]
+    metal_inner_bnds = [t for t in metal_inner_bnds if t not in metal_bnds]
     air_bnds = [t for _, t in
                   gmsh.model.get_boundary([(3, tag)
                                            for tag in air],
@@ -189,9 +194,14 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
 
     metal_edges = gmsh.model.get_boundary([(2,t) for t in metal_bnds],combined=False,
                                           oriented=False)
+
+    metal_inner_edges = gmsh.model.get_boundary([(2,t) for t in metal_inner_bnds],combined=False,
+                                          oriented=False)
+    metal_edges = [t for t in metal_edges if t not in metal_inner_edges]
+    metal_edges = [t for _,t in metal_edges]
     select_edges = []
-    for d, t in metal_edges:
-        d_l = gmsh.model.get_derivative(d, t, [0])
+    for t in metal_edges:
+        d_l = gmsh.model.get_derivative(1, t, [0])
         if d_l[0] == 0 and d_l[1] == 0:
             select_edges.append(t)
 
@@ -220,16 +230,20 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
         field_ct, "VIn", el_sub)
     field_ct += 1
     gmsh.model.mesh.field.add("Distance", field_ct)
+    # gmsh.model.mesh.field.set_numbers(
+    #     field_ct, "PointsList", select_points)
     gmsh.model.mesh.field.set_numbers(
-        field_ct, "PointsList", select_points)
-
+        field_ct, "EdgesList", metal_edges)
+    # gmsh.model.mesh.field.set_numbers(
+    #     field_ct, "SurfacesList", select_faces)
+    
     field_ct += 1
     gmsh.model.mesh.field.add("Threshold", field_ct)
     gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
     gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
-    gmsh.model.mesh.field.set_number(field_ct, "DistMin", 0)
+    gmsh.model.mesh.field.set_number(field_ct, "DistMin", h_metal/4)
     gmsh.model.mesh.field.set_number(field_ct, "DistMax", h_metal/2)
-    gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_metal/8)
+    gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_metal/4)
     gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_metal)
     field_ct += 1
     gmsh.model.mesh.field.add("Min", field_ct)
