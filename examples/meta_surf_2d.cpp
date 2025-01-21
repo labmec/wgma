@@ -395,7 +395,7 @@ ComputeProjAndError(TPZAutoPointer<TPZCompMesh> proj_mesh,
                     const std::string &name,
                     const SimData &simdata);
 
-void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
+REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WpbcData& src_data,
                           WpbcData& match_data,
                           const TPZVec<CSTATE> &source_coeffs,
@@ -993,15 +993,15 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       const int nm_right = nmodes_right[im_right];
       //eq num for obtaining reflection and transmittivity
       int64_t refl_pos{-1},trans_pos{-1};
-      RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
-                           src_coeffs, nm_left,nm_right,
-                           mats_near_wpbc,simdata,
-                           refl_pos,
-                           trans_pos
-                           );
+      REAL computed_res =
+        RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
+                             src_coeffs, nm_left,nm_right,
+                             mats_near_wpbc,simdata,
+                             refl_pos,
+                             trans_pos
+                             );
       //plot
       if(simdata.export_vtk_scatt){vtk.Do();}
-
       //get reflection and transmission
 
       TPZFMatrix<CSTATE> &sol = scatt_mesh_wpbc->Solution();
@@ -1029,10 +1029,10 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
           const char ref_sign = ref.imag() > 0 ? '+' : '-';
           const char trans_sign = trans.imag() > 0 ? '+' : '-';
           ost <<ref.real()<<ref_sign<<std::abs(ref.imag())<<'j'<<','
-              <<trans.real()<<trans_sign<<std::abs(trans.imag())<<'j';
-          if(i == nm - 1){ost <<std::endl;}
-          else{ost << ",";}
+              <<trans.real()<<trans_sign<<std::abs(trans.imag())<<'j'<<',';
         }
+        //useful for debuggin weird results
+        ost <<computed_res<<std::endl;
       }
       const auto error_left =
         check_probe_in ? 
@@ -1859,7 +1859,7 @@ STATE ComputeProjAndError(TPZAutoPointer<TPZCompMesh> proj_mesh,
   return rel_error;
 }
 
-void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
+REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WpbcData& src_data,
                           WpbcData& match_data,
                           const TPZVec<CSTATE> &source_coeffs,
@@ -2016,7 +2016,8 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   }else{
     trans_pos = -1;
   }
-  
+
+  return scatt_an.GetResidual();
 }
 
 void CreateElementGroups(TPZCompMesh *cmesh,const std::set<int> &mat_ids){
