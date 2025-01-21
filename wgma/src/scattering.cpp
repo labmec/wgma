@@ -127,6 +127,10 @@ namespace wgma::scattering{
   void Analysis::Solve(){
     TPZSimpleTimer solve("Solve");
     TPZLinearAnalysis::Solve();
+    auto step = dynamic_cast<TPZStepSolver<CSTATE>*>(this->Solver());
+    if(step){
+      fResidual = step->GetTolerance();
+    }
   }
   void Analysis::Run(){
     Assemble();
@@ -927,7 +931,7 @@ namespace wgma::scattering{
         }
         allmats.insert(id);
       }
-
+      
     }
     scatt_cmesh->SetAllCreateFunctionsHCurl();
     scatt_cmesh->SetDefaultOrder(pOrder);

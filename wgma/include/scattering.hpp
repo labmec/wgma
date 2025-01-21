@@ -74,6 +74,9 @@ namespace wgma::scattering{
                                                               const TPZVec<int64_t> &graphindex,
                                                               const bool overlap);
     using TPZAnalysis::BuildPreconditioner;
+
+    //! Gets the residual returned from the linear solver
+    REAL GetResidual() const {return fResidual;}
   protected:
     //! H1 mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};
@@ -85,6 +88,8 @@ namespace wgma::scattering{
     bool m_filter_bound{false};
     //! Whether to use a symmetric matrix storage format
     bool m_sym{true};
+    //! Obtained residual of linear solver (0 if direct was used)
+    REAL fResidual{0};
   };
 
 
