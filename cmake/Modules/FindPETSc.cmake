@@ -61,7 +61,7 @@ unset(HAVE_PETSC_INT_SIZE CACHE)
 
 # Load pkg-config module (provided by CMake)
 find_package(PkgConfig REQUIRED)
-find_package(MPI REQUIRED CXX)
+#find_package(MPI REQUIRED CXX)
 # Find PETSc pkg-config file.
 set(ENV{PKG_CONFIG_PATH} "${PETSC_DIR}/lib/pkgconfig:${PETSC_DIR}/${PETSC_ARCH}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
 pkg_search_module(PETSC PETSc)
@@ -149,9 +149,10 @@ int main()
     set_property(TARGET PETSC::petsc_static PROPERTY INTERFACE_LINK_LIBRARIES)
 
   else()
-
+    
     message(STATUS "Test PETSC_TEST_RUNS with shared library linking - Failed")
-
+    message(STATUS "PETSC_TEST_LIB_COMPILE_OUTPUT ${PETSC_TEST_LIB_COMPILE_OUTPUT}")
+    message(STATUS "PETSC_TEST_LIB_OUTPUT ${PETSC_TEST_LIB_OUTPUT}")
     # Try to run test program (static linking)
     try_run(
       PETSC_TEST_LIB_EXITCODE
