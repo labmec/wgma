@@ -49,7 +49,7 @@ namespace wgma::wganalysis{
         NOTE: -1 stands for PETSC_DECIDE
       */
     
-      constexpr STATE eps_tol = 1e-10;//PETSC_DECIDE
+      constexpr STATE eps_tol = 1e-14;//PETSC_DECIDE
       constexpr int eps_max_its = -1;//PETSC_DECIDE
       constexpr EPSConv eps_conv_test = EPSConv::EPS_CONV_ABS;
     
@@ -324,10 +324,10 @@ namespace wgma::wganalysis{
   void Wgma2D::Solve(){
     TPZEigenAnalysis::Solve();
     const auto max_res = ComputeResidual();
-    if(max_res > 1e-10){
-      AdjustEz();
-      ComputeResidual();
-    }
+    // if(max_res > 1e-10){
+    //   AdjustEz();
+    //   ComputeResidual();
+    // }
   }
   
   void Wgma2D::AdjustEz(){
