@@ -351,7 +351,7 @@ namespace wgma::slepc{
       Vec v;
       PetscCall(VecCreateSeqWithArray(MPI_COMM_WORLD,blocksize,neq, vecMem, &v));
       PetscCall(VecSet(v, 0.0));
-      PetscCall(STMatSolve(st,x,v));
+      PetscCall(STMatSolveHermitianTranspose(st,x,v));
       PetscCall(EPSSetInitialSpace(eps, 1, &v));
       PetscCall(VecDestroy(&x));
       PetscCall(VecDestroy(&v));
