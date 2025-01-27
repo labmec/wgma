@@ -318,6 +318,11 @@ namespace wgma::wganalysis{
     }else{
       CountActiveEqs(m_n_dofs_mf,m_n_dofs_h1,m_n_dofs_hcurl);
     }
+    std::cout << "------\tactive eqs\t-------" << std::endl;
+    std::cout << "# H1 equations: " << m_n_dofs_h1 << std::endl;
+    std::cout << "# HCurl equations: " << m_n_dofs_hcurl << std::endl;
+    std::cout << "# equations: " << m_n_dofs_mf << std::endl;
+    std::cout << "------\t----------\t-------" << std::endl;
     this->SetStructuralMatrix(strmtrx);
   }
 
@@ -503,11 +508,6 @@ STATE Wgma2D::ComputeResidual(){
         }
       }
     }
-    std::cout << "------\tactive eqs\t-------" << std::endl;
-    std::cout << "# H1 equations: " << nH1Equations << std::endl;
-    std::cout << "# HCurl equations: " << nHCurlEquations << std::endl;
-    std::cout << "# equations: " << neq << std::endl;
-    std::cout << "------\t----------\t-------" << std::endl;
     return;
   }
   
@@ -641,6 +641,11 @@ STATE Wgma2D::ComputeResidual(){
     }else{
       CountActiveEqs(m_n_dofs_mf,m_n_dofs_h1,m_n_dofs_hcurl);
     }
+    std::cout << "------\tactive eqs\t-------" << std::endl;
+    std::cout << "# H1 equations: " << m_n_dofs_h1 << std::endl;
+    std::cout << "# HCurl equations: " << m_n_dofs_hcurl << std::endl;
+    std::cout << "# equations: " << m_n_dofs_mf << std::endl;
+    std::cout << "------\t----------\t-------" << std::endl;
     this->SetStructuralMatrix(strmtrx);
   }
 
@@ -693,11 +698,6 @@ STATE Wgma2D::ComputeResidual(){
         }
       }
     }
-    std::cout << "------\tactive eqs\t-------" << std::endl;
-    std::cout << "# H1 equations: " << nH1Equations << std::endl;
-    std::cout << "# HCurl equations: " << nHCurlEquations << std::endl;
-    std::cout << "# equations: " << neq << std::endl;
-    std::cout << "------\t----------\t-------" << std::endl;
     return;
   }
   
