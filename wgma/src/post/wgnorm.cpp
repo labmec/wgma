@@ -52,10 +52,12 @@ namespace wgma::post{
      therefore we will distinguish between radiation modes
      since the real part of E\times H^* is null
     */
-    constexpr STATE tol{1e-6};
+    constexpr STATE tol{1e-10};
     for(int iev = 0; iev < nev; iev++){
       const auto norm2 = res[iev];
-      if(std::abs(norm2) < tol){DebugStop();}
+      if(std::abs(norm2) < tol){
+        DebugStop();
+      }
       const bool is_propagating = norm2.real() > tol;
       const auto val = is_propagating ? norm2.real() : std::abs(norm2.imag());
       const auto norm = std::sqrt(val);
