@@ -541,6 +541,8 @@ ComputeModalAnalysis(
   bool usingSLEPC,
   const std::string &suffix)
 {
+
+  TPZSimpleTimer analysis("Modal analysis",true);
   auto modal_data =
     FillDataForModalAnalysis(gmshmats,simdata,mats,suffix);
 
@@ -590,122 +592,120 @@ ComputeModalAnalysis(
   std::string modalfile{simdata.prefix+"_modal"+suffix};
 
   {
-    TPZSimpleTimer analysis("Modal analysis");
+    TPZSimpleTimer timer("Assemble (both matrices)");
     an->Assemble();
+  }
+
+  {
     static constexpr bool computeVectors{true};
-  
+    an->Solve(computeVectors,verbose);
+  }
+  //load all obtained modes into the mesh
+  an->LoadAllSolutions();
 
-    {
-      TPZSimpleTimer timer("Solve",true);
-      an->Solve(computeVectors,verbose);
-    }
-    //load all obtained modes into the mesh
-    an->LoadAllSolutions();
+  if(planewave){
+    using namespace wgma::post;
+    auto decomp = PlanewaveDecomposition<SingleSpaceIntegrator>(an->GetHCurlMesh());
+    decomp.SetNThreads(simdata.n_threads);
+    CSTATE v11{0}, v12{0};
+    CSTATE v21{0}, v22{0};
+    decomp.ComputeCoefficients(v11, v12, v21, v22);
 
-    if(planewave){
-      using namespace wgma::post;
-      auto decomp = PlanewaveDecomposition<SingleSpaceIntegrator>(an->GetHCurlMesh());
-      decomp.SetNThreads(simdata.n_threads);
-      CSTATE v11{0}, v12{0};
-      CSTATE v21{0}, v22{0};
-      decomp.ComputeCoefficients(v11, v12, v21, v22);
+    int64_t neq_total{0}, neq_h1{0}, neq_hcurl{0};
+    an->CountActiveEqs(neq_total, neq_h1, neq_hcurl);
+    TPZFMatrix<CSTATE> &ev = an->GetEigenvectors();
+    //now we need to change the first two solutions
 
-      int64_t neq_total{0}, neq_h1{0}, neq_hcurl{0};
-      an->CountActiveEqs(neq_total, neq_h1, neq_hcurl);
-      TPZFMatrix<CSTATE> &ev = an->GetEigenvectors();
-      //now we need to change the first two solutions
+    TPZMatrixWindow<CSTATE> first_mode(ev.Elem(), neq_total,1,neq_total,neq_total);
+    TPZMatrixWindow<CSTATE> second_mode(ev.Elem()+neq_total, neq_total,1,neq_total,neq_total);
+    TPZFMatrix<CSTATE> first_mode_cp = first_mode;
+    TPZFMatrix<CSTATE> second_mode_cp = second_mode;
 
-      TPZMatrixWindow<CSTATE> first_mode(ev.Elem(), neq_total,1,neq_total,neq_total);
-      TPZMatrixWindow<CSTATE> second_mode(ev.Elem()+neq_total, neq_total,1,neq_total,neq_total);
-      TPZFMatrix<CSTATE> first_mode_cp = first_mode;
-      TPZFMatrix<CSTATE> second_mode_cp = second_mode;
-
-      std::cout<<"v11 "<<v11<<" v12 "<<v12<<std::endl;
-      std::cout<<"v21 "<<v21<<" v22 "<<v22<<std::endl;
-
-      first_mode = v11*first_mode_cp + v12*second_mode_cp;
-      second_mode = v21*first_mode_cp + v22*second_mode_cp;
-      an->LoadAllSolutions();
-    }
-
-    TPZVec<CSTATE> &betavec = an->GetEigenvalues();
-    nEigenpairs = betavec.size();
-    std::cout<<nEigenpairs<<" eigenpairs have converged"<<std::endl;
-    
-    for(CSTATE &b : betavec){
-      constexpr STATE tol{1e-6};
-      b = std::sqrt(-b);
-      if(std::abs(b.real())<tol && b.imag() > 0){
-          // std::cout<<"beta transf: ";
-        b=-b;
-      }
-    }
-    
-    if(simdata.export_csv_modes){
-      std::ostringstream eigeninfo;
-      typedef std::numeric_limits< double > dbl;
-      eigeninfo.precision(dbl::max_digits10);
-      for(const auto &b : betavec){
-        const auto pos_sign = std::imag(b) > 0 ? "+" : "-";
-        eigeninfo<<std::fixed<<std::real(b)<<pos_sign<<std::abs(std::imag(b))<<"j\n";
-      }
-      std::ofstream eigenfile(simdata.prefix+"_evalues"+suffix+".csv",std::ios::trunc);
-      eigenfile<<eigeninfo.str();
-      eigenfile.close();
-    }
-
-
-    constexpr bool ortho{true};
-    if(ortho){
-      TPZSimpleTimer timer("Ortho",true);
-      constexpr STATE tol{1e-14};
-      constexpr bool conj{false};
-      const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
-      std::cout<<"orthogonalised  "<<n_ortho<<" degenerate eigenpairs"<<std::endl;
-    }
-
-    if(simdata.export_vtk_modes){
-      PostProcessModes(*an, modalfile, simdata.vtk_res,simdata.n_threads);
-      an->LoadAllSolutions();
-    }
-    
-    if(simdata.couplingmat){
-
-      
-      std::string couplingfile{simdata.prefix+"_coupling"+suffix+".csv"};
-      ComputeCouplingMat(*an,couplingfile,simdata.n_threads,false);
-      couplingfile = simdata.prefix+"_coupling"+suffix+"_conj.csv";
-      ComputeCouplingMat(*an,couplingfile,simdata.n_threads,true);
-      an->LoadAllSolutions();
-    }
-
-    /*
-      in the modal analysis we perform a change of variables
-      now we transform back the solutions
-    */
-    {
-      TPZSimpleTimer timer("TransformModes",true);
-      TransformModes(*an);
-    }
-    TPZSimpleTimer timer("Normalise",true);
-    //now we normalise them
-    auto cmesh = an->GetMesh();
-    // //leave empty for all valid matids
-    // std::set<int> matids {};
-    // constexpr bool conj{true};
-    // auto norm =
-    //   wgma::post::WgNorm<wgma::post::MultiphysicsIntegrator>(cmesh,matids,
-    //                                                conj,simdata.n_threads);
-    // norm.SetNThreads(simdata.n_threads);    
-    // norm.SetBeta(betavec);
-    // norm.SetWavelength(simdata.lambda/simdata.scale);
-    // norm.Normalise();
-    // TPZSimpleTimer timer2("LoadAllSolutions",true);
-    // TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
-    // //we update analysis object
-    // an->SetEigenvectors(mesh_sol);
+    first_mode = v11*first_mode_cp + v12*second_mode_cp;
+    second_mode = v21*first_mode_cp + v22*second_mode_cp;
     an->LoadAllSolutions();
   }
+
+  TPZVec<CSTATE> &betavec = an->GetEigenvalues();
+  const auto betavec_cp = betavec;
+  nEigenpairs = betavec.size();
+  std::cout<<nEigenpairs<<" eigenpairs have converged"<<std::endl;
+    
+  for(CSTATE &b : betavec){
+    constexpr STATE tol{1e-6};
+    b = std::sqrt(-b);
+    if(std::abs(b.real())<tol && b.imag() > 0){
+      // std::cout<<"beta transf: ";
+      b=-b;
+    }
+  }
+    
+  if(simdata.export_csv_modes){
+    std::ostringstream eigeninfo;
+    typedef std::numeric_limits< double > dbl;
+    eigeninfo.precision(dbl::max_digits10);
+    for(const auto &b : betavec){
+      const auto pos_sign = std::imag(b) > 0 ? "+" : "-";
+      eigeninfo<<std::fixed<<std::real(b)<<pos_sign<<std::abs(std::imag(b))<<"j\n";
+    }
+    std::ofstream eigenfile(simdata.prefix+"_evalues"+suffix+".csv",std::ios::trunc);
+    eigenfile<<eigeninfo.str();
+    eigenfile.close();
+  }
+
+
+  constexpr bool ortho{true};
+  if(ortho){
+    TPZSimpleTimer timer("Ortho");
+    constexpr STATE tol{1e-14};
+    constexpr bool conj{false};
+    const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
+    std::cout<<"orthogonalised  "<<n_ortho<<" degenerate eigenpairs"<<std::endl;
+  }
+
+  if(simdata.export_vtk_modes){
+    const auto beta_sqrt = betavec;
+    an->SetEigenvalues(betavec_cp);
+    PostProcessModes(*an, modalfile, simdata.vtk_res,simdata.n_threads);
+    an->LoadAllSolutions();
+    an->SetEigenvalues(beta_sqrt);
+  }
+    
+  if(simdata.couplingmat){
+
+      
+    std::string couplingfile{simdata.prefix+"_coupling"+suffix+".csv"};
+    ComputeCouplingMat(*an,couplingfile,simdata.n_threads,false);
+    couplingfile = simdata.prefix+"_coupling"+suffix+"_conj.csv";
+    ComputeCouplingMat(*an,couplingfile,simdata.n_threads,true);
+    an->LoadAllSolutions();
+  }
+
+  /*
+    in the modal analysis we perform a change of variables
+    now we transform back the solutions
+  */
+  {
+    TPZSimpleTimer timer("TransformModes");
+    TransformModes(*an);
+  }
+  TPZSimpleTimer timer("Normalise");
+  //now we normalise them
+  auto cmesh = an->GetMesh();
+  //leave empty for all valid matids
+  std::set<int> matids {};
+  constexpr bool conj{true};
+  auto norm =
+    wgma::post::WgNorm<wgma::post::MultiphysicsIntegrator>(cmesh,matids,
+                                                           conj,simdata.n_threads);
+  norm.SetNThreads(simdata.n_threads);    
+  norm.SetBeta(betavec);
+  norm.SetWavelength(simdata.lambda/simdata.scale);
+  norm.Normalise();
+  TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
+  //we update analysis object
+  an->SetEigenvectors(mesh_sol);
+  an->LoadAllSolutions();
   //we dont need them anymore, let us free up memory
   an->GetSolver().SetMatrixA(nullptr);
   an->GetSolver().SetMatrixB(nullptr);
