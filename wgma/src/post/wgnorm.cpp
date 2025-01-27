@@ -52,19 +52,27 @@ namespace wgma::post{
      therefore we will distinguish between radiation modes
      since the real part of E\times H^* is null
     */
-    constexpr STATE tol{1e-10};
+
+    //sqrt(1e-12) = 1e-6 so it is not that bad
+    constexpr STATE tol{1e-12};
+    constexpr STATE betatol{1e-6};
     for(int iev = 0; iev < nev; iev++){
       const auto norm2 = res[iev];
       if(std::abs(norm2) < tol){
+        std::cout<<"iev "<<iev<<" beta "<<m_beta[iev]<<" norm2 "<<norm2<<std::endl;
+        std::cout<<"Aborting..."<<std::endl;
         DebugStop();
       }
-      const bool is_propagating = norm2.real() > tol;
+      const bool is_propagating = m_beta[iev].real() > betatol;
       const auto val = is_propagating ? norm2.real() : std::abs(norm2.imag());
       const auto norm = std::sqrt(val);
       const int offset = iev * neq;
       TPZFMatrix<CSTATE> ei(neq,1,evectors.Elem() + offset,neq);
+      // std::cout<<"iev "<<iev<<" beta "<<m_beta[iev]<<" norm "<<norm2<<"|norm|"<<norm<<std::endl;
       //let us avoid nasty divisions
-      if(std::abs(norm) > 1e-12){ei *= M_SQRT2/norm;}
+      if(std::abs(norm) > 1e-12){
+        ei *= M_SQRT2/norm;
+      }
     }
     return res;
   }
