@@ -105,9 +105,12 @@ cmeshtools::SetupGmshMaterialData(
     const auto id = mat.second;
 
     if(auto ispml = SetupIfPml(name,id,dim); !ispml){
-      if(matmap.find(name) == matmap.end()){//material not found
+      if(matmap.find(name) == matmap.end()){
+        //material not found
+#ifdef WGMADEBUG        
         std::cout<<"info: mat "<<name<<" id "<<id<<" not found"
                  <<"\nSkipping..."<<std::endl;
+#endif
       }else{
         const auto pos = matinfo.size();
         matinfo.push_back(std::make_tuple(
