@@ -339,7 +339,8 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
 
 void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
                         const bool is_te,
-                        std::string filename);
+                        std::string filename,
+                        const bool conj);
 
 void PostProcessModes(wgma::wganalysis::WgmaPlanar &an,
                       std::string filename,
@@ -515,9 +516,10 @@ ComputeModalAnalysis(
   ComputeModes(*modal_an, simdata.wavelength,simdata.mode == wgma::planarwg::mode::TE,
                simdata.scale, simdata.n_threads);
   if(simdata.couplingmat){
-    std::string couplingfile{simdata.prefix+"_coupling_"+name+".csv"};
+    std::string couplingfile{simdata.prefix+"_coupling_"+name};
     const bool is_te = simdata.mode == wgma::planarwg::mode::TE;
-    ComputeCouplingMat(*modal_an,is_te,couplingfile);
+    ComputeCouplingMat(*modal_an,is_te,couplingfile+".csv", false);
+    ComputeCouplingMat(*modal_an,is_te,couplingfile+"_conj.csv", true);
   }
   if(simdata.export_vtk_modes){
     PostProcessModes(*modal_an, modal_file, simdata.vtk_res);
@@ -600,13 +602,13 @@ void ComputeModes(wgma::wganalysis::WgmaPlanar &an,
 }
 void ComputeCouplingMat(wgma::wganalysis::WgmaPlanar &an,
                         const bool is_te,
-                        std::string filename)
+                        std::string filename,
+                        const bool conj)
 {
   
   using namespace wgma::post;
 
   std::set<int> matids;
-  constexpr bool conj{false};
   const int nthreads = std::thread::hardware_concurrency();
   WaveguideCoupling<SingleSpaceIntegrator> integrator(an.GetMesh(),
                                                        matids,
