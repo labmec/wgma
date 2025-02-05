@@ -266,38 +266,24 @@ void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
 
       //same connect already
       auto &dep_con = dep_cel->Connect(ic);
-      if(dep_ci!=indep_ci){
-        dep_con.DecrementElConnected();
-        dep_cel->SetConnectIndex(ic,indep_ci);
-        dep_con_map[dep_ci] = indep_ci;
-      }
-    }
-    
-    //now we go through the neighbours of the dependent el
-    //and see if they must have their connects swapped
-    const int nsides = dep_gel->NSides();
-    for(int is = 0; is < nsides; is++){
-      TPZGeoElSide gelside(dep_gel,is);
-      TPZGeoElSide neigh = gelside.Neighbour();
-      while(neigh!=gelside){
-        auto neigh_gel = neigh.Element();
-        if(neigh_gel){
-          auto neigh_cel = neigh_gel->Reference();
-          //found a neighbour in the same mesh
-          if(neigh_cel && neigh_cel->Mesh() == cmesh.operator->()){
-            auto ncon = neigh_cel->NConnects();
-            for(auto icon = 0; icon < ncon; icon++){
-              auto d_index = neigh_cel->ConnectIndex(icon);
-              if(dep_con_map.count(d_index)){
-                auto i_index = dep_con_map[d_index];
-                auto &dep_con = neigh_cel->Connect(icon);
-                dep_con.DecrementElConnected();
-                neigh_cel->SetConnectIndex(icon,i_index);
-              }
-            }
-          }
+      //TODO: think of a more robust way on how to proceed in this scenario
+      if(dep_con.HasDependency()){continue;}
+      const auto ndof = dep_con.NDof(cmesh);
+      if(ndof==0) {continue;}
+      constexpr int64_t ipos{0};
+      constexpr int64_t jpos{0};
+      if(complex_mesh){
+        TPZFNMatrix<400,CSTATE> mat(ndof,ndof);
+        mat.Identity();
+        mat*=std::exp(-1i*phase);
+        dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
+      }else{
+        TPZFNMatrix<400,STATE> mat(ndof,ndof);
+        mat.Identity();
+        if(phase!=0.0){
+          DebugStop();
         }
-        neigh=neigh.Neighbour();
+        dep_con.AddDependency(dep_ci, indep_ci, mat, ipos,jpos,ndof,ndof);
       }
     }
   }
