@@ -245,10 +245,21 @@ namespace wgma::wganalysis{
       for(auto ic = 0; ic < ncon;ic++){
         const auto &refc = atomic_mesh->ConnectVec()[ic];
         auto &c = m_cmesh_mf->ConnectVec()[first_con+ic];
-        if (!c.HasDependency() && c.NElConnected() && !c.IsCondensed()) {
-          const auto seqnum = refc.SequenceNumber();
-          c.SetSequenceNumber(first_seqnum+seqnum);
-        }else{
+        const auto atomic_seqnum = refc.SequenceNumber();
+        const auto is_indep_con =
+          !c.HasDependency() && c.NElConnected() && !c.IsCondensed();
+        /*
+          we want to keep the sequence number in two distinct scenarios
+          1. the connect is independent, etc, it should go first
+          2. the connect has a negative seqnum
+
+          otherwise we sent it to the end
+         */
+        if (is_indep_con){
+          c.SetSequenceNumber(first_seqnum+atomic_seqnum);
+        }else if (atomic_seqnum == -1){
+          c.SetSequenceNumber(-1);
+        }else {
           c.SetSequenceNumber(dep_count++);
         }
         if(c.SequenceNumber() >= 0){
@@ -494,6 +505,7 @@ STATE Wgma2D::ComputeResidual(){
         if (cmesh->ConnectVec()[iCon].HasDependency())
           continue;
         int seqnum = cmesh->ConnectVec()[iCon].SequenceNumber();
+        if(seqnum < 0){continue;}
         int blocksize = cmesh->Block().Size(seqnum);
         if (TPZWgma::H1Index() == 0 && iCon < cmeshH1->NConnects()) {
           isH1 = true;
