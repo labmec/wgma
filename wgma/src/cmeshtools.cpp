@@ -216,7 +216,12 @@ void cmeshtools::SetPeriodic(TPZAutoPointer<TPZCompMesh> &cmesh,
                              CSTATE phase)
 {
 
-  
+  if(phase!=0.){
+    PZError<<__PRETTY_FUNCTION__
+           <<"\nThe code does not currently support phase != 0"
+           <<std::endl;
+    DebugStop();
+  }
   
   auto gmesh = cmesh->Reference();
   gmesh->ResetReference();
