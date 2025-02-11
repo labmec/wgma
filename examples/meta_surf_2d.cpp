@@ -657,7 +657,7 @@ ComputeModalAnalysis(
   constexpr bool ortho{true};
   if(ortho){
     TPZSimpleTimer timer("Ortho");
-    constexpr STATE tol{1e-14};
+    constexpr STATE tol{1e-11};
     constexpr bool conj{false};
     const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
     std::cout<<"orthogonalised  "<<n_ortho<<" degenerate eigenpairs"<<std::endl;
@@ -700,12 +700,17 @@ ComputeModalAnalysis(
                                                            conj,simdata.n_threads);
   norm.SetNThreads(simdata.n_threads);    
   norm.SetBeta(betavec);
-  norm.SetWavelength(simdata.lambda/simdata.scale);
+  norm.SetWavelength(simdata.lambda);
   norm.Normalise();
   TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
   //we update analysis object
   an->SetEigenvectors(mesh_sol);
   an->LoadAllSolutions();
+  auto normvec = norm.ComputeNorm();
+
+  for(auto iev = 0; iev < betavec.size(); iev++){
+    std::cout<<"iev "<<iev<<" beta "<<betavec[iev]<<" norm "<<normvec[iev]<<std::endl;
+  }
   //we dont need them anymore, let us free up memory
   an->GetSolver().SetMatrixA(nullptr);
   an->GetSolver().SetMatrixB(nullptr);
@@ -1016,7 +1021,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                    <<" ref "<<ref
                    <<" ref norm "<<std::abs(ref)
                    <<" trans "<<trans
-                   <<" trans norm "<<std::abs(trans)<<std::endl;
+                   <<" trans norm "<<std::abs(trans)
+                   <<" t + r "<<std::abs(trans)+std::abs(ref)<<std::endl;
         }
         std::string outputfile = simdata.prefix+"_reflection.csv";
         std::ofstream ost;

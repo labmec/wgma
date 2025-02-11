@@ -3,10 +3,11 @@ import numpy as np
 import os
 import subprocess
 import sys
+from timeit import default_timer as timer
 from mat_indices import ag_n, ag_k, al_n, al_k, glass_n, glass_k
 
 
-def run_simulation(data, mat_n,mat_k):
+def run_simulation(data,wavelength,mat_n,mat_k):
     outfile = prefix+"_output.txt"
     if data["compute_reflection_norm"]:
         try:
@@ -14,17 +15,30 @@ def run_simulation(data, mat_n,mat_k):
             os.remove("../"+outfile)
         except FileNotFoundError:
             pass
-    
-    wavelength = data["wavelength"]
+        
+    data["wavelength"] = wavelength
     data["refractive indices"] = {
         "Ag": [mat_n(wavelength), -mat_k(wavelength)],
         "air": [1.0, 0],
         "sub": [glass_n(wavelength), -glass_k(wavelength)]
     }
     data["scale"] = wavelength/(2*np.pi)
-    # data["scale"] = 1
+    data["scale"] = 1
 
-    filename = 'cross_ag.json'
+    # neigleft = 750 if wavelength < 0.6 else 650
+    # nmodesleft = 700 if wavelength < 0.6 else 600
+    # neigright = 250 if wavelength < 0.6 else 650
+    # nmodesright = 200 if wavelength < 0.6 else 600
+    neigleft = 550
+    neigright = 550
+    nmodesleft = 500
+    nmodesright = 500
+    data["n_eigenpairs_left"] = neigleft
+    data["n_eigenpairs_right"] = neigright
+    data["n_modes_left"] = [nmodesleft]
+    data["n_modes_right"] = [nmodesright]
+    data["direct_solver"] = False
+    filename = 'cross_sweep_.json'
     with open(filename, 'w+') as jsonfile:
         # create json
         json.dump(data, jsonfile, indent=4, sort_keys=True)
@@ -35,11 +49,16 @@ def run_simulation(data, mat_n,mat_k):
     # found executable
     if status == 0:
         # run program
-        os.system('cd .. && ./meta_surf_2d scripts/' + filename)
+        cmd_string = 'cd .. && ./meta_surf_2d scripts/' + filename
+        ret_val = os.system(cmd_string)
+        if ret_val != 0:
+            print("\rsomething is wrong with this mesh!")
+            return
     try:
         os.remove(filename)
     except FileNotFoundError:
         pass
+    
     print("\rDone!                      ")
 
 data = {
@@ -69,40 +88,14 @@ data["source_coeffs"] = [[0, 1]]
 
 
 data["check_mode_propagation"] = False
-data["direct_solver"] = True
-data["n_eigenpairs_left"] = 200
-data["n_eigenpairs_right"] = 200
-data["n_modes_left"] = [200]
-data["n_modes_right"] = [200]
+data["direct_solver"] = False
 
 
-
-data["wavelength"] = 1.06
-
-
-#testing NOT FULL
-data["meshfile"] = "meshes/cross_ag.msh"
-
-prefix = "res_cross_freq_sweep/cross_ag"
+wavelength = 1.24
+prefix = "res_cross_ag/cross_ag_ref"
+data["meshfile"] = "meshes/cross_ag_0.msh"
 data["prefix"] = prefix
-print("Running with silver")
-run_simulation(data, ag_n, ag_k)
-
-prefix = "res_cross_freq_sweep/cross_al"
-data["prefix"] = prefix
-print("Running with aluminum")
-run_simulation(data, al_n, al_k)
-
-
-#testing FULL
-data["meshfile"] = "meshes/cross_ag_full.msh"
-
-prefix = "res_cross_freq_sweep/cross_ag_full"
-data["prefix"] = prefix
-print("Running with silver")
-run_simulation(data, ag_n, ag_k)
-
-prefix = "res_cross_freq_sweep/cross_al_full"
-data["prefix"] = prefix
-print("Running with aluminum")
-run_simulation(data, al_n, al_k)
+s_begin = timer()
+run_simulation(data, wavelength, ag_n, ag_k)
+s_end = timer()
+print("solved system in {} seconds".format(s_end-s_begin))
