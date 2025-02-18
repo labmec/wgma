@@ -30,7 +30,7 @@ namespace wgma::post{
     TPZVec<CSTATE> res(nsol,0.);
     for (auto &it : m_res){
       for(int isol = 0; isol < nsol; isol++){
-        res[isol] += it[isol];
+        res[isol] += it[isol]/2.;
       }
     }
     m_res.Resize(0);
@@ -68,10 +68,11 @@ namespace wgma::post{
       const auto norm = std::sqrt(val);
       const int offset = iev * neq;
       TPZFMatrix<CSTATE> ei(neq,1,evectors.Elem() + offset,neq);
-      // std::cout<<"iev "<<iev<<" beta "<<m_beta[iev]<<" norm "<<norm2<<"|norm|"<<norm<<std::endl;
+      std::cout<<"iev "<<iev<<" beta "<<m_beta[iev]
+               <<" Poynting "<<norm2<<"sqrt(|Poynting|)"<<norm<<std::endl;
       //let us avoid nasty divisions
       if(std::abs(norm) > 1e-12){
-        ei *= M_SQRT2/norm;
+        ei *= 1/norm;
       }
     }
     return res;
@@ -203,10 +204,11 @@ namespace wgma::post{
       ur.Substitution(&h_field);
 
       //c_0 times \mu_0 = 29.9792458 * 4 * pi
-      const auto c_uo = 29.9792458*4*M_PI;
+      constexpr auto c_uo = 29.9792458*4*M_PI;
       //\omega times \mu_0 = 2\pi f \mu_0^-1 =  2 pi c_0 \mu_0^-1/ wl
       const auto omega_uo = (2*M_PI/m_wl)*c_uo;
-      h_field *= 1i/omega_uo;
+      //it will be conjugated, so minus sign
+      h_field *= -1i/omega_uo;
 
       TPZFMatrix<CSTATE> solmat(nsol,1,this->m_res[index].begin(),nsol);
       
