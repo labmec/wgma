@@ -104,6 +104,7 @@ set(material_data
   ../py/scripts/data/Cu1.dat
   ../py/scripts/data/Ag.dat
   ../py/scripts/data/glass.dat
+  ../py/scripts/data/TiO2.dat
 )
 configure_file(../py/scripts/mat_indices.py scripts/mat_indices.py)
 foreach(file ${material_data})
