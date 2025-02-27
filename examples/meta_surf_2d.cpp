@@ -353,6 +353,8 @@ void ComputeCouplingMat(wgma::wganalysis::Wgma2D &an,
 
 void TransformModes(wgma::wganalysis::Wgma2D& an);
 
+void TransformModes2(wgma::wganalysis::Wgma2D& an, const std::set<int64_t> &reversed);
+
 void PostProcessModes(wgma::wganalysis::Wgma2D &an,
                       std::string filename,
                       const int vtkres,
@@ -630,13 +632,22 @@ ComputeModalAnalysis(
   const auto betavec_cp = betavec;
   nEigenpairs = betavec.size();
   std::cout<<nEigenpairs<<" eigenpairs have converged"<<std::endl;
-    
-  for(CSTATE &b : betavec){
-    constexpr STATE tol{1e-6};
-    b = std::sqrt(-b);
-    if(std::abs(b.real())<tol && b.imag() > 0){
-      // std::cout<<"beta transf: ";
-      b=-b;
+
+  std::set<int64_t> reversed_modes;
+  constexpr bool changing_beta{true};
+  {
+    int64_t count{0};
+    for(CSTATE &b : betavec){
+      constexpr STATE tol{1e-6};
+      b = std::sqrt(-b);
+      if(std::abs(b.real())<tol && b.imag() > 0){
+        // std::cout<<"beta transf: ";
+        b=-b;
+        if constexpr (changing_beta){
+          reversed_modes.insert(count);
+        }
+      }
+      count++;
     }
   }
     
@@ -657,7 +668,7 @@ ComputeModalAnalysis(
   constexpr bool ortho{true};
   if(ortho){
     TPZSimpleTimer timer("Ortho");
-    constexpr STATE tol{1e-11};
+    constexpr STATE tol{5e-1};
     constexpr bool conj{false};
     const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
     std::cout<<"orthogonalised  "<<n_ortho<<" degenerate eigenpairs"<<std::endl;
@@ -688,6 +699,9 @@ ComputeModalAnalysis(
   {
     TPZSimpleTimer timer("TransformModes");
     TransformModes(*an);
+    // if constexpr (changing_beta){
+    //   TransformModes2(*an, reversed_modes);
+    // }
   }
   TPZSimpleTimer timer("Normalise");
   //now we normalise them
@@ -700,7 +714,7 @@ ComputeModalAnalysis(
                                                            conj,simdata.n_threads);
   norm.SetNThreads(simdata.n_threads);    
   norm.SetBeta(betavec);
-  norm.SetWavelength(simdata.lambda);
+  norm.SetWavelength(simdata.lambda/simdata.scale);
   norm.Normalise();
   TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
   //we update analysis object
@@ -708,8 +722,29 @@ ComputeModalAnalysis(
   an->LoadAllSolutions();
   auto normvec = norm.ComputeNorm();
 
+  
+  if constexpr(!changing_beta){
+    constexpr STATE normtol{1e-10};
+    for(auto iev = 0; iev < betavec.size(); iev++){
+      if(std::abs(normvec[iev].real()) < normtol){
+        //not a propagating mode
+        if(normvec[iev].imag() > 0 ){
+          reversed_modes.insert(iev);
+        }
+      }
+    }
+    TransformModes2(*an,reversed_modes);
+    norm.Normalise();
+    TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
+    //we update analysis object
+    an->SetEigenvectors(mesh_sol);
+    an->LoadAllSolutions();
+    normvec = norm.ComputeNorm();
+    
+  }
   for(auto iev = 0; iev < betavec.size(); iev++){
-    std::cout<<"iev "<<iev<<" beta "<<betavec[iev]<<" norm "<<normvec[iev]<<std::endl;
+    const int changed = reversed_modes.count(iev);
+    std::cout<<"iev "<<iev<<" beta "<<betavec[iev]<<" changed "<<changed<<" norm "<<normvec[iev]<<std::endl;
   }
   //we dont need them anymore, let us free up memory
   an->GetSolver().SetMatrixA(nullptr);
@@ -1426,6 +1461,44 @@ void TransformModes(wgma::wganalysis::Wgma2D& an)
       CSTATE *sol_ptr = &h1_sol.g(0,isol);
       for(int irow = 0; irow < nrow; irow++){
         *sol_ptr++ *= 1i;
+      }
+    }
+  }
+    
+  TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshvec(2);
+  meshvec[TPZWgma::H1Index()] = h1_mesh;
+  meshvec[TPZWgma::HCurlIndex()] = hcurl_mesh;    
+  TPZBuildMultiphysicsMesh::TransferFromMeshes(meshvec,mf_mesh);
+  //we update analysis object
+  TPZFMatrix<CSTATE> &mesh_sol=mf_mesh->Solution();
+  const auto neq_full = mesh_sol.Rows();
+  const auto neq_indep = mf_mesh->NEquations();
+  TPZMatrixWindow<CSTATE> reduced_sol(mesh_sol,0,0,neq_indep,nsol);
+  an.SetEigenvectors(reduced_sol);
+  an.LoadAllSolutions();
+}
+
+void TransformModes2(wgma::wganalysis::Wgma2D& an,
+                     const std::set<int64_t> &reversed)
+{
+  using namespace std::complex_literals;
+  TPZAutoPointer<TPZCompMesh> h1_mesh = an.GetH1Mesh();
+  TPZAutoPointer<TPZCompMesh> hcurl_mesh = an.GetHCurlMesh();
+  TPZAutoPointer<TPZCompMesh> mf_mesh = an.GetMesh();
+  TPZFMatrix<CSTATE> &hcurl_sol = hcurl_mesh->Solution();
+  TPZFMatrix<CSTATE> &h1_sol = h1_mesh->Solution();
+
+  //is transformed already
+  TPZVec<CSTATE> betavec = an.GetEigenvalues();
+    
+  const int nsol = hcurl_sol.Cols();
+  {
+    
+    const int nrow = h1_sol.Rows();
+    for(auto isol : reversed){
+      CSTATE *sol_ptr = &h1_sol.g(0,isol);
+      for(int irow = 0; irow < nrow; irow++){
+        *sol_ptr++ *= -1;
       }
     }
   }
