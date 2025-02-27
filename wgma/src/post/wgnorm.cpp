@@ -68,8 +68,8 @@ namespace wgma::post{
       const auto norm = std::sqrt(val);
       const int offset = iev * neq;
       TPZFMatrix<CSTATE> ei(neq,1,evectors.Elem() + offset,neq);
-      std::cout<<"iev "<<iev<<" beta "<<m_beta[iev]
-               <<" Poynting "<<norm2<<"sqrt(|Poynting|)"<<norm<<std::endl;
+      // std::cout<<"iev "<<iev<<" beta "<<m_beta[iev]
+      //          <<" Poynting "<<norm2<<"sqrt(|Poynting|)"<<norm<<std::endl;
       //let us avoid nasty divisions
       if(std::abs(norm) > 1e-12){
         ei *= 1/norm;
