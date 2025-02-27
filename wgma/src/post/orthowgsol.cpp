@@ -42,6 +42,10 @@ int wgma::post::OrthoWgSol(wgma::wganalysis::Wgma &an,
     }
     if(count!=0){
       n_ortho+=count+1;
+      // for(int iiev = iev; iiev < iev+count+1;iiev++){
+      //   std::cout<<iiev<<' ';
+      // }
+      // std::cout<<" are degenerate\n"<<std::endl;
     }
 
     const int offset_i_scatter = iev * neq_expand;
