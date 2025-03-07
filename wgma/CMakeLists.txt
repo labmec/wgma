@@ -17,6 +17,7 @@ set(headers
   include/cmeshtools.hpp
   include/cmeshtools_impl.hpp
   include/wganalysis.hpp
+  include/planewaveanalysis.hpp
   include/scattering.hpp
   include/slepcepshandler.hpp
   include/precond.hpp
@@ -47,6 +48,7 @@ set(sources
   src/cartesian_pml.cpp
   src/cylindrical_pml.cpp
   src/wganalysis.cpp
+  src/planewaveanalysis.cpp
   src/scattering.cpp
   src/slepcepshandler.cpp
   src/precond.cpp
