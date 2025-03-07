@@ -10,8 +10,8 @@ using namespace std::complex_literals;
 
 namespace wgma::post{
 
-  template<class TSPACE>
-  void WaveguidePortBC<TSPACE>::ComputeContribution(){
+  template<class TSPACE, int TMAT>
+  void WaveguidePortBC<TSPACE,TMAT>::ComputeContribution(){
     const int size_res = std::max(this->NThreads(),1);
     const int ncols = this->Mesh()->Solution().Cols();
     //if we deal with the adjoint problem as well, we have 2n solutions
@@ -43,8 +43,8 @@ namespace wgma::post{
     m_f_scratch.Resize(0);
   }
 
-  template<class TSPACE>
-  void WaveguidePortBC<TSPACE>::InitData(TPZCompEl *el, ElData &data)
+  template<class TSPACE, int TMAT>
+  void WaveguidePortBC<TSPACE,TMAT>::InitData(TPZCompEl *el, ElData &data)
   {
     TSPACE::InitData(el,data);
   }
@@ -52,8 +52,8 @@ namespace wgma::post{
 
   #include <Electromagnetics/TPZScalarField.h>
   
-  template<class TSPACE>
-  void WaveguidePortBC<TSPACE>::Compute(const ElData &eldata, REAL weight, int index)
+  template<class TSPACE, int TMAT>
+  void WaveguidePortBC<TSPACE,TMAT>::Compute(const ElData &eldata, REAL weight, int index)
   {
     constexpr int no_trans{0};
     constexpr int conj_trans{2};
@@ -116,9 +116,14 @@ namespace wgma::post{
       //we expect a TPZWgma material
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
 
-      auto mat = dynamic_cast<const TPZWgma*>(eldata.GetMaterial());
       TPZFNMatrix<9,CSTATE> ur;
-      mat->GetPermeability(datavec[0].x, ur);
+      if constexpr (TMAT==0){
+        auto mat = dynamic_cast<const TPZWgma*>(eldata.GetMaterial());
+        mat->GetPermeability(datavec[0].x, ur);
+      }else{//non-magnetic materials only for now
+        ur.Resize(3,3);
+        ur.Identity();
+      }
       ur.Decompose(ELU);
 
       const auto nsol = datavec[0].sol.size();
@@ -186,8 +191,10 @@ namespace wgma::post{
   }
 
   template
-  class WaveguidePortBC<SingleSpaceIntegrator>;
+  class WaveguidePortBC<SingleSpaceIntegrator,0>;
   template
-  class WaveguidePortBC<MultiphysicsIntegrator>;
+  class WaveguidePortBC<MultiphysicsIntegrator,0>;
+  template
+  class WaveguidePortBC<MultiphysicsIntegrator,1>;
   
 };

@@ -26,7 +26,7 @@ namespace wgma::post{
       (SetAdjoint(false)), the mesh solution is expected to have n columns.
       Otherwise, it is expected to have 2n columns.
   */
-  template<class TSPACE>
+  template<class TSPACE,int TMAT=0>
   class WaveguideCoupling: public TSPACE{
   public:
     WaveguideCoupling(TPZAutoPointer<TPZCompMesh> mesh,

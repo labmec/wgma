@@ -33,8 +33,8 @@ using namespace std::complex_literals;
 
 namespace wgma::post{
 
-  template<class TSPACE>
-  void WaveguideCoupling<TSPACE>::ComputeCoupling(){
+  template<class TSPACE, int TMAT>
+  void WaveguideCoupling<TSPACE,TMAT>::ComputeCoupling(){
     const int size_res = std::max(this->NThreads(),1);
     const int nsol = this->Mesh()->Solution().Cols();
     m_kii.Redim(nsol,nsol);
@@ -55,8 +55,8 @@ namespace wgma::post{
     m_k_scratch.Resize(0);
   }
 
-  template<class TSPACE>
-  void WaveguideCoupling<TSPACE>::InitData(TPZCompEl *el, ElData &data)
+  template<class TSPACE, int TMAT>
+  void WaveguideCoupling<TSPACE,TMAT>::InitData(TPZCompEl *el, ElData &data)
   {
     TSPACE::InitData(el,data);
     
@@ -68,8 +68,8 @@ namespace wgma::post{
   }
 
 
-  template<class TSPACE>
-  void WaveguideCoupling<TSPACE>::PostProcessData(ElData& data)
+  template<class TSPACE, int TMAT>
+  void WaveguideCoupling<TSPACE, TMAT>::PostProcessData(ElData& data)
   {
     if(!m_print_mats) return;
     auto wgdata = dynamic_cast<WgCouplData*>(&data);
@@ -78,8 +78,8 @@ namespace wgma::post{
     wgdata->m_elmat.Print("",matfile,ECSV);
   }
   
-  template<class TSPACE>
-  void WaveguideCoupling<TSPACE>::Compute(const ElData &eldataconst, REAL weight, int index)
+  template<class TSPACE, int TMAT>
+  void WaveguideCoupling<TSPACE,TMAT>::Compute(const ElData &eldataconst, REAL weight, int index)
   {
     ElData& eldata = (ElData&)eldataconst;
     auto wgdata = dynamic_cast<WgCouplData*>(&eldata);
@@ -114,15 +114,6 @@ namespace wgma::post{
     }else{
       //we expect a TPZWgma material
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
-
-      auto mat = dynamic_cast<const TPZWgma*>(eldata.GetMaterial());
-      TPZFNMatrix<9,CSTATE> ur;
-      mat->GetPermeability(datavec[0].x, ur);
-      ur.Decompose(ELU);
-#ifdef CHECK_ORTH
-      TPZFNMatrix<9,CSTATE> er;
-      mat->GetPermittivity(datavec[0].x, er);
-#endif
 
       const int nsol = datavec[0].sol.size();
       const auto &axes = datavec[0].axes;
@@ -172,7 +163,22 @@ namespace wgma::post{
           *tmp_ptr = std::conj(*tmp_ptr);
         }
       }
-      ur.Substitution(&tmp);
+
+
+      TPZFNMatrix<9,CSTATE> ur;
+#ifdef CHECK_ORTH
+      TPZFNMatrix<9,CSTATE> er;
+#endif
+      if constexpr (TMAT==0){
+        auto mat = dynamic_cast<const TPZWgma*>(eldata.GetMaterial());
+        mat->GetPermeability(datavec[0].x, ur);
+        ur.Decompose(ELU);
+        ur.Substitution(&tmp);
+#ifdef CHECK_ORTH
+        mat->GetPermittivity(datavec[0].x, er);
+#endif
+      }
+      
       tmp *= cte;
       this->m_k_scratch[index].AddContribution(0, 0, rot_et, true, tmp, false);
 
@@ -197,8 +203,10 @@ namespace wgma::post{
   }
 
   template
-  class WaveguideCoupling<SingleSpaceIntegrator>;
+  class WaveguideCoupling<SingleSpaceIntegrator,0>;
   template
-  class WaveguideCoupling<MultiphysicsIntegrator>;
+  class WaveguideCoupling<MultiphysicsIntegrator,0>;
+  template
+  class WaveguideCoupling<MultiphysicsIntegrator,1>;
   
 };

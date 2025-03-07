@@ -10,8 +10,11 @@ namespace wgma::post{
         Computes L2 norm of a given waveguide mode loaded into the FEM mesh.
         The norm computed is the integral of E \times H^*, i.e., the norm
         of the time-average Poynting vector.
+
+        MAT=0 indicates that a Wgma material is expected
+        MAT=1 indicates that a planewave solution is expected
      */
-  template<class TSPACE>
+  template<class TSPACE, int MAT=0>
   class WgNorm: public TSPACE{
   public:
     explicit WgNorm(TPZAutoPointer<TPZCompMesh> mesh,

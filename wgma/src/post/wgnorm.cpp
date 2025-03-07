@@ -9,8 +9,8 @@ using namespace std::complex_literals;
 
 namespace wgma::post{
 
-  template<class TSPACE>
-  TPZVec<CSTATE> WgNorm<TSPACE>::ComputeNorm()
+  template<class TSPACE, int TMAT>
+  TPZVec<CSTATE> WgNorm<TSPACE,TMAT>::ComputeNorm()
   {
     auto mesh = this->Mesh();
     const int size_res = std::max(this->NThreads(),1);
@@ -37,8 +37,8 @@ namespace wgma::post{
     return res;
   }
   
-  template<class TSPACE>
-  TPZVec<CSTATE> WgNorm<TSPACE>::Normalise()
+  template<class TSPACE, int TMAT>
+  TPZVec<CSTATE> WgNorm<TSPACE,TMAT>::Normalise()
   {
     auto res = ComputeNorm();
     
@@ -78,8 +78,8 @@ namespace wgma::post{
     return res;
   }
 
-  template<class TSPACE>
-  CSTATE WgNorm<TSPACE>::ComputeNorm(int s){
+  template<class TSPACE,int TMAT>
+  CSTATE WgNorm<TSPACE,TMAT>::ComputeNorm(int s){
     //we store the solution
     TPZFMatrix<CSTATE> solcp = this->Mesh()->Solution();
     TPZVec<CSTATE> betacp = m_beta;
@@ -101,8 +101,8 @@ namespace wgma::post{
     return res[0];
   }
 
-  template<class TSPACE>
-  void WgNorm<TSPACE>::Compute(const ElData &eldata, REAL weight, int index)
+  template<class TSPACE,int TMAT>
+  void WgNorm<TSPACE,TMAT>::Compute(const ElData &eldata, REAL weight, int index)
   {
     if constexpr(std::is_same_v<TSPACE,SingleSpaceIntegrator>){
       const TPZMaterialDataT<CSTATE> &data = eldata;
@@ -197,11 +197,14 @@ namespace wgma::post{
       h_field = rot_et_beta;
       h_field+= rot_grad_ez;
 
-      auto mat = dynamic_cast<const TPZWgma*>(eldata.GetMaterial());
-      TPZFNMatrix<9,CSTATE> ur;
-      mat->GetPermeability(datavec[0].x, ur);
-      ur.Decompose(ELU);
-      ur.Substitution(&h_field);
+      if constexpr (TMAT==0){
+        TPZFNMatrix<9,CSTATE> ur;
+        auto mat = dynamic_cast<const TPZWgma*>(eldata.GetMaterial());
+        mat->GetPermeability(datavec[0].x, ur);
+        ur.Decompose(ELU);
+        ur.Substitution(&h_field);
+      }else{//non-magnetic materials only for now
+      }
 
       //c_0 times \mu_0 = 29.9792458 * 4 * pi
       constexpr auto c_uo = 29.9792458*4*M_PI;
@@ -226,8 +229,10 @@ namespace wgma::post{
   }
 
   template
-  class WgNorm<SingleSpaceIntegrator>;
+  class WgNorm<SingleSpaceIntegrator,0>;
   template
-  class WgNorm<MultiphysicsIntegrator>;
+  class WgNorm<MultiphysicsIntegrator,0>;
+  template
+  class WgNorm<MultiphysicsIntegrator,1>;
   
 };

@@ -18,8 +18,11 @@ namespace wgma::post{
 
       provided that E,F are the basis functions restricted on the computed modes
       of the waveguide.
+
+      MAT=0 indicates that a Wgma material is expected
+      MAT=1 indicates that a planewave solution is expected
    */
-  template<class TSPACE>
+    template<class TSPACE, int TMAT=0>
   class WaveguidePortBC: public TSPACE{
   public:
     WaveguidePortBC(TPZAutoPointer<TPZCompMesh> mesh,
