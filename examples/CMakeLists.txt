@@ -137,4 +137,9 @@ add_pz_target(
   NAME wg_disc_3d
   SOURCES wg_disc_3d.cpp
   )
-target_link_libraries(wg_disc_3d PUBLIC wgma)  
+  target_link_libraries(wg_disc_3d PUBLIC wgma)
+add_pz_target(
+  NAME meta_surf_2d
+  SOURCES meta_surf_2d.cpp
+  )
+target_link_libraries(meta_surf_2d PUBLIC wgma)  
