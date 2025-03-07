@@ -7,6 +7,7 @@
 ***/
 
 #include "wganalysis.hpp"          // for Wgma2D, CMeshWgma2D2D
+#include "planewaveanalysis.hpp"
 #include "scattering.hpp"          // for CMeshScattering3D
 #include "gmeshtools.hpp"
 #include "post/waveguidecoupling.hpp"
@@ -360,15 +361,6 @@ void ComputeCouplingMat(TPZAutoPointer<TPZCompMesh> cmesh_mf,
                         const int nthreads,
                         const bool conj);
 
-void TransformModes(wgma::wganalysis::Wgma2D& an);
-
-void TransformModes2(wgma::wganalysis::Wgma2D& an, const std::set<int64_t> &reversed);
-
-void PostProcessModes(wgma::wganalysis::Wgma2D &an,
-                      std::string filename,
-                      const int vtkres,
-                      const int nthreads);
-
 TPZAutoPointer<TPZCompMesh>
 CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
                 const TPZVec<std::map<std::string, int>> &gmshmats,
@@ -569,10 +561,21 @@ ComputeModalAnalysis(
   const auto &p_order = simdata.porder;
   const auto &lambda = simdata.lambda;
   const auto &scale = simdata.scale;
-  const bool verbose = simdata.eigen_verbose;
-  auto modal_cmesh = wgma::wganalysis::CMeshWgma2DPeriodic(gmesh,p_order,modal_data,
-                                                           el_map,
-                                                           lambda, scale,verbose);
+  const bool verbose = true;//simdata.eigen_verbose;
+  const STATE lx = 0.65;
+  const STATE ly = 0.65;
+  const int max_k  = 4;
+  const auto modal_data_cp = modal_data;
+  for(auto &matinfo : modal_data.matinfovec){
+    const auto er = std::get<1>(matinfo);
+    const auto n = std::sqrt(er);
+    std::get<1>(matinfo) = n;
+  }
+  auto modal_cmesh = wgma::planewaveanalysis::CMeshPlaneWave2D(gmesh,p_order,modal_data,
+                                                               el_map, lambda,
+                                                               lx, ly, max_k,
+                                                               scale,verbose);
+  modal_data = modal_data_cp;
 
   constexpr bool print_cmesh{false};
   if(print_cmesh){
@@ -580,85 +583,21 @@ ComputeModalAnalysis(
     wgma::cmeshtools::PrintCompMesh(modal_cmesh[1], simdata.prefix+"_cmesh_hc"+suffix);
     wgma::cmeshtools::PrintCompMesh(modal_cmesh[2], simdata.prefix+"_cmesh_h1"+suffix);
   }
-  /******************************
-   * solve(modal analysis left) *
-   ******************************/
-  const int krylovDim =
-    nEigenpairs < 20 ? nEigenpairs*5 : (int)std::ceil(1.25*nEigenpairs);
-  auto solver = wgma::wganalysis::SetupSolver(target, nEigenpairs, sortingRule, usingSLEPC,krylovDim,verbose);
-  if(sortingRule==TPZEigenSort::UserDefined){
-    solver->SetUserSortingFunc([](CSTATE a, CSTATE b)->bool{
-      const auto sqrt_a_im = std::fabs(std::imag(std::sqrt(-a)));
-      const auto sqrt_b_im = std::fabs(std::imag(std::sqrt(-b)));
-      return sqrt_a_im < sqrt_b_im;
-    });
-  }
 
-  TPZAutoPointer<wgma::wganalysis::Wgma2D> an =
-    new wgma::wganalysis::Wgma2D(modal_cmesh, simdata.n_threads,
-                                 simdata.optimize_bandwidth,
-                                 simdata.filter_bnd_eqs);
-  an->SetSolver(*solver);
-
+  TPZAutoPointer<wgma::planewaveanalysis::Analysis>
+    an = new wgma::planewaveanalysis::Analysis(modal_cmesh, simdata.n_threads,
+                                               simdata.optimize_bandwidth,
+                                               simdata.filter_bnd_eqs);
+  
   std::string modalfile{simdata.prefix+"_modal"+suffix};
 
-  {
-    TPZSimpleTimer timer("Assemble (both matrices)");
-    an->Assemble();
-  }
-
-  {
-    static constexpr bool computeVectors{true};
-    an->Solve(computeVectors,verbose);
-  }
+  an->Run();
   //load all obtained modes into the mesh
-  an->LoadAllSolutions();
+  an->LoadSolution();
 
-  if(planewave){
-    using namespace wgma::post;
-    auto decomp = PlanewaveDecomposition<SingleSpaceIntegrator>(an->GetHCurlMesh());
-    decomp.SetNThreads(simdata.n_threads);
-    CSTATE v11{0}, v12{0};
-    CSTATE v21{0}, v22{0};
-    decomp.ComputeCoefficients(v11, v12, v21, v22);
-
-    int64_t neq_total{0}, neq_h1{0}, neq_hcurl{0};
-    an->CountActiveEqs(neq_total, neq_h1, neq_hcurl);
-    TPZFMatrix<CSTATE> &ev = an->GetEigenvectors();
-    //now we need to change the first two solutions
-
-    TPZMatrixWindow<CSTATE> first_mode(ev.Elem(), neq_total,1,neq_total,neq_total);
-    TPZMatrixWindow<CSTATE> second_mode(ev.Elem()+neq_total, neq_total,1,neq_total,neq_total);
-    TPZFMatrix<CSTATE> first_mode_cp = first_mode;
-    TPZFMatrix<CSTATE> second_mode_cp = second_mode;
-
-    first_mode = v11*first_mode_cp + v12*second_mode_cp;
-    second_mode = v21*first_mode_cp + v22*second_mode_cp;
-    an->LoadAllSolutions();
-  }
-
-  TPZVec<CSTATE> &betavec = an->GetEigenvalues();
-  const auto betavec_cp = betavec;
+  TPZVec<CSTATE> betavec = an->GetEigenvalues();
   nEigenpairs = betavec.size();
   std::cout<<nEigenpairs<<" eigenpairs have converged"<<std::endl;
-
-  std::set<int64_t> reversed_modes;
-  constexpr bool changing_beta{true};
-  {
-    int64_t count{0};
-    for(CSTATE &b : betavec){
-      constexpr STATE tol{1e-6};
-      b = std::sqrt(-b);
-      if(std::abs(b.real())<tol && b.imag() > 0){
-        // std::cout<<"beta transf: ";
-        b=-b;
-        if constexpr (changing_beta){
-          reversed_modes.insert(count);
-        }
-      }
-      count++;
-    }
-  }
     
   if(simdata.export_csv_modes){
     std::ostringstream eigeninfo;
@@ -674,41 +613,20 @@ ComputeModalAnalysis(
   }
 
 
-  constexpr bool ortho{true};
-  if(ortho){
-    TPZSimpleTimer timer("Ortho");
-    constexpr STATE tol{5e-1};
-    constexpr bool conj{false};
-    const int n_ortho = wgma::post::OrthoWgSol(an,tol,conj);
-    std::cout<<"orthogonalised  "<<n_ortho<<" degenerate eigenpairs"<<std::endl;
-  }
-
-  if(simdata.export_vtk_modes){
-    const auto beta_sqrt = betavec;
-    an->SetEigenvalues(betavec_cp);
-    PostProcessModes(*an, modalfile, simdata.vtk_res,simdata.n_threads);
-    an->LoadAllSolutions();
-    an->SetEigenvalues(beta_sqrt);
-  }
+  // if(simdata.export_vtk_modes){
+  //   const auto beta_sqrt = betavec;
+  //   an->SetEigenvalues(betavec_cp);
+  //   PostProcessModes(*an, modalfile, simdata.vtk_res,simdata.n_threads);
+  //   an->LoadAllSolutions();
+  //   an->SetEigenvalues(beta_sqrt);
+  // }
     
   if(simdata.couplingmat){
     std::string couplingfile{simdata.prefix+"_coupling"+suffix+".csv"};
     ComputeCouplingMat(an->GetMesh(),couplingfile,simdata.n_threads,false);
     couplingfile = simdata.prefix+"_coupling"+suffix+"_conj.csv";
     ComputeCouplingMat(an->GetMesh(),couplingfile,simdata.n_threads,true);
-    an->LoadAllSolutions();
-  }
-
-  /*
-    in the modal analysis we perform a change of variables
-    now we transform back the solutions
-  */
-  {
-    TPZSimpleTimer timer("TransformModes");
-    TransformModes(*an);
-    // if constexpr (changing_beta){
-    //   TransformModes2(*an, reversed_modes);
-    // }
+    an->LoadSolution();
   }
   TPZSimpleTimer timer("Normalise");
   //now we normalise them
@@ -717,48 +635,21 @@ ComputeModalAnalysis(
   std::set<int> matids {};
   constexpr bool conj{true};
   auto norm =
-    wgma::post::WgNorm<wgma::post::MultiphysicsIntegrator>(cmesh,matids,
-                                                           conj,simdata.n_threads);
+    wgma::post::WgNorm<wgma::post::MultiphysicsIntegrator,1>(cmesh,matids,
+                                                             conj,simdata.n_threads);
   norm.SetNThreads(simdata.n_threads);    
   norm.SetBeta(betavec);
   norm.SetWavelength(simdata.lambda/simdata.scale);
   norm.Normalise();
   TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
-  //we update analysis object
-  an->SetEigenvectors(mesh_sol);
-  an->LoadAllSolutions();
+  an->LoadSolution(mesh_sol);
   auto normvec = norm.ComputeNorm();
-
   
-  if constexpr(!changing_beta){
-    constexpr STATE normtol{1e-10};
-    for(auto iev = 0; iev < betavec.size(); iev++){
-      if(std::abs(normvec[iev].real()) < normtol){
-        //not a propagating mode
-        if(normvec[iev].imag() > 0 ){
-          reversed_modes.insert(iev);
-        }
-      }
-    }
-    TransformModes2(*an,reversed_modes);
-    norm.Normalise();
-    TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
-    //we update analysis object
-    an->SetEigenvectors(mesh_sol);
-    an->LoadAllSolutions();
-    normvec = norm.ComputeNorm();
-    
+  for(auto iev = 0; iev < betavec.size(); iev++){
+    std::cout<<"iev "<<iev<<" beta "<<betavec[iev]<<" norm "<<normvec[iev]<<std::endl;
   }
-  // for(auto iev = 0; iev < betavec.size(); iev++){
-  //   const int changed = reversed_modes.count(iev);
-  //   std::cout<<"iev "<<iev<<" beta "<<betavec[iev]<<" changed "<<changed<<" norm "<<normvec[iev]<<std::endl;
-  // }
-
-  //we load all solutions before leaving
-  an->LoadAllSolutions();
   //we dont need them anymore, let us free up memory
-  an->GetSolver().SetMatrixA(nullptr);
-  an->GetSolver().SetMatrixB(nullptr);
+  an->GetSolver().SetMatrix(nullptr);
   TPZAutoPointer<ModalData> data = new ModalData;
   data->cmesh_h1 = an->GetH1Mesh();
   data->cmesh_hcurl = an->GetHCurlMesh();
@@ -1426,11 +1317,11 @@ void ComputeCouplingMat(TPZAutoPointer<TPZCompMesh> cmesh_mf,
   using namespace wgma::post;
 
   std::set<int> matids;
-  WaveguideCoupling<MultiphysicsIntegrator> integrator(cmesh_mf,
-                                                       matids,
-                                                       conj,
-                                                       nthreads
-                                                       );
+  WaveguideCoupling<MultiphysicsIntegrator,1> integrator(cmesh_mf,
+                                                         matids,
+                                                         conj,
+                                                         nthreads
+                                                         );
   integrator.SetNThreads(nthreads);
   integrator.ComputeCoupling();
   TPZFMatrix<CSTATE> couplingmat;
@@ -1439,119 +1330,6 @@ void ComputeCouplingMat(TPZAutoPointer<TPZCompMesh> cmesh_mf,
   couplingmat.Print("",matfile,ECSV);
 }
 
-void TransformModes(wgma::wganalysis::Wgma2D& an)
-{
-  using namespace std::complex_literals;
-  TPZAutoPointer<TPZCompMesh> h1_mesh = an.GetH1Mesh();
-  TPZAutoPointer<TPZCompMesh> hcurl_mesh = an.GetHCurlMesh();
-  TPZAutoPointer<TPZCompMesh> mf_mesh = an.GetMesh();
-  TPZFMatrix<CSTATE> &hcurl_sol = hcurl_mesh->Solution();
-  TPZFMatrix<CSTATE> &h1_sol = h1_mesh->Solution();
-
-  //is transformed already
-  TPZVec<CSTATE> betavec = an.GetEigenvalues();
-    
-  const int nsol = hcurl_sol.Cols();
-  {
-    const int nrow = hcurl_sol.Rows();
-    for(int isol = 0; isol < nsol; isol++){
-      const auto beta = betavec[isol];
-      CSTATE *sol_ptr = &hcurl_sol.g(0,isol);
-      for(int irow = 0; irow < nrow; irow++){
-        *sol_ptr++ /=beta;
-      }
-    }
-  }
-  {
-    const int nrow = h1_sol.Rows();
-    for(int isol = 0; isol < nsol; isol++){
-      CSTATE *sol_ptr = &h1_sol.g(0,isol);
-      for(int irow = 0; irow < nrow; irow++){
-        *sol_ptr++ *= 1i;
-      }
-    }
-  }
-    
-  TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshvec(2);
-  meshvec[TPZWgma::H1Index()] = h1_mesh;
-  meshvec[TPZWgma::HCurlIndex()] = hcurl_mesh;    
-  TPZBuildMultiphysicsMesh::TransferFromMeshes(meshvec,mf_mesh);
-  //we update analysis object
-  TPZFMatrix<CSTATE> &mesh_sol=mf_mesh->Solution();
-  const auto neq_full = mesh_sol.Rows();
-  const auto neq_indep = mf_mesh->NEquations();
-  TPZMatrixWindow<CSTATE> reduced_sol(mesh_sol,0,0,neq_indep,nsol);
-  an.SetEigenvectors(reduced_sol);
-  an.LoadAllSolutions();
-}
-
-void TransformModes2(wgma::wganalysis::Wgma2D& an,
-                     const std::set<int64_t> &reversed)
-{
-  using namespace std::complex_literals;
-  TPZAutoPointer<TPZCompMesh> h1_mesh = an.GetH1Mesh();
-  TPZAutoPointer<TPZCompMesh> hcurl_mesh = an.GetHCurlMesh();
-  TPZAutoPointer<TPZCompMesh> mf_mesh = an.GetMesh();
-  TPZFMatrix<CSTATE> &hcurl_sol = hcurl_mesh->Solution();
-  TPZFMatrix<CSTATE> &h1_sol = h1_mesh->Solution();
-
-  //is transformed already
-  TPZVec<CSTATE> betavec = an.GetEigenvalues();
-    
-  const int nsol = hcurl_sol.Cols();
-  {
-    
-    const int nrow = h1_sol.Rows();
-    for(auto isol : reversed){
-      CSTATE *sol_ptr = &h1_sol.g(0,isol);
-      for(int irow = 0; irow < nrow; irow++){
-        *sol_ptr++ *= -1;
-      }
-    }
-  }
-    
-  TPZManVector<TPZAutoPointer<TPZCompMesh>,2> meshvec(2);
-  meshvec[TPZWgma::H1Index()] = h1_mesh;
-  meshvec[TPZWgma::HCurlIndex()] = hcurl_mesh;    
-  TPZBuildMultiphysicsMesh::TransferFromMeshes(meshvec,mf_mesh);
-  //we update analysis object
-  TPZFMatrix<CSTATE> &mesh_sol=mf_mesh->Solution();
-  const auto neq_full = mesh_sol.Rows();
-  const auto neq_indep = mf_mesh->NEquations();
-  TPZMatrixWindow<CSTATE> reduced_sol(mesh_sol,0,0,neq_indep,nsol);
-  an.SetEigenvectors(reduced_sol);
-  an.LoadAllSolutions();
-}
-
-void PostProcessModes(wgma::wganalysis::Wgma2D &an,
-                      std::string filename,
-                      const int vtkres,
-                      const int nthreads){
-  TPZSimpleTimer postProc("Post processing");
-    
-  const std::string file = filename;
-  TPZVec<std::string> fvars = {
-    "Ez_real",
-    "Ez_abs",
-    "Et_real",
-    "Et_abs",
-    "Material"};
-  auto cmesh = an.GetMesh();
-  auto vtk = TPZVTKGenerator(cmesh, fvars, file, vtkres);
-  vtk.SetNThreads(nthreads);
-
-  std::set<int> sols;
-  const auto nsol = std::min((int64_t)20,an.GetEigenvectors().Cols());
-  for(auto is = 0; is < nsol; is++){
-    sols.insert(is);
-  }
-  
-  std::cout<<"Exporting "<<sols.size()<<" solutions"<<std::endl;
-  for(auto isol : sols){
-    an.LoadSolution(isol);
-    vtk.Do();
-  }
-}
 
 TPZAutoPointer<TPZCompMesh>
 CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
@@ -1679,7 +1457,7 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     wgma::scattering::CMeshScattering3DPeriodic(gmesh, pOrder, scatt_data,
                                                 el_map,
                                                 src_ids,
-                                                lambda,scale,false);
+                                                lambda,scale,true);
   return cmesh;
 }
 
@@ -1774,7 +1552,7 @@ void ComputeWpbcCoeffs(ModalData& an,
   const int neq = sol_orig.Rows();
   const int nsol = sol_orig.Cols();
   
-  wgma::post::WaveguidePortBC<wgma::post::MultiphysicsIntegrator> wgbc(mesh);
+  wgma::post::WaveguidePortBC<wgma::post::MultiphysicsIntegrator,1> wgbc(mesh);
   wgbc.SetNThreads(nthreads);
   TPZManVector<CSTATE,1000> betavec = an.eigenvalues;
   if(coeff.size()){
