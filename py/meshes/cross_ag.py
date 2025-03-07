@@ -17,7 +17,7 @@ from utils.gmsh import (
 #############################################
 
 
-def create_cross_mesh(w_domain, h_domain, w_cross, l_cross, d_cross,
+def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
                       h_silver,h_sub,el_ag, el_air, el_sub, filename):
     """
     Creates a mesh representing the unit cell of a metasurface consisting
@@ -28,7 +28,7 @@ def create_cross_mesh(w_domain, h_domain, w_cross, l_cross, d_cross,
     Parameters
     ----------
     w_domain: width of the domain in the x and y directions
-    h_domain: total height of the domain
+    h_air: height of air domain (not including cross depth)
     w_cross: width of cross's arms
     l_cross: width of cross
     d_cross: depth of cross (in ag substrate)
@@ -40,7 +40,7 @@ def create_cross_mesh(w_domain, h_domain, w_cross, l_cross, d_cross,
     filename: filename (without .msh suffix)
     """
 
-    h_air = h_domain - h_silver - h_sub
+    h_domain = h_air + h_silver + h_sub
     gmsh.initialize()
     gmsh.option.set_number("Geometry.Tolerance", 10**-14)
     gmsh.option.set_number("Geometry.MatchMeshTolerance", 10**-14)
@@ -158,14 +158,41 @@ def create_cross_mesh(w_domain, h_domain, w_cross, l_cross, d_cross,
     affine[pos["dz"]] = val["dz"]
 
     gmsh.model.mesh.set_periodic(dim, yp_bnd, ym_bnd, affine)
+
+
+    # finally, let us select some edges in the cross for refining
+    all_cross_surfs = gmsh.model.get_boundary(
+        [(3, tag) for tag in cross],
+        combined=True, oriented=False, recursive=False)
+    all_cross_edges = gmsh.model.get_boundary([dt for dt in all_cross_surfs],
+                                              combined=False,
+                                              oriented=False,
+                                              recursive=False)
+    
+    select_edges = []
+    for d, t in all_cross_edges:
+        x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
+        if abs(x) < w_cross and abs(y) < w_cross:
+            # now we check if it is vertical
+            d_l = gmsh.model.get_derivative(d, t, [0])
+            if d_l[0] == 0 and d_l[1] == 0:
+                select_edges.append(t)
+    
     # set element size per region
     min_el = min(el_ag, el_air)
+    max_el = max(el_ag,el_sub,el_air)
+    small_sz = el_ag/4
+    thick = w_cross/2
+    margin =small_sz*2
+    vout = 2*max_el
+    
     field_ct = 1
     gmsh.model.mesh.field.add("Constant", field_ct)
     gmsh.model.mesh.field.set_numbers(
         field_ct, "VolumesList", ag)
     gmsh.model.mesh.field.set_number(
         field_ct, "VIn", el_ag)
+    
     field_ct += 1
     gmsh.model.mesh.field.add("Constant", field_ct)
     gmsh.model.mesh.field.set_numbers(
@@ -178,54 +205,62 @@ def create_cross_mesh(w_domain, h_domain, w_cross, l_cross, d_cross,
         field_ct, "VolumesList", sub)
     gmsh.model.mesh.field.set_number(
         field_ct, "VIn", el_sub)
+    field_ct += 1
+    gmsh.model.mesh.field.add("Box", field_ct)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "Thickness", thick)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "VIn", small_sz)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "VOut", vout)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "XMin", -w_cross/2-margin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "XMax",  w_cross/2+margin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "YMin", -l_cross/2-margin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "YMax",  l_cross/2+margin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "ZMin",  h_cross-margin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "ZMax",  h_cross+d_cross+margin)
 
     field_ct += 1
-    gmsh.model.mesh.field.add("Distance", field_ct)
-    gmsh.model.mesh.field.set_numbers(
-        field_ct, "SurfacesList", cross_bnds)
-
-    field_ct += 1
-    gmsh.model.mesh.field.add("Threshold", field_ct)
-    gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
-    gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
-    gmsh.model.mesh.field.set_number(field_ct, "DistMin", 0)
-    gmsh.model.mesh.field.set_number(field_ct, "DistMax", w_cross)
-    gmsh.model.mesh.field.set_number(field_ct, "SizeMin", min_el/2)
-    gmsh.model.mesh.field.set_number(field_ct, "SizeMax", min_el)
-
+    gmsh.model.mesh.field.add("Box", field_ct)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "Thickness", thick)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "VIn", small_sz)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "VOut", vout)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "XMin", -l_cross/2-margin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "XMax",  l_cross/2+margin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "YMin", -w_cross/2-margin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "YMax",  w_cross/2+margin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "ZMin",  h_cross-margin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "ZMax",  h_cross+d_cross+margin)
+    
     field_ct += 1
     gmsh.model.mesh.field.add("Min", field_ct)
     gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList",
-                                     [1, 2, 3, 5])
+                                     [1, 2, 3, 4, 5])
 
     gmsh.model.mesh.field.setAsBackgroundMesh(field_ct)
     gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
     gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
     gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
 
-    # finally, let us select some edges in the cross for refining
-    all_cross_surfs = gmsh.model.get_boundary(
-        [(3, tag) for tag in cross],
-        combined=True, oriented=False, recursive=False)
-    all_cross_edges = gmsh.model.get_boundary([dt for dt in all_cross_surfs],
-                                              combined=False,
-                                              oriented=False,
-                                              recursive=False)
-
-    select_edges = []
-    for d, t in all_cross_edges:
-        x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
-        if abs(x) < w_cross and abs(y) < w_cross:
-            # now we check if it is vertical
-            d_l = gmsh.model.get_derivative(d, t, [0])
-            if d_l[0] == 0 and d_l[1] == 0:
-                select_edges.append(t)
-
     domain_physical_ids_3d = {
         "Ag": 1,
         "air": 2,
-        "sub": 3
-        
+        "sub": 3,
     }
 
     domain_physical_ids_2d = {
@@ -289,26 +324,26 @@ def create_cross_mesh(w_domain, h_domain, w_cross, l_cross, d_cross,
     gmsh.finalize()
 
 
-nel = 8
+nel = 6
 min_wavelength = 1
 
-w_domain = 0.8
-h_domain = 0.7
-w_cross = 0.05
-l_cross = 0.5
-h_silver = 0.3
-h_sub = 0.1
 el_ag = min_wavelength/nel
 el_air = min_wavelength/nel
-el_sub = min_wavelength/nel
+el_sub = min_wavelength/(1.55*nel)
 
+def set_orig_params():
+    w_domain = 650/1000  #l_cross+100, so we have 50nm on each side
+    h_air = 200/1000
+    w_cross = 100/1000
+    l_cross = 400/1000 #3*w_cross
+    h_silver = 60/1000
+    h_sub = 100/1000
+    d_cross = h_silver
+    return w_domain, h_air, w_cross, l_cross, h_silver, h_sub, d_cross
 
+count = 0
 
-d_cross = h_silver
-filename = "../../build/examples/meshes/cross_ag_full"
-create_cross_mesh(w_domain, h_domain, w_cross, l_cross,
-                  d_cross, h_silver, h_sub, el_ag, el_air, el_sub, filename)
-d_cross = 0.2
-filename = "../../build/examples/meshes/cross_ag"
-create_cross_mesh(w_domain, h_domain, w_cross, l_cross,
+w_domain,h_air,w_cross,l_cross,h_silver,h_sub, d_cross = set_orig_params()
+filename = "../../build/examples/meshes/cross_ag_"+str(count)
+create_cross_mesh(w_domain, h_air, w_cross, l_cross,
                   d_cross, h_silver, h_sub, el_ag, el_air, el_sub, filename)
