@@ -1,8 +1,10 @@
 #include "materials/planewavesolutions.hpp"
 
 #include <TPZMaterialDataT.h>
+#include <pzaxestools.h>
 
 #include <numeric>
+
 using namespace wgma::materials;
 using namespace std::complex_literals;
 
@@ -124,19 +126,34 @@ PlaneWaveSolutions::Contribute(const TPZVec<TPZMaterialDataT<CSTATE>> &datavec,
 
   const auto &phi_hcurl_real = datavec[m_hcurl_index].phi;
   const auto &phi_h1_real = datavec[m_h1_index].phi;
+  const auto &curl_phi_real = datavec[m_hcurl_index].curlphi;
   const int nhcurl  = phi_hcurl_real.Rows();
   const int nh1  = phi_h1_real.Rows();
   //making complex version of phi hcurl
   TPZFNMatrix<200,CSTATE> phi_hcurl(2,nhcurl,0.);
+  TPZFNMatrix<100,CSTATE> curl_phi(1,nhcurl,0.);
   for(int i = 0; i < nhcurl; i++){
     for(int x = 0; x < 2; x++){
       phi_hcurl.PutVal(x,i,phi_hcurl_real.GetVal(i,x));
     }
+    curl_phi.PutVal(0,i,curl_phi_real.GetVal(0,i));
   }
+
+
+  TPZFNMatrix<300,REAL> grad_phi_real(3, nh1, 0.);
+  {
+    const TPZFMatrix<REAL> &gradPhiH1axes = datavec[m_h1_index].dphix;
+    TPZAxesTools<REAL>::Axes2XYZ(gradPhiH1axes, grad_phi_real, datavec[m_h1_index].axes);
+  }
+  
   //making complex version of phi h1
   TPZFNMatrix<100,CSTATE> phi_h1(1,nh1,0.);
+  TPZFNMatrix<300,CSTATE> grad_phi(3,nh1,0.);
   for(int i = 0; i < nh1; i++){
     phi_h1.PutVal(0,i,phi_h1_real.GetVal(i,0));
+    grad_phi.PutVal(0,i,grad_phi_real.GetVal(0,i));
+    grad_phi.PutVal(1,i,grad_phi_real.GetVal(1,i));
+    grad_phi.PutVal(2,i,grad_phi_real.GetVal(2,i));
   }
 
   /*****************ACTUAL COMPUTATION OF CONTRIBUTION****************/
@@ -147,10 +164,15 @@ PlaneWaveSolutions::Contribute(const TPZVec<TPZMaterialDataT<CSTATE>> &datavec,
   constexpr int no_transp{0};
   ek.AddContribution(firsthcurl,firsthcurl,phi_hcurl,transp,phi_hcurl,no_transp, weight);
   ek.AddContribution(firsth1,firsth1,phi_h1,transp,phi_h1,no_transp, weight);
+
+  ek.AddContribution(firsthcurl,firsthcurl,curl_phi,transp,curl_phi,no_transp, weight);
+  ek.AddContribution(firsth1,firsth1,grad_phi,transp,grad_phi,no_transp, weight);
   //now we must compute the actual modes, both Et and Ez
   const int nsolvec = 2*nsol;
   TPZFNMatrix<2000,CSTATE> sol_et(2,nsolvec,0.);
   TPZFNMatrix<1000,CSTATE> sol_ez(1,nsolvec,0.);
+  TPZFNMatrix<1000,CSTATE> curl_et(1,nsolvec,0.);
+  TPZFNMatrix<3000,CSTATE> grad_ez(3,nsolvec,0.);
   const auto x = datavec[0].x[0];
   const auto y = datavec[0].x[1];
   for(int im = 0; im < nsol; im++){
@@ -161,13 +183,23 @@ PlaneWaveSolutions::Contribute(const TPZVec<TPZMaterialDataT<CSTATE>> &datavec,
     //solutions with et in the x direction
     const auto eval = std::exp(-1i*(kx*x+ky*y));
     sol_et.PutVal(0,2*im,eval);
+    curl_et.PutVal(0,2*im,1i*ky*eval);
+    
     sol_ez.PutVal(0,2*im,-eval*kx/beta);
+    grad_ez.PutVal(0,2*im,1i*kx*kx*eval/beta);
+    grad_ez.PutVal(1,2*im,1i*ky*kx*eval/beta);
     //solutions with et in the y direction
     sol_et.PutVal(1,2*im+1,eval);
+    curl_et.PutVal(0,2*im+1,-1i*kx*eval);
+    
     sol_ez.PutVal(0,2*im+1,-eval*ky/beta);
+    grad_ez.PutVal(0,2*im+1,1i*kx*ky*eval/beta);
+    grad_ez.PutVal(1,2*im+1,1i*ky*ky*eval/beta);
   }
   ef.AddContribution(firsthcurl,0,phi_hcurl,transp,sol_et,no_transp,weight);
   ef.AddContribution(firsth1,0,phi_h1,transp,sol_ez,no_transp,weight);
+  ef.AddContribution(firsthcurl,0,curl_phi,transp,curl_et,no_transp,weight);
+  ef.AddContribution(firsth1,0,grad_phi,transp,grad_ez,no_transp,weight);
 }
 
 
