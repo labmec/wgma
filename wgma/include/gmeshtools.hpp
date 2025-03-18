@@ -147,6 +147,24 @@ namespace wgma::gmeshtools{
                               const std::set<int> &volmats,
                               const REAL boundPosR,
                               const REAL boundPosZ);
+
+  /**
+     @brief Finds the maximum and minimum coordinates of a given domain region
+     @param[in] gmesh geometrical mesh
+     @param[in] mat_ids identifiers of the desired regions
+     @param[out] xMin minimum value of x
+     @param[out] xMax maximum value of x
+     @param[out] yMin minimum value of y
+     @param[out] yMax mayimum value of y
+     @param[out] zMin minimum value of z
+     @param[out] zMax mayimum value of z
+   */
+  void
+  FindRegionLimits(TPZAutoPointer<TPZGeoMesh>& gmesh,
+                   const std::set<int> mat_ids,
+                   REAL &xMin, REAL &xMax,
+                   REAL &yMin, REAL &yMax,
+                   REAL &zMin, REAL &zMax);
   
   /**
      @brief Finds the width of a given pml region

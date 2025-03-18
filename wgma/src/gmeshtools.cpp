@@ -756,27 +756,25 @@ wgma::gmeshtools::FindCylPMLNeighbourMaterial(
   }
   return closestEl->MaterialId();
 }
-
-
 void
-wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh>& gmesh,
-                               const std::set<int> pmlId,
-                               const wgma::pml::cart::type type,
-                               REAL &boundPosX, REAL &dX,
-                               REAL &boundPosY, REAL &dY,
-                               REAL &boundPosZ, REAL &dZ)
+wgma::gmeshtools::FindRegionLimits(TPZAutoPointer<TPZGeoMesh>& gmesh,
+                                   const std::set<int> mat_ids,
+                                   REAL &xMin, REAL &xMax,
+                                   REAL &yMin, REAL &yMax,
+                                   REAL &zMin, REAL &zMax)
 {
-  //let us find the (xmin,xmax), (ymin,ymax), (zmin, zmax) of the PML region
-  REAL xMax = -1e20, xMin = 1e20,
-    yMax = -1e20, yMin = 1e20,
-    zMax = -1e20, zMin = 1e20;
+  //let us init the variables just to be sure
+  xMax = -1e20;xMin = 1e20;
+  yMax = -1e20; yMin = 1e20;
+  zMax = -1e20; zMin = 1e20;
+  
   std::set<int64_t> visited_nodes;
 
   std::mutex pos_mut, visited_nodes_mut;
   const auto nel = gmesh->NElements();
   pzutils::ParallelFor(0, nel, [&](int iel){
     auto geo = gmesh->Element(iel);
-    if (geo && pmlId.count(geo->MaterialId()) != 0) {
+    if (geo && mat_ids.count(geo->MaterialId()) != 0) {
       const int ncornernodes = geo->NCornerNodes();
       for (int iNode = 0; iNode < geo->NCornerNodes(); ++iNode) {
         TPZManVector<REAL, 3> co(3);
@@ -820,8 +818,20 @@ wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh>& gmesh,
     ,0
 #endif
     );
-
-
+}
+void
+wgma::gmeshtools::FindPMLWidth(TPZAutoPointer<TPZGeoMesh>& gmesh,
+                               const std::set<int> pmlId,
+                               const wgma::pml::cart::type type,
+                               REAL &boundPosX, REAL &dX,
+                               REAL &boundPosY, REAL &dY,
+                               REAL &boundPosZ, REAL &dZ)
+{
+  //let us find the (xmin,xmax), (ymin,ymax), (zmin, zmax) of the PML region
+  REAL xMax = -1e20, xMin = 1e20,
+    yMax = -1e20, yMin = 1e20,
+    zMax = -1e20, zMin = 1e20;
+  FindRegionLimits(gmesh, pmlId, xMin, xMax, yMin, yMax, zMin, zMax);
   //now we compute xBegin, yBegin, attx, atty and d for the material ctor
   const bool attx = wgma::pml::cart::attx(type);
   const bool atty = wgma::pml::cart::atty(type);
