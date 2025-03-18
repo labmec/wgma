@@ -526,9 +526,9 @@ ComputeModalAnalysis(
   an->LoadSolution(mesh_sol);
   auto normvec = norm.ComputeNorm();
   
-  for(auto iev = 0; iev < betavec.size(); iev++){
-    std::cout<<"iev "<<iev<<" beta "<<betavec[iev]<<" norm "<<normvec[iev]<<std::endl;
-  }
+  // for(auto iev = 0; iev < betavec.size(); iev++){
+  //   std::cout<<"iev "<<iev<<" beta "<<betavec[iev]<<" norm "<<normvec[iev]<<std::endl;
+  // }
   //we dont need them anymore, let us free up memory
   an->GetSolver().SetMatrix(nullptr);
   TPZAutoPointer<ModalData> data = new ModalData;
