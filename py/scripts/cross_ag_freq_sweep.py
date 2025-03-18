@@ -25,19 +25,9 @@ def sweep_frequencies(data,wl_list,mat_n,mat_k):
         data["scale"] = wavelength/(2*np.pi)
         data["scale"] = 1
 
-        # neigleft = 750 if wavelength < 0.6 else 650
-        # nmodesleft = 700 if wavelength < 0.6 else 600
-        # neigright = 250 if wavelength < 0.6 else 650
-        # nmodesright = 200 if wavelength < 0.6 else 600
-        val = 242
-        neigleft = val
-        neigright = val
-        nmodesleft = val
-        nmodesright = val
-        data["n_eigenpairs_left"] = neigleft
-        data["n_eigenpairs_right"] = neigright
-        data["n_modes_left"] = [nmodesleft]
-        data["n_modes_right"] = [nmodesright]
+        max_k=5
+        data["max_k_in"] = max_k
+        data["max_k_out"] = max_k
 
 
         filename = 'cross_sweep_'+str(i)+'.json'
@@ -75,33 +65,20 @@ def sweep_frequencies(data,wl_list,mat_n,mat_k):
 data = {
     "porder": 3,
     "vtk_res": 0,
-    "export_csv_modes": False,
-    "export_csv_error": False,
     "export_vtk_modes": False,
     "export_vtk_scatt": False,
-    "export_vtk_error": False,
-    "export_coupling_mat": False,
     "print_gmesh": False,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
-    "compute_reflection_norm": True,
     "vtk_res": 0
 }
 
 
 data["mats_3d"] = ["Ag", "air", "sub"]
 data["mats_port_in"] = ["air_port_in"]
-data["planewave_in"] = True
 data["mats_port_out"] = ["sub_port_out"]
-data["planewave_out"] = True
 
 data["source_coeffs"] = [[0, 1]]
-
-
-data["check_mode_propagation"] = False
-
-
-
 data["n_threads"] = 16
 
 

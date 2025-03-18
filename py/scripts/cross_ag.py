@@ -9,12 +9,11 @@ from mat_indices import ag_n, ag_k, al_n, al_k, glass_n, glass_k
 
 def run_simulation(data,wavelength,mat_n,mat_k):
     outfile = prefix+"_output.txt"
-    if data["compute_reflection_norm"]:
-        try:
-            os.remove("../"+prefix+"_reflection.csv")
-            os.remove("../"+outfile)
-        except FileNotFoundError:
-            pass
+    try:
+        os.remove("../"+prefix+"_reflection.csv")
+        os.remove("../"+outfile)
+    except FileNotFoundError:
+        pass
         
     data["wavelength"] = wavelength
     data["refractive indices"] = {
@@ -29,14 +28,10 @@ def run_simulation(data,wavelength,mat_n,mat_k):
     # nmodesleft = 700 if wavelength < 0.6 else 600
     # neigright = 250 if wavelength < 0.6 else 650
     # nmodesright = 200 if wavelength < 0.6 else 600
-    neigleft = 550
-    neigright = 550
-    nmodesleft = 500
-    nmodesright = 500
-    data["n_eigenpairs_left"] = neigleft
-    data["n_eigenpairs_right"] = neigright
-    data["n_modes_left"] = [nmodesleft]
-    data["n_modes_right"] = [nmodesright]
+    max_k=5
+    data["max_k_in"] = max_k
+    data["max_k_out"] = max_k
+    
     data["direct_solver"] = False
     filename = 'cross_sweep_.json'
     with open(filename, 'w+') as jsonfile:
@@ -64,30 +59,21 @@ def run_simulation(data,wavelength,mat_n,mat_k):
 data = {
     "porder": 3,
     "vtk_res": 0,
-    "export_csv_modes": False,
-    "export_csv_error": False,
     "export_vtk_modes": False,
     "export_vtk_scatt": False,
-    "export_vtk_error": False,
-    "export_coupling_mat": False,
     "print_gmesh": False,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
-    "compute_reflection_norm": True,
     "vtk_res": 0
 }
 
 
 data["mats_3d"] = ["Ag", "air", "sub"]
 data["mats_port_in"] = ["air_port_in"]
-data["planewave_in"] = True
 data["mats_port_out"] = ["sub_port_out"]
-data["planewave_out"] = True
 
 data["source_coeffs"] = [[0, 1]]
 
-
-data["check_mode_propagation"] = False
 data["direct_solver"] = False
 
 
