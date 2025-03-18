@@ -44,44 +44,20 @@ struct SimData{
   TPZVec<std::string> mats_port_in;
   //!materials used in the outgoing waveguide port
   TPZVec<std::string> mats_port_out;
-  //!materials used in the probe associated with the ingoing waveguide port
-  TPZVec<std::string> mats_probe_in;
-  //!materials used in the probe associated with the outgoing waveguide port
-  TPZVec<std::string> mats_probe_out;
-  //!whether the first two modes of the input port should be in the x and y direction (plane wave)
-  bool planewave_in;
-  //!whether the first two modes of the output port should be in the x and y direction (plane wave)
-  bool planewave_out;
   //!map of refractive indices
   std::map<std::string,CSTATE> refractive_indices;
   //!map of domain regions and number of directional refinement steps
   std::map<std::string,int> refine_regions;
   //!polynomial order
   int porder{-1};
-  //!pml attenuation constant in radial direction
-  CSTATE alphaPMLr{0};
-  //!pml attenuation constant in x-direction
-  CSTATE alphaPMLx{0};
-  //!pml attenuation constant in y-direction
-  CSTATE alphaPMLy{0};
-  //!number of eigenvalues computed on left port
-  int n_eigenpairs_left;
-  //!number of eigenvalues computed on right port
-  int n_eigenpairs_right;
-  //!perform validation test on waveguide cross section (no discontinuity)
-  bool check_mode_propagation;
-  //!whether to compute reflectivity/transmittivity
-  bool compute_reflection_norm;
+  //! maximum integer used on in port (nmodes = 2*(2*k+1)(2*k+1)
+  int max_k_in;
+  //! maximum integer used on out port (nmodes = 2*(2*k+1)(2*k+1)
+  int max_k_out;
   //! whether to use direct solver
   bool direct_solver;
   //!pairs of mode index/coefficient to be used as source
   std::vector<std::pair<int,double>> source_coeffs;
-  //!index of the number of modes to be used to restrict the dofs on the wpbc(in)
-  TPZVec<int> n_modes_left;
-  //!index of the number of modes to be used to restrict the dofs on the wpbc(out)
-  TPZVec<int> n_modes_right;
-  //!whether to compute coupling mat
-  bool couplingmat{false};
   //!whether to filter dirichlet eqs
   bool filter_bnd_eqs{true};
   //!renumber equations (for modal analysis, scattering is always false)
@@ -90,14 +66,8 @@ struct SimData{
   bool print_gmesh{false};
   //!post process modal fields
   bool export_vtk_modes{false};
-  //!export .csv with computed eigenvalues
-  bool export_csv_modes{false};
-  //!export csv file of wpbc comparison
-  bool export_csv_error{false};
   //!post process scatt fields
   bool export_vtk_scatt{false};
-  //!post process error of scatt field at waveguide port
-  bool export_vtk_error{false};
   //!whether eigensolver is verbose
   bool eigen_verbose{false};
   //!vtk resolution
@@ -134,10 +104,7 @@ ComputeModalAnalysis(
   const SimData& simdata,
   const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
   const TPZVec<std::string> &mats,
-  const bool planewave,
-  int &nEigenpairs,
-  const TPZEigenSort sortingRule,
-  bool usingSLEPC,
+  const int max_k,
   const std::string &suffix);
 
 std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &modal_mesh,
@@ -151,15 +118,6 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                 const std::map<int,int> &split_mats,
                 const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                 const SimData &simdata);
-void
-SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
-                     TPZAutoPointer<ModalData> &src_an,
-                     TPZAutoPointer<ModalData> &match_an,
-                     const TPZVec<std::map<std::string, int>> &gmshmats,
-                     const std::map<int,int> &split_mats,
-                     const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
-                     const SimData &simdata);
-
 
 int main(int argc, char *argv[]) {
 
@@ -261,20 +219,16 @@ int main(int argc, char *argv[]) {
   {
     modal_an_in =  ComputeModalAnalysis(gmesh,gmshmats,simdata, periodic_els,
                                         simdata.mats_port_in,
-                                        simdata.planewave_in,
-                                        simdata.n_eigenpairs_left,sortingRule,
-                                        usingSLEPC,"_port_in");
+                                        simdata.max_k_in,"_port_in");
   }
 
   //out port modal analysis
   TPZAutoPointer<ModalData>
     modal_an_out{nullptr};
-  if(simdata.n_eigenpairs_right){
+  if(simdata.mats_port_out.size()){
     modal_an_out = ComputeModalAnalysis(gmesh,gmshmats,simdata, periodic_els,
                                         simdata.mats_port_out,
-                                        simdata.planewave_out,
-                                        simdata.n_eigenpairs_right,sortingRule,
-                                        usingSLEPC,"_port_out");
+                                        simdata.max_k_out,"_port_out");
   }
 
   std::set<int> all_matids;
@@ -302,13 +256,8 @@ int main(int argc, char *argv[]) {
   }
 
   std::cout<<"split mats"<<std::endl;
-  if(!simdata.check_mode_propagation){
-    SolveScattering(gmesh, modal_an_in,  modal_an_out, gmshmats,
-                    split_mats,periodic_els, simdata);
-  }else{
-    SolveModePropagation(gmesh, modal_an_in,  modal_an_out, gmshmats,
-                         split_mats,periodic_els, simdata);
-  }
+  SolveScattering(gmesh, modal_an_in,  modal_an_out, gmshmats,
+                  split_mats,periodic_els, simdata);
   return 0;
 }
 
@@ -356,11 +305,6 @@ void FindPeriodicBoundaries(const TPZVec<std::map<std::string, int>> &gmshmats,
                             std::string &s_dep,
                             std::string &s_indep);
 
-void ComputeCouplingMat(TPZAutoPointer<TPZCompMesh> cmesh_mf,
-                        std::string filename,
-                        const int nthreads,
-                        const bool conj);
-
 TPZAutoPointer<TPZCompMesh>
 CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
                 const TPZVec<std::map<std::string, int>> &gmshmats,
@@ -381,22 +325,6 @@ UpdatePhysicalDataSplittedMats(TPZAutoPointer<TPZGeoMesh> &gmesh,
                                const std::set<int> &orig_volids,
                                const int dim);
 
-void
-TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
-                                      TPZAutoPointer<TPZCompMesh> src_mesh,
-                                      const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els);
-
-STATE
-ComputeProjAndError(TPZAutoPointer<TPZCompMesh> proj_mesh,
-                    TPZAutoPointer<TPZCompMesh> error_mesh,
-                    TPZAutoPointer<TPZCompMesh> scatt_mesh,
-                    const TPZFMatrix<CSTATE> &projected_modes,
-                    const int nm,
-                    const std::set<int64_t> &bound_connects,
-                    TPZAutoPointer<TPZVTKGenerator> vtk_proj,
-                    TPZAutoPointer<TPZVTKGenerator> vtk_error,
-                    const std::string &name,
-                    const SimData &simdata);
 
 REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           WpbcData& src_data,
@@ -433,15 +361,8 @@ SimData ReadSimData(const std::string &dataname){
   for(auto mat : tmpvec_str){sd.mats_3d.push_back(mat);}
   tmpvec_str = data["mats_port_in"].get<std::vector<std::string>>();
   for(auto mat : tmpvec_str){sd.mats_port_in.push_back(mat);}
-  tmpvec_str = data.value("mats_probe_in",std::vector<std::string>{});
-  for(auto mat : tmpvec_str){sd.mats_probe_in.push_back(mat);}
   tmpvec_str = data.value("mats_port_out",std::vector<std::string>{});
   for(auto mat : tmpvec_str){sd.mats_port_out.push_back(mat);}
-  tmpvec_str = data.value("mats_probe_out",std::vector<std::string>{});
-  for(auto mat : tmpvec_str){sd.mats_probe_out.push_back(mat);}
-
-  sd.planewave_in = data.value("planewave_in",false);
-  sd.planewave_out = data.value("planewave_out",false);
 
   
   auto tmpvec_map =
@@ -492,39 +413,18 @@ SimData ReadSimData(const std::string &dataname){
   sd.prefix =  data["prefix"];
   sd.lambda =  data["wavelength"];
   sd.scale = data["scale"];
-  sd.couplingmat = data["export_coupling_mat"];
-  sd.check_mode_propagation = data["check_mode_propagation"];
   sd.direct_solver = data.value("direct_solver",false);
-  sd.compute_reflection_norm = data.value("compute_reflection_norm",false);
-  std::vector<double> tmpvec_double;
-  tmpvec_double = data.value("alpha_pml_x", std::vector<double>{0,0});
-  if(tmpvec_double.size()!=2){
-    DebugStop();
-  }
-  sd.alphaPMLx = {tmpvec_double[0], tmpvec_double[1]};
-  tmpvec_double = data.value("alpha_pml_y", std::vector<double>{0,0});
-  if(tmpvec_double.size()!=2){
-    DebugStop();
-  }
-  sd.alphaPMLy = {tmpvec_double[0], tmpvec_double[1]};
+
   
   sd.porder = data["porder"];
   sd.source_coeffs = data["source_coeffs"].get<std::vector<std::pair<int,double>>>();
-  sd.n_eigenpairs_left = data["n_eigenpairs_left"];
-  sd.n_eigenpairs_right = data["n_eigenpairs_right"];
-  std::vector<int> tmpvec_int;
-  tmpvec_int = data["n_modes_left"].get<std::vector<int>>();
-  for(auto nm : tmpvec_int){sd.n_modes_left.push_back(nm);}
-  tmpvec_int = data["n_modes_right"].get<std::vector<int>>();
-  for(auto nm : tmpvec_int){sd.n_modes_right.push_back(nm);}
+  sd.max_k_in = data["max_k_in"];
+  sd.max_k_out = data["max_k_out"];
   sd.filter_bnd_eqs = data.value("filter_bnd_eqs",true);
   sd.print_gmesh=data.value("print_gmesh",true);
   sd.optimize_bandwidth = data.value("optimize_bandwidth",true);
-  sd.export_csv_modes = data.value("export_csv_modes",true);
-  sd.export_csv_error = data.value("export_csv_error",true);
   sd.export_vtk_modes = data.value("export_vtk_modes",false);
   sd.export_vtk_scatt = data.value("export_vtk_scatt",true);
-  sd.export_vtk_error = data.value("export_vtk_error",true);
   sd.eigen_verbose = data.value("eigen_verbose",false);
   sd.vtk_res = data.value("vtk_res",(int)0);
   sd.n_threads = data.value("n_threads",(int)std::thread::hardware_concurrency());
@@ -538,10 +438,7 @@ ComputeModalAnalysis(
   const SimData& simdata,
   const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
   const TPZVec<std::string> &mats,
-  const bool planewave,
-  int &nEigenpairs,
-  const TPZEigenSort sortingRule,
-  bool usingSLEPC,
+  const int max_k,
   const std::string &suffix)
 {
 
@@ -576,14 +473,7 @@ ComputeModalAnalysis(
   
   const STATE lx = xMax-xMin;
   const STATE ly = yMax-yMin;
-  const int max_k  = 5;
-  //this material expects refractive index instead of
-  //permittivity
-  for(auto &matinfo : modal_data.matinfovec){
-    const auto er = std::get<1>(matinfo);
-    const auto n = std::sqrt(er);
-    std::get<1>(matinfo) = n;
-  }
+  
   auto modal_cmesh = wgma::planewaveanalysis::CMeshPlaneWave2D(gmesh,p_order,modal_data,
                                                                el_map, lambda,
                                                                lx, ly, max_k,
@@ -608,21 +498,6 @@ ComputeModalAnalysis(
   an->LoadSolution();
 
   TPZVec<CSTATE> betavec = an->GetEigenvalues();
-  nEigenpairs = betavec.size();
-  std::cout<<nEigenpairs<<" eigenpairs have converged"<<std::endl;
-    
-  if(simdata.export_csv_modes){
-    std::ostringstream eigeninfo;
-    typedef std::numeric_limits< double > dbl;
-    eigeninfo.precision(dbl::max_digits10);
-    for(const auto &b : betavec){
-      const auto pos_sign = std::imag(b) > 0 ? "+" : "-";
-      eigeninfo<<std::fixed<<std::real(b)<<pos_sign<<std::abs(std::imag(b))<<"j\n";
-    }
-    std::ofstream eigenfile(simdata.prefix+"_evalues"+suffix+".csv",std::ios::trunc);
-    eigenfile<<eigeninfo.str();
-    eigenfile.close();
-  }
 
 
   // if(simdata.export_vtk_modes){
@@ -633,13 +508,7 @@ ComputeModalAnalysis(
   //   an->SetEigenvalues(beta_sqrt);
   // }
     
-  if(simdata.couplingmat){
-    std::string couplingfile{simdata.prefix+"_coupling"+suffix+".csv"};
-    ComputeCouplingMat(an->GetMesh(),couplingfile,simdata.n_threads,false);
-    couplingfile = simdata.prefix+"_coupling"+suffix+"_conj.csv";
-    ComputeCouplingMat(an->GetMesh(),couplingfile,simdata.n_threads,true);
-    an->LoadSolution();
-  }
+  
   TPZSimpleTimer timer("Normalise");
   //now we normalise them
   auto cmesh = an->GetMesh();
@@ -747,20 +616,20 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                      const SimData &simdata)
 {
-
-  const bool check_probe_in = simdata.mats_probe_in.size();
-  const bool check_probe_out = simdata.mats_probe_out.size();
   /*********************
    * solve(scattering) *  
    *********************/  
   TPZSimpleTimer tscatt("Scattering");
 
-  const auto n_eigenpairs_left = src_an->cmesh_mf->Solution().Cols();
+  const auto nmodes_left = src_an->cmesh_mf->Solution().Cols();
+  //maybe we have dirichlet on the out boundary?
+  const auto nmodes_right =
+    match_an ? match_an->cmesh_mf->Solution().Cols() : 0;
   /*
     the source is written as a linear combination of the modes
     this vector contains the coefficients of such combination
   */
-  TPZVec<CSTATE> src_coeffs(n_eigenpairs_left,0);
+  TPZVec<CSTATE> src_coeffs(nmodes_left,0);
   for(auto [i, alpha] : simdata.source_coeffs){
     if(i >= src_coeffs.size()){
       std::cout<<"ERROR: src coefficient bigger than computed number of modes\n"
@@ -770,27 +639,6 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     src_coeffs[i] = alpha;
   }
 
-
-  //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  auto nmodes_left = simdata.n_modes_left;
-  auto nmodes_right = simdata.n_modes_right;
-  {
-    //we need to check the highest order mode used as a source
-    int last_mode = -1;
-    for(int i = 0; i < src_coeffs.size();i++){
-      if(src_coeffs[i] != (CSTATE)0){
-        last_mode = i;
-      }
-    }
-
-    TPZVec<int> valid_nmodes_left;
-    for (auto im : nmodes_left){
-      if(im > last_mode){
-        valid_nmodes_left.push_back(im);
-      }
-    }
-    nmodes_left = valid_nmodes_left;
-  }
 
   //set up post processing
   TPZVec<std::string> fvars_3d = {
@@ -845,422 +693,72 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     }
   }
 
-  //set up post processing vars
-  TPZVec<std::string> fvars_2d = {
-    "Solution_abs",
-    "Solution_real",
-    "Solution_imag"};
-  
 
-  auto CreateErrorMesh = [&simdata, &gmesh, &gmshmats, &fvars_2d,
-                          &periodic_els](TPZAutoPointer<TPZCompMesh> &error_mesh,
-                                         const TPZAutoPointer<TPZCompMesh> &hcurl_mesh,
-                                         TPZFMatrix<CSTATE> &projected_modes,
-                                         TPZAutoPointer<TPZVTKGenerator> &vtk_error,
-                                         const TPZVec<std::string> &mats,
-                                         const std::string &suffix)
-  {
-    auto modal_data = FillDataForModalAnalysis(gmshmats, simdata, mats, suffix);
-    std::set<int> volmats, pmlmats;
-    wgma::wganalysis::SetupModalAnalysisMaterials(gmesh,modal_data,volmats,pmlmats);
-
-    //we want hcurl mesh
-    constexpr bool is_h1{false};
-    error_mesh =
-      wgma::wganalysis::CreateAtomicWgma2D(gmesh,is_h1,simdata.porder,volmats,pmlmats,
-                                           modal_data.bcvec, modal_data.probevec);
-    //now we transfer the modal solution from the WPBC to the error mesh and store it
-    TransferSolutionBetweenPeriodicMeshes(error_mesh, hcurl_mesh, periodic_els);
-    projected_modes = error_mesh->Solution();
-    const int neq = error_mesh->Solution().Rows();
-    error_mesh->Solution().Resize(neq, 1);
-    if(simdata.export_vtk_error){
-      const std::string error_file = simdata.prefix+"_error"+suffix;
-      vtk_error = new TPZVTKGenerator(error_mesh, fvars_2d, error_file, simdata.vtk_res);
-      vtk_error->SetNThreads(simdata.n_threads);
-    }
-  };
-
-
-  /*
-    we want to analyse the solution close to the ports and see if the
-    number of modes is sufficient to represent it.
-  */
-  TPZAutoPointer<TPZCompMesh> error_mesh_left{nullptr}, error_mesh_right{nullptr};
-  TPZFMatrix<CSTATE> projected_modes_left, projected_modes_right;
-  TPZAutoPointer<TPZVTKGenerator> vtk_error_left{nullptr}, vtk_error_right{nullptr};
-  if(check_probe_in){
-    CreateErrorMesh(error_mesh_left,src_data.cmesh,projected_modes_left,vtk_error_left,
-                    simdata.mats_probe_in,"_probe_in");
-  }
-  if(check_probe_out){
-    CreateErrorMesh(error_mesh_right,match_data.cmesh,projected_modes_right,vtk_error_right,
-                    simdata.mats_probe_out,"_probe_out");
-  }
-  
-  
-
-  auto SetupProjMesh = [&simdata, &fvars_2d](TPZAutoPointer<TPZCompMesh> &proj_mesh,
-                                             TPZAutoPointer<TPZCompMesh> &error_mesh,
-                                             std::set<int64_t> &bound_connects,
-                                             TPZAutoPointer<TPZVTKGenerator> &vtk_proj,
-                                             const std::string &suffix){
-    // this will be the restricted mesh close to the wg port
-    proj_mesh = error_mesh->Clone();
-    wgma::cmeshtools::FindDirichletConnects(proj_mesh, bound_connects);
-    if(simdata.export_vtk_error){
-      const std::string proj_file = simdata.prefix+"_proj"+suffix;
-      vtk_proj = new TPZVTKGenerator(proj_mesh,fvars_2d, proj_file, simdata.vtk_res);
-      vtk_proj->SetNThreads(simdata.n_threads);
-    }
-  };
   /*
     dirichlet boundary connects should not be restricted, otherwise
     this will result in all the equations on the same dependency
     being removed as well
   */
   std::set<int64_t> bound_connects_left, bound_connects_right;
-  TPZAutoPointer<TPZCompMesh> proj_mesh_left{nullptr}, proj_mesh_right{nullptr};
-  TPZAutoPointer<TPZVTKGenerator> vtk_proj_left{nullptr}, vtk_proj_right{nullptr};
-
-  if(check_probe_in){
-    SetupProjMesh(proj_mesh_left,error_mesh_left,bound_connects_left,vtk_proj_left,"_in");
-  }
-  if(check_probe_out){
-    SetupProjMesh(proj_mesh_right,error_mesh_right,bound_connects_right,vtk_proj_right,"_out");
-  }
-
-  std::map<std::pair<int,int>,std::pair<STATE,STATE>> wpbc_error_res;
-
-
-  std::ostringstream errorinfo;
-  errorinfo.precision(std::numeric_limits<STATE>::max_digits10);
-
-  if(simdata.export_csv_error){
-    std::ofstream errorfile(simdata.prefix+"_error.csv",std::ios::trunc);
-    errorfile<<"nm(left),nm(right),error(left),error(right)"<<std::endl;
-  }
   
-  for(int im_left = 0; im_left < nmodes_left.size(); im_left++){
-    const int nm_left = nmodes_left[im_left];
-    for(int im_right = 0; im_right < nmodes_right.size(); im_right++){
-      const int nm_right = nmodes_right[im_right];
-      //eq num for obtaining reflection and transmittivity
-      int64_t refl_pos{-1},trans_pos{-1};
-      REAL computed_res =
-        RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
-                             src_coeffs, nm_left,nm_right,
-                             mats_near_wpbc,simdata,
-                             refl_pos,
-                             trans_pos
-                             );
-      //plot
-      if(simdata.export_vtk_scatt){vtk.Do();}
-      //get reflection and transmission
+  {
+    //eq num for obtaining reflection and transmittivity
+    int64_t refl_pos{-1},trans_pos{-1};
+    REAL computed_res =
+      RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
+                           src_coeffs, nmodes_left,nmodes_right,
+                           mats_near_wpbc,simdata,
+                           refl_pos,
+                           trans_pos
+                           );
+    //plot
+    if(simdata.export_vtk_scatt){vtk.Do();}
+    //get reflection and transmission
 
-      TPZFMatrix<CSTATE> &sol = scatt_mesh_wpbc->Solution();
-      if(simdata.compute_reflection_norm){
-        //for now we assume they are sequential
-        const int nm = simdata.source_coeffs.size();
-        std::cout<<"wavelength: "<<simdata.lambda;
-        for(int i = 0; i < nm; i++){
-          const auto ref = sol.GetVal(refl_pos+i,0)-src_coeffs[i];
-          const auto trans =  trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
-          std::cout<<" src "<<src_coeffs[i]
-                   <<" ref "<<ref
-                   <<" ref norm "<<std::abs(ref)
-                   <<" trans "<<trans
-                   <<" trans norm "<<std::abs(trans)
-                   <<" t + r "<<std::abs(trans)+std::abs(ref)<<std::endl;
-        }
-        std::string outputfile = simdata.prefix+"_reflection.csv";
-        std::ofstream ost;
-        ost.open(outputfile, std::ios_base::app);
-        ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
-        ost << simdata.lambda<<',';
-        for(int i = 0; i < nm; i++){
-          const CSTATE ref = sol.GetVal(refl_pos+i,0)-src_coeffs[i];
-          const CSTATE trans = trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
-          const char ref_sign = ref.imag() > 0 ? '+' : '-';
-          const char trans_sign = trans.imag() > 0 ? '+' : '-';
-          ost <<ref.real()<<ref_sign<<std::abs(ref.imag())<<'j'<<','
-              <<trans.real()<<trans_sign<<std::abs(trans.imag())<<'j'<<',';
-        }
-        //useful for debuggin weird results
-        ost <<computed_res<<std::endl;
+    TPZFMatrix<CSTATE> &sol = scatt_mesh_wpbc->Solution();
+    
+    {
+      //for now we assume they are sequential
+      const int nm = simdata.source_coeffs.size();
+      std::cout<<"wavelength: "<<simdata.lambda;
+      for(int i = 0; i < nm; i++){
+        const auto s11 = sol.GetVal(refl_pos+i,0)-src_coeffs[i];
+        const auto s21 =  trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
+        const auto ref = std::abs(s11)*std::abs(s11);
+        const auto trans = std::abs(s21)*std::abs(s21);
+        std::cout<<" src "<<src_coeffs[i]
+                 <<" s11 "<<s11
+                 <<" ref "<<ref
+                 <<" s21 "<<s21
+                 <<" trans "<<trans
+                 <<" t + r "<<trans+ref<<std::endl;
       }
-      const auto error_left =
-        check_probe_in ? 
-        ComputeProjAndError(proj_mesh_left,error_mesh_left,scatt_mesh_wpbc,
-                            projected_modes_left,nm_left,bound_connects_left,
-                            vtk_proj_left,vtk_error_left,"left",
-                            simdata)
-        : 0;
-      const auto error_right =
-        check_probe_out ?
-        ComputeProjAndError(proj_mesh_right,error_mesh_right,scatt_mesh_wpbc,
-                            projected_modes_right,nm_right,bound_connects_right,
-                            vtk_proj_right,vtk_error_right,"right",
-                            simdata)
-        : 0;
-      wpbc_error_res.insert({{nm_left,nm_right},{error_left,error_right}});
-
-      if(simdata.export_csv_error){
-        errorinfo<<nm_left<<','<<nm_right<<','
-                 <<std::fixed<<error_left<<','
-                 <<std::fixed<<error_right<<'\n';
-        std::ofstream errorfile(simdata.prefix+"_error.csv",std::ios::app);
-        errorfile<<errorinfo.str();
-        errorinfo.clear();
+      std::string outputfile = simdata.prefix+"_reflection.csv";
+      std::ofstream ost;
+      ost.open(outputfile, std::ios_base::app);
+      ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
+      ost << simdata.lambda<<',';
+      for(int i = 0; i < nm; i++){
+        const CSTATE s11 = sol.GetVal(refl_pos+i,0)-src_coeffs[i];
+        const CSTATE s21 = trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
+        const char s11_sign = s11.imag() > 0 ? '+' : '-';
+        const char s21_sign = s21.imag() > 0 ? '+' : '-';
+        ost <<s11.real()<<s11_sign<<std::abs(s11.imag())<<'j'<<','
+            <<s21.real()<<s21_sign<<std::abs(s21.imag())<<'j'<<',';
       }
-      //removing restrictions
-      wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wpbc);
-      scatt_mesh_wpbc->ComputeNodElCon();
-      scatt_mesh_wpbc->CleanUpUnconnectedNodes();
+      //useful for debuggin weird results
+      ost <<computed_res<<std::endl;
     }
+    //removing restrictions
+    wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wpbc);
+    scatt_mesh_wpbc->ComputeNodElCon();
+    scatt_mesh_wpbc->CleanUpUnconnectedNodes();
   }
-
-  if(check_probe_in || check_probe_out){
-    std::cout<<"+++++++++++++WPBC COMPARISON+++++++++++++"<<std::endl;
-    for(auto [nm,error] : wpbc_error_res){
-      std::cout<<"nmodes (left) "<<nm.first<<" nmodes (right) "<<nm.second
-               <<" norm error (left): "<<error.first<<" norm error (right): "<<error.second <<std::endl;
-    }
-    std::cout<<"+++++++++++++++++++++++++++++++++++++++++"<<std::endl;
-  }
-  
   wgma::cmeshtools::RemovePeriodicity(src_data.cmesh);
   if(match_data.cmesh){wgma::cmeshtools::RemovePeriodicity(match_data.cmesh);}
 }
 
-void SolveModePropagation(TPZAutoPointer<TPZGeoMesh> gmesh,
-                          TPZAutoPointer<ModalData> &src_an,
-                          TPZAutoPointer<ModalData> &match_an,
-                          const TPZVec<std::map<std::string, int>> &gmshmats,
-                          const std::map<int,int> &split_mats,
-                          const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
-                          const SimData &simdata)
-{
-  /*********************
-   * solve(scattering) *  
-   *********************/  
-  TPZSimpleTimer tscatt("Scattering");
 
-  const auto n_eigenpairs_left = src_an->cmesh_mf->Solution().Cols();
-  /*
-    the source is written as a linear combination of the modes
-    this vector contains the coefficients of such combination
-  */
-  TPZVec<CSTATE> src_coeffs(n_eigenpairs_left,0);
-  for(auto [i, alpha] : simdata.source_coeffs){
-    if(i >= src_coeffs.size()){
-      std::cout<<"ERROR: src coefficient bigger than computed number of modes\n"
-               <<"i: "<<i<<" alpha "<<alpha<<std::endl;
-      DebugStop();
-    }
-    src_coeffs[i] = alpha;
-  }
-
-
-  //index of the number of modes to be used to restrict the dofs on waveguide bcs
-  auto nmodes_left = simdata.n_modes_left;
-  auto nmodes_right = simdata.n_modes_right;
-  {
-    //we need to check the highest order mode used as a source
-    int last_mode = -1;
-    for(int i = 0; i < src_coeffs.size();i++){
-      if(src_coeffs[i] != (CSTATE)0){
-        last_mode = i;
-      }
-    }
-
-    std::set<int> valid_nmodes_left;
-    for (auto im : nmodes_left){
-      if(im > last_mode){
-        valid_nmodes_left.insert(im);
-      }
-    }
-    const int nmodes_left_size = valid_nmodes_left.size();
-    nmodes_left.resize(0);
-    for(auto im : valid_nmodes_left){
-      nmodes_left.push_back(im);
-    }
-  }
-
-  /*
-    first thing is to compute the propagation of the waveguide mode in the
-    error mesh
-  */
-  TPZFMatrix<CSTATE> ref_sol;
-  STATE norm_sol_ref{1};
-  
-  TPZAutoPointer<TPZCompMesh> error_mesh{nullptr};
-  TPZAutoPointer<TPZVTKGenerator> vtk_proj_eval{nullptr};
-
-  //set up post processing vars
-  TPZVec<std::string> fvars_2d = {
-    "Solution_abs",
-    "Solution_real",
-    "Solution_imag"};
-
-  {
-
-    {
-      auto modal_data = FillDataForModalAnalysis(gmshmats, simdata, simdata.mats_probe_in, "_probe_in");
-      std::set<int> volmats, pmlmats;
-      wgma::wganalysis::SetupModalAnalysisMaterials(gmesh,modal_data,volmats,pmlmats);
-
-      //we want hcurl mesh
-      constexpr bool is_h1{false};
-      error_mesh =
-        wgma::wganalysis::CreateAtomicWgma2D(gmesh,is_h1,simdata.porder,volmats,pmlmats,
-                                             modal_data.bcvec, modal_data.probevec);
-    }
-    //just to set size
-    ref_sol = error_mesh->Solution();
-
-    //now error mesh will contain all the modes
-    TransferSolutionBetweenPeriodicMeshes(error_mesh, src_an->cmesh_hcurl, periodic_els);
-    //let us get the distance between src and error mesh
-    const STATE dist =
-      error_mesh->Element(0)->Reference()->Node(0).Coord(2)-
-      src_an->cmesh_hcurl->Element(0)->Reference()->Node(0).Coord(2);
-    //now we compute the expected (propagated) solution
-    ref_sol.Redim(ref_sol.Rows(),1);
-
-    
-    for(int i = 0; i < src_coeffs.size();i++){
-      CSTATE *ref_sol_ptr = ref_sol.Elem();
-      if(src_coeffs[i] != (CSTATE)0){
-        TPZFMatrix<CSTATE> &mode = error_mesh->Solution();
-        const auto neq = mode.Rows();
-        const auto offset = neq*i;
-        const auto beta = src_an->eigenvalues[i];
-        const auto coeff = src_coeffs[i]*std::exp(-1i*beta*dist);
-        std::cout<<"beta "<<beta<<" dist "<<dist<<std::endl;
-        CSTATE *mode_ptr = mode.Elem() + offset;
-        for(int ieq = 0; ieq < neq; ieq++){
-          *ref_sol_ptr++ += coeff*(*mode_ptr++);
-        }
-      }
-    }
-
-    error_mesh->LoadSolution(ref_sol);
-    auto normsol =
-      wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
-    normsol.SetNThreads(simdata.n_threads);
-    norm_sol_ref = std::real(normsol.ComputeNorm()[0]);
-    if(simdata.export_vtk_error){
-      const std::string proj_eval_file = simdata.prefix+"_proj_eval";
-      TPZVTKGenerator vtk_proj_eval(error_mesh, fvars_2d, proj_eval_file, simdata.vtk_res);
-      vtk_proj_eval.SetNThreads(simdata.n_threads);
-      vtk_proj_eval.Do();
-    }
-    
-  }
-
-  
-  //set up post processing vars
-  TPZVec<std::string> fvars_3d = {
-    "Field_real",
-    "Field_imag",
-    "Field_abs"};
-
-  std::set<int> mats_near_wpbc;
-  TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc =
-    CreateScattMesh(gmesh,gmshmats,split_mats,mats_near_wpbc,simdata,periodic_els);
-
-
-  const std::string suffix = "_wpbc";
-  const std::string scatt_file = simdata.prefix+"_scatt"+suffix;
-  auto vtk = TPZVTKGenerator(scatt_mesh_wpbc, fvars_3d, scatt_file, simdata.vtk_res);
-  vtk.SetNThreads(simdata.n_threads);
-
-  TPZFMatrix<CSTATE> sol_pml;
-  STATE norm_sol_pml{1}, norm_error_pml{1};
-  
-
-  //compute wgbc coefficients
-  WpbcData src_data;
-  WpbcData match_data;
-
-  {
-    TPZSimpleTimer timer("wpbc coeffs",true);
-    src_data.cmesh = src_an->cmesh_hcurl;
-    ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
-                      src_data.wgbc_f, false, src_coeffs,
-                      simdata.n_threads);
-
-    //only hcurl mesh is needed from now on, we can delete analysis object
-    src_an=nullptr;
-    match_data.cmesh = match_an->cmesh_hcurl;
-    ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
-                      match_data.wgbc_f,true, {},
-                      simdata.n_threads);
-    match_an = nullptr;
-  }
-  
-  TPZFMatrix<CSTATE> sol_wpbc = ref_sol;//just to have the same size
-  
-  std::map<std::pair<int,int>,STATE> wpbc_error_res;
-
-  std::ostringstream errorinfo;
-  errorinfo.precision(std::numeric_limits<STATE>::max_digits10);
-
-
-  TPZAutoPointer<TPZVTKGenerator> vtk_wpbc_eval{nullptr}, vtk_wpbc_error{nullptr};
-  if(simdata.export_vtk_error){
-    const std::string wpbc_eval_file = simdata.prefix+"_wpbc_eval";
-    vtk_wpbc_eval = new TPZVTKGenerator(error_mesh, fvars_2d, wpbc_eval_file, simdata.vtk_res);
-    const std::string wpbc_error_file = simdata.prefix+"_wpbc_error";
-    vtk_wpbc_error = new TPZVTKGenerator(error_mesh, fvars_2d, wpbc_error_file, simdata.vtk_res);
-  }
-  
-  for(int im_left = 0; im_left < nmodes_left.size(); im_left++){
-    const int nm_left = nmodes_left[im_left];
-    for(int im_right = 0; im_right < nmodes_right.size(); im_right++){
-      const int nm_right = nmodes_right[im_right];
-      //eq num for obtaining reflection and transmittivity
-      int64_t refl_pos{-1},trans_pos{-1};
-      RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
-                           src_coeffs, nm_left,nm_right,
-                           mats_near_wpbc,simdata,
-                           refl_pos, trans_pos);
-      //plot
-      if(simdata.export_vtk_scatt){vtk.Do();}
-
-      wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh_wpbc, sol_wpbc);
-      error_mesh->LoadSolution(sol_wpbc);
-      if(simdata.export_vtk_error){vtk_wpbc_eval->Do();}
-      sol_wpbc -= ref_sol;
-      error_mesh->LoadSolution(sol_wpbc);
-      if(simdata.export_vtk_error){vtk_wpbc_error->Do();}
-      auto normsol =
-        wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
-      normsol.SetNThreads(simdata.n_threads);
-      const auto norm = std::real(normsol.ComputeNorm()[0]);
-      const auto error = norm/norm_sol_ref;
-      std::cout<<"nmodes (left) "<<nm_left<< " nmodes(right) "<<nm_right
-               <<" error "<<error<<std::endl;
-      wpbc_error_res.insert({{nm_left,nm_right},error});
-
-      if(simdata.export_csv_error){
-        errorinfo<<nm_left<<','<<nm_right<<','
-                 <<std::fixed<<error<<'\n';
-      }
-      //removing restrictions
-      wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wpbc);
-      scatt_mesh_wpbc->ComputeNodElCon();
-      scatt_mesh_wpbc->CleanUpUnconnectedNodes();
-    }
-  }
-  if(simdata.export_csv_error){
-    std::ofstream errorfile(simdata.prefix+"_error.csv",std::ios::trunc);
-    errorfile<<"nm(left),nm(right),error"<<std::endl;
-    errorfile<<errorinfo.str();
-    errorinfo.clear();
-  }
-}
 
 
 /**
@@ -1275,9 +773,6 @@ FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
                          const std::string &suffix)
 {
   // setting up cmesh data
-  const auto &alphaPMLx = simdata.alphaPMLx;
-  const auto &alphaPMLy = simdata.alphaPMLy;
-    
   wgma::cmeshtools::PhysicalData modal_data;
   std::map<std::string, std::pair<CSTATE, CSTATE>> modal_mats;
   for(const auto &matname : mats){
@@ -1285,7 +780,7 @@ FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
     const auto suffix_length = suffix.size();
     const auto name = matname.substr(0,matname.length()-suffix_length);
     const CSTATE n = simdata.refractive_indices.at(name);
-    modal_mats[matname] = std::pair<CSTATE,CSTATE>(n*n,1.);
+    modal_mats[matname] = std::pair<CSTATE,CSTATE>(n,1.);
   }
   std::map<std::string, wgma::bc::type> modal_bcs;
   //dimension of the modal analysis 
@@ -1306,42 +801,9 @@ FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
   // }
   
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
-                                          {alphaPMLx,alphaPMLy}, modal_data, modal_dim);
-  //we must now filter the 2D PMLs
-  std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
-  for(const auto &pml : modal_data.pmlvec){
-    const std::string pattern{suffix};
-    const auto rx = std::regex{pattern, std::regex_constants::icase };
-    
-    const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
-    if(found_pattern){pmlvec.push_back(pml);}
-  }
-  modal_data.pmlvec = pmlvec;
+                                          {0,0,0}, modal_data, modal_dim);
   return modal_data;
 }
-
-void ComputeCouplingMat(TPZAutoPointer<TPZCompMesh> cmesh_mf,
-                        std::string filename,
-                        const int nthreads,
-                        const bool conj)
-{
-  
-  using namespace wgma::post;
-
-  std::set<int> matids;
-  WaveguideCoupling<MultiphysicsIntegrator,1> integrator(cmesh_mf,
-                                                         matids,
-                                                         conj,
-                                                         nthreads
-                                                         );
-  integrator.SetNThreads(nthreads);
-  integrator.ComputeCoupling();
-  TPZFMatrix<CSTATE> couplingmat;
-  integrator.GetCoupling(couplingmat);
-  std::ofstream matfile(filename);
-  couplingmat.Print("",matfile,ECSV);
-}
-
 
 TPZAutoPointer<TPZCompMesh>
 CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
@@ -1354,9 +816,6 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
 {
 
   const TPZVec<std::string> &mats = simdata.mats_3d;
-
-  const CSTATE alphaPMLx = simdata.alphaPMLx;
-  const CSTATE alphaPMLy = simdata.alphaPMLy;
 
   const auto &pOrder = simdata.porder;
   const auto &lambda = simdata.lambda;
@@ -1391,7 +850,7 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     
     
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
-                                          {alphaPMLx,alphaPMLy,0}, scatt_data);
+                                          {0,0,0}, scatt_data);
 
 
   //materials that will represent our source
@@ -1573,166 +1032,6 @@ void ComputeWpbcCoeffs(ModalData& an,
   wgbc.SetBeta(betavec);
   wgbc.ComputeContribution();
   wgbc.GetContribution(wgbc_k,wgbc_f);
-}
-
-void
-TransferSolutionBetweenPeriodicMeshes(TPZAutoPointer<TPZCompMesh> dest_mesh,
-                                      TPZAutoPointer<TPZCompMesh> src_mesh,
-                                      const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els)
-{
-  TPZGeoMesh *gmesh = dest_mesh->Reference();
-  const TPZFMatrix<CSTATE> &src_sol = src_mesh->Solution();
-  const auto &src_block = src_mesh->Block();
-  const int nrow = src_sol.Rows();
-  const int ncol = src_sol.Cols();
-  TPZFMatrix<CSTATE> &dest_sol = dest_mesh->Solution();
-  const auto &dest_block = dest_mesh->Block();
-  dest_sol.Redim(nrow,ncol);
-  //gmesh will point to src_mesh
-  src_mesh->LoadReferences();
-
-  const auto &elvec = dest_mesh->ElementVec();
-  const int nel = elvec.NElements();
-  
-  pzutils::ParallelFor(0,nel,[&gmesh, &dest_mesh, &src_mesh, &elvec,
-                              &periodic_els, &src_block, &dest_block,
-                              &src_sol, &dest_sol, ncol](int iel){
-    auto dest_cel = elvec[iel];
-    //we skip boundary els
-    if(dest_cel->Dimension()!=dest_mesh->Dimension()){
-      return;
-    }
-    const int64_t dest_gel_index = dest_cel->ReferenceIndex();
-    int64_t src_gel_index{-1};
-    for(auto periodic_map : periodic_els){
-      auto periodic_it = periodic_map->find(dest_gel_index);
-      if(periodic_it!=periodic_map->end()){
-        src_gel_index = periodic_it->second;
-        break;
-      }
-    }
-    if(src_gel_index < 0){
-      std::cout<<__PRETTY_FUNCTION__
-               <<"\nCould not find periodic pair of element "
-               <<dest_gel_index<<std::endl;
-      DebugStop();
-    }
-    auto src_cel = gmesh->ElementVec()[src_gel_index]->Reference();
-    if(!src_cel){
-      DebugStop();
-    }
-    if(dest_cel->NConnects()!=src_cel->NConnects()){
-      DebugStop();
-    }
-    const int ncon = dest_cel->NConnects();
-    for(int icon = 0; icon < ncon; icon++){
-      const auto src_seqnum = src_cel->Connect(icon).SequenceNumber();
-      const auto src_pos = src_block.Position(src_seqnum);
-      const auto src_sz = src_block.Size(src_seqnum);
-      
-      const auto dest_seqnum = dest_cel->Connect(icon).SequenceNumber();
-      const auto dest_pos = dest_block.Position(dest_seqnum);
-      const auto dest_sz = dest_block.Size(dest_seqnum);
-      
-      if(src_sz != dest_sz){
-        PZError<<__PRETTY_FUNCTION__<<'\n'
-               <<"src sz: "<<src_sz<<" dest sz: "<<dest_sz<<'\n'
-               <<"src_cel index: "<<src_cel->Index()<<'\t'
-               <<"dest_cel index: "<<dest_cel->Index()<<'\t'
-               <<"icon: "<<icon<<std::endl;
-        DebugStop();
-      }
-      const auto neq = src_cel->Connect(icon).NDof(src_mesh);
-      if(neq != src_sz){
-        PZError<<__PRETTY_FUNCTION__<<'\n'
-               <<"src sz: "<<src_sz<<" src_cel->Connect(icon).NDof: "<<neq<<'\n'
-               <<"src_cel index: "<<src_cel->Index()<<'\t'
-               <<"dest_cel index: "<<dest_cel->Index()<<'\t'
-               <<"icon: "<<icon<<std::endl;
-        DebugStop();
-      }
-      for(int icol = 0; icol < ncol; icol++){
-        for(int ieq = 0; ieq < neq; ieq++){
-          const auto val = src_sol.Get(src_pos+ieq,icol);
-          dest_sol.Put(dest_pos+ieq,icol,val);
-        }
-      }
-    }
-  });
-}
-
-STATE ComputeProjAndError(TPZAutoPointer<TPZCompMesh> proj_mesh,
-                          TPZAutoPointer<TPZCompMesh> error_mesh,
-                          TPZAutoPointer<TPZCompMesh> scatt_mesh,
-                          const TPZFMatrix<CSTATE> &projected_modes,
-                          const int nm,
-                          const std::set<int64_t> &bound_connects,
-                          TPZAutoPointer<TPZVTKGenerator> vtk_proj,
-                          TPZAutoPointer<TPZVTKGenerator> vtk_error,
-                          const std::string &name,
-                          const SimData &simdata
-                          ){
-  error_mesh->LoadSolution(projected_modes);
-  //now we restrict the proj mesh
-  int64_t indep_con =
-    wgma::cmeshtools::RestrictDofs(proj_mesh, error_mesh, nm, bound_connects);
-      
-  { //we want just 1 column
-    const int neq = error_mesh->Solution().Rows();
-    error_mesh->Solution().Resize(neq, 1);
-  }
-  //now we compute projection
-  constexpr bool sym{false};
-  auto proj_an = wgma::scattering::Analysis(proj_mesh, simdata.n_threads,
-                                            simdata.optimize_bandwidth,
-                                            simdata.filter_bnd_eqs,
-                                            sym);
-  //now we load desired solution into proj_mesh so we can project it
-  TPZFMatrix<CSTATE> &sol_proj = proj_mesh->Solution();
-  wgma::cmeshtools::ExtractSolFromMesh(proj_mesh, scatt_mesh, sol_proj);
-  //get reference solution (just copy, not reference)
-  TPZFMatrix<CSTATE> sol_ref = error_mesh->Solution();
-  wgma::cmeshtools::ExtractSolFromMesh(error_mesh, scatt_mesh, sol_ref);
-
-  STATE norm_sol_wpbc{1};
-  {
-    error_mesh->LoadSolution(sol_ref);
-    auto normsol =
-      wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
-    normsol.SetNThreads(simdata.n_threads);
-    norm_sol_wpbc = std::real(normsol.ComputeNorm()[0]);
-    constexpr STATE tol = 1000*std::numeric_limits<STATE>::epsilon();
-    if(norm_sol_wpbc < tol){norm_sol_wpbc=1.;}
-    std::cout<<"norm sol wpbc: "<<norm_sol_wpbc<<std::endl;
-  }
-  proj_an.Assemble();
-  proj_an.Solve();
-      
-  //now we copy it to the error mesh
-  TPZFMatrix<CSTATE> near_proj_error = sol_ref;
-  wgma::cmeshtools::ExtractSolFromMesh(error_mesh, proj_mesh, near_proj_error);
-
-      
-  near_proj_error -= sol_ref;
-  error_mesh->LoadSolution(near_proj_error);
-  if(simdata.export_vtk_error){
-    vtk_proj->Do();
-    vtk_error->Do();
-  }
-  auto normsol =
-    wgma::post::SolutionNorm<wgma::post::SingleSpaceIntegrator>(error_mesh);
-    
-  normsol.SetNThreads(simdata.n_threads);
-  const auto error = std::real(normsol.ComputeNorm()[0]);
-  const auto rel_error = error/norm_sol_wpbc;
-  std::cout<<"nmodes ("<<name<<") "<<nm
-           <<" error "<<error<<" rel error "<<rel_error<<std::endl;
-
-  //now we remove restrictions
-  wgma::cmeshtools::RemovePeriodicity(proj_mesh);
-  proj_mesh->ComputeNodElCon();
-  proj_mesh->CleanUpUnconnectedNodes();
-  return rel_error;
 }
 
 REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
