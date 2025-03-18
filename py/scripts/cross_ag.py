@@ -32,7 +32,6 @@ def run_simulation(data,wavelength,mat_n,mat_k):
     data["max_k_in"] = max_k
     data["max_k_out"] = max_k
     
-    data["direct_solver"] = False
     filename = 'cross_sweep_.json'
     with open(filename, 'w+') as jsonfile:
         # create json
@@ -60,7 +59,7 @@ data = {
     "porder": 3,
     "vtk_res": 0,
     "export_vtk_modes": False,
-    "export_vtk_scatt": False,
+    "export_vtk_scatt": True,
     "print_gmesh": False,
     "filter_bnd_eqs": True,
     "optimize_bandwidth": True,
@@ -74,12 +73,13 @@ data["mats_port_out"] = ["sub_port_out"]
 
 data["source_coeffs"] = [[0, 1]]
 
-data["direct_solver"] = False
+data["direct_solver"] = True
 
 
-wavelength = 1.24
+wavelength = 0.35
 prefix = "res_cross_ag/cross_ag_ref"
 data["meshfile"] = "meshes/cross_ag_0.msh"
+# data["refine_regions"] = {"refine_edges":1}
 data["prefix"] = prefix
 s_begin = timer()
 run_simulation(data, wavelength, ag_n, ag_k)
