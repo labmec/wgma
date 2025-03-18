@@ -562,10 +562,23 @@ ComputeModalAnalysis(
   const auto &lambda = simdata.lambda;
   const auto &scale = simdata.scale;
   const bool verbose = true;//simdata.eigen_verbose;
-  const STATE lx = 0.65;
-  const STATE ly = 0.65;
-  const int max_k  = 4;
-  const auto modal_data_cp = modal_data;
+
+  //now we find the coordinates of the boundaries
+  REAL xMin{0},xMax{0},yMin{0},yMax{0},zMin{0},zMax{0};
+  std::set<int> mat_ids;
+  for(auto &matinfo : modal_data.matinfovec){
+    mat_ids.insert(std::get<0>(matinfo));
+  }
+  wgma::gmeshtools::FindRegionLimits(gmesh, mat_ids,
+                                     xMin, xMax,
+                                     yMin, yMax,
+                                     zMin, zMax);
+  
+  const STATE lx = xMax-xMin;
+  const STATE ly = yMax-yMin;
+  const int max_k  = 5;
+  //this material expects refractive index instead of
+  //permittivity
   for(auto &matinfo : modal_data.matinfovec){
     const auto er = std::get<1>(matinfo);
     const auto n = std::sqrt(er);
@@ -575,7 +588,6 @@ ComputeModalAnalysis(
                                                                el_map, lambda,
                                                                lx, ly, max_k,
                                                                scale,verbose);
-  modal_data = modal_data_cp;
 
   constexpr bool print_cmesh{false};
   if(print_cmesh){
