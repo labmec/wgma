@@ -3,7 +3,8 @@ import numpy as np
 import os
 import subprocess
 import sys
-from mat_indices import ag_n, ag_k, al_n, al_k, glass_n, glass_k
+from timeit import default_timer as timer
+from mat_indices import ag_n, ag_k, al_n, al_k, glass_n, glass_k, TiO2_n, TiO2_k
 
 
 def sweep_frequencies(data,wl_list,mat_n,mat_k):
@@ -19,10 +20,25 @@ def sweep_frequencies(data,wl_list,mat_n,mat_k):
         data["refractive indices"] = {
             "Ag": [mat_n(wavelength), -mat_k(wavelength)],
             "air": [1.0, 0],
-            "sub": [glass_n(wavelength), -glass_k(wavelength)]
+            "sub": [glass_n(wavelength), -glass_k(wavelength)],
         }
         data["scale"] = wavelength/(2*np.pi)
         data["scale"] = 1
+
+        # neigleft = 750 if wavelength < 0.6 else 650
+        # nmodesleft = 700 if wavelength < 0.6 else 600
+        # neigright = 250 if wavelength < 0.6 else 650
+        # nmodesright = 200 if wavelength < 0.6 else 600
+        val = 242
+        neigleft = val
+        neigright = val
+        nmodesleft = val
+        nmodesright = val
+        data["n_eigenpairs_left"] = neigleft
+        data["n_eigenpairs_right"] = neigright
+        data["n_modes_left"] = [nmodesleft]
+        data["n_modes_right"] = [nmodesright]
+
 
         filename = 'cross_sweep_'+str(i)+'.json'
         with open(filename, 'w+') as jsonfile:
@@ -36,14 +52,20 @@ def sweep_frequencies(data,wl_list,mat_n,mat_k):
         if status == 0:
             # run program
             print("\rrunning {} out of {}...".format(i+1, len(wl_list)), end='')
+            cmd_string = 'cd .. && ./meta_surf_2d scripts/' + filename + ' >> '
             if '-verbose' in sys.argv:
-                os.system(
-                    'cd .. && ./meta_surf_2d scripts/' + filename + ' >> ' +
-                    outfile)
+                cmd_string += outfile
             else:
-                os.system(
-                    'cd .. && ./meta_surf_2d scripts/' + filename +
-                    ' >> /dev/null')
+                cmd_string += '/dev/null'
+            #we will try to run it three times
+            count = 0
+            ret_val = 1
+            while count < 1 and ret_val != 0:
+                ret_val = os.system(cmd_string)
+                count += 1
+            if ret_val != 0:
+                print("\rsomething is wrong with this mesh!")
+                return
         try:
             os.remove(filename)
         except FileNotFoundError:
@@ -77,41 +99,24 @@ data["source_coeffs"] = [[0, 1]]
 
 
 data["check_mode_propagation"] = False
-data["direct_solver"] = True
-data["n_eigenpairs_left"] = 200
-data["n_eigenpairs_right"] = 200
-data["n_modes_left"] = [200]
-data["n_modes_right"] = [200]
-
-
-wl_list = [wl / 1000 for wl in np.arange(1000, 1500, 20)]
-# wl_list = [wl / 1000 for wl in np.arange(1000, 1100, 5)]
 
 
 
-#testing NOT FULL
-data["meshfile"] = "meshes/cross_ag.msh"
-
-prefix = "res_cross_freq_sweep/cross_ag"
-data["prefix"] = prefix
-print("Running with silver")
-sweep_frequencies(data, wl_list, ag_n, ag_k)
-
-prefix = "res_cross_freq_sweep/cross_al"
-data["prefix"] = prefix
-print("Running with aluminum")
-sweep_frequencies(data, wl_list, al_n, al_k)
+data["n_threads"] = 16
 
 
-#testing FULL
-data["meshfile"] = "meshes/cross_ag_full.msh"
+wl_list = [wl / 1000 for wl in np.arange(350, 800, 10)]
+wl_list = [wl / 1000 for wl in np.arange(1000, 1500, 10)]
+data["direct_solver"] = False
 
-prefix = "res_cross_freq_sweep/cross_ag_full"
-data["prefix"] = prefix
-print("Running with silver")
-sweep_frequencies(data, wl_list, ag_n, ag_k)
+max_mesh = 0
 
-prefix = "res_cross_freq_sweep/cross_al_full"
-data["prefix"] = prefix
-print("Running with aluminum")
-sweep_frequencies(data, wl_list, al_n, al_k)
+for i in range(0,max_mesh+1):
+    prefix = "res_cross_ag/cross_ag_"+str(i)
+    data["meshfile"] = "meshes/cross_ag_"+str(i)+".msh"
+    data["prefix"] = prefix
+    print("Running mesh {} out of {}".format(i,max_mesh))
+    s_begin = timer()
+    sweep_frequencies(data, wl_list, ag_n, ag_k)
+    s_end = timer()
+    print("solved system in {} seconds".format(s_end-s_begin))
