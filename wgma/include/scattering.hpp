@@ -77,7 +77,21 @@ namespace wgma::scattering{
 
     //! Gets the residual returned from the linear solver
     REAL GetResidual() const {return fResidual;}
+
+    //! Provides initial solution guess for the iterative solver
+    inline void SetInitVecCustom(const TPZFMatrix<CSTATE> &init){
+      m_init_vec=init;
+      m_use_init_vec = true;
+    }
+    //! Uses a zero vector as the initial guess
+    inline void SetInitVecZero(){
+      m_use_init_vec = false;
+    }
   protected:
+    //! whether to use initial vector for the iterative solver
+    bool m_use_init_vec{false};
+    //! initial vector to be used as a guess for the iterative solver
+    TPZFMatrix<CSTATE> m_init_vec;
     //! H1 mesh
     TPZAutoPointer<TPZCompMesh> m_cmesh{nullptr};
     //! Whether the matrices have been assembled already

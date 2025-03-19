@@ -126,12 +126,59 @@ namespace wgma::scattering{
   
   void Analysis::Solve(){
     TPZSimpleTimer solve("Solve");
-    TPZLinearAnalysis::Solve();
+    const int64_t numeq = fCompMesh->NEquations();
+    if(fRhs.Rows() != numeq ) 
+    {
+      DebugStop();
+    }
+    const int64_t nReducedEq = fStructMatrix->NReducedEquations();
+    auto mySolver =
+      dynamic_cast<TPZMatrixSolver<CSTATE>*>(this->Solver());
+
+    TPZFMatrix<CSTATE> residual;
+    TPZFMatrix<CSTATE> delu;
+    if (nReducedEq == numeq) 
+    {
+      residual = fRhs;
+    }
+    else 
+    {
+      residual.Resize(nReducedEq,1);
+      fStructMatrix->EquationFilter().Gather(fRhs,residual);
+    }
+
+    if(m_use_init_vec){
+      delu = m_init_vec;
+      if(delu.Rows()!=nReducedEq){
+        DebugStop();
+      }
+    }else{
+      delu.Resize(nReducedEq,1);
+    }
+    const REAL resnorm = Norm(residual);
+    if(IsZero(resnorm))
+    {
+      delu.Zero();
+    }
+    else
+    {
+      mySolver->Solve(residual, delu);
+    }
+    
+    if (nReducedEq == numeq) {
+      fSolution = delu;
+    }else{
+      fSolution.Redim(numeq,1);
+      fStructMatrix->EquationFilter().Scatter(delu,fSolution);
+    }
+    fCompMesh->LoadSolution(fSolution);
+    fCompMesh->TransferMultiphysicsSolution();
     auto step = dynamic_cast<TPZStepSolver<CSTATE>*>(this->Solver());
     if(step){
       fResidual = step->GetTolerance();
     }
   }
+  
   void Analysis::Run(){
     Assemble();
     Solve();
