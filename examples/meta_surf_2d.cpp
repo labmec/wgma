@@ -334,6 +334,7 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           const int nmodes_match,
                           const std::set<int> &mats_near_wpbc,
                           const SimData &simdata,
+                          TPZFMatrix<CSTATE> &sol_vec,
                           int64_t &refl_pos,
                           int64_t &trans_pos);
 
@@ -346,7 +347,8 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
                                   const TPZVec<CSTATE> &wgbc_f);
 
 void SetupPrecond(wgma::scattering::Analysis &scatt_an,
-                  const std::set<int64_t> &indep_cons);
+                  const std::set<int64_t> &indep_cons,
+                  int from_current);
 
 //! Reads sim data from file
 SimData ReadSimData(const std::string &dataname){
@@ -702,12 +704,14 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   std::set<int64_t> bound_connects_left, bound_connects_right;
   
   {
+    TPZFMatrix<CSTATE> init_vec;
     //eq num for obtaining reflection and transmittivity
     int64_t refl_pos{-1},trans_pos{-1};
     REAL computed_res =
       RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
                            src_coeffs, nmodes_left,nmodes_right,
                            mats_near_wpbc,simdata,
+                           init_vec,
                            refl_pos,
                            trans_pos
                            );
@@ -1042,6 +1046,7 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                           const int nmodes_match,
                           const std::set<int> &mats_near_wpbc,
                           const SimData &simdata,
+                          TPZFMatrix<CSTATE> &sol_vec,
                           int64_t &refl_pos,
                           int64_t &trans_pos)
 {
@@ -1111,6 +1116,9 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
       }
     }
     TPZSimpleTimer tassemble("Assemble",true);
+    if(sol_vec.Rows() > 0){
+      scatt_an.SetInitVecCustom(sol_vec);
+    }
     scatt_an.Assemble();
   
     //for now we unwrap the groups as they seem to interfere with the solving stage
@@ -1168,14 +1176,21 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     }
   }
   
-  
   if(!simdata.direct_solver){
     std::set<int64_t> indices = {indep_con_id_src};
     if(match_mesh){indices.insert(indep_con_id_match);}
-    SetupPrecond(scatt_an, indices);
+    int from_current = sol_vec.Rows() > 0 ? 1 : 0;
+    SetupPrecond(scatt_an, indices, from_current);
   }
   TPZSimpleTimer tsolve("Solve",true);
   scatt_an.Solve();
+  auto sol = scatt_an.Solution();
+  const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
+  if(eqfilt.IsActive()){
+    const auto neq = eqfilt.NActiveEquations();
+    sol_vec.Resize(neq,1);
+    eqfilt.Gather(sol, sol_vec);
+  }
 
   const auto &block = scatt_mesh->Block();
   {
@@ -1293,7 +1308,7 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
 }
 
 void SetupPrecond(wgma::scattering::Analysis &scatt_an,
-                  const std::set<int64_t> &indep_cons) {
+                  const std::set<int64_t> &indep_cons, int from_current) {
   TPZSimpleTimer solve("SetupPrecond", true);
   constexpr REAL tol = 5e-6;
       
@@ -1336,7 +1351,6 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
   }
   const int64_t n_iter = {300};
   const int n_vecs = {30};
-  constexpr int64_t from_current{0};
   solver.SetGMRES(n_iter, n_vecs, *precond, tol, from_current);
 }
 
