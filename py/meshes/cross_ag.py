@@ -86,6 +86,33 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
     air = air.tag
     sub = sub.tag
 
+    # finally, let us select some edges in the cross for refining
+    all_cross_surfs = gmsh.model.get_boundary(
+        [(3, tag) for tag in cross],
+        combined=True, oriented=False, recursive=False)
+    all_cross_edges = gmsh.model.get_boundary([dt for dt in all_cross_surfs],
+                                              combined=False,
+                                              oriented=False,
+                                              recursive=False)
+    
+    select_edges = []
+    for d, t in all_cross_edges:
+        # select_edges.append(t)
+        x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
+        if abs(z) > h_sub:
+            select_edges.append(t)
+        # if abs(x) < w_cross and abs(y) < w_cross:
+        #     # now we check if it is vertical
+        #     d_l = gmsh.model.get_derivative(d, t, [0])
+        #     if d_l[0] == 0 and d_l[1] == 0:
+        #         select_edges.append(t)
+
+    if '-curve' in sys.argv:
+        new_ag = gmsh.model.occ.fillet(ag,select_edges,[5/1000])
+        ag = [new_ag[0][1]]
+        gmsh.model.occ.synchronize()
+    
+
     # now we get boundaries from ag + cross
     # so that we can make element size smaller next to the cross
     ag_cross_bnds = [
@@ -169,14 +196,6 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
                                               oriented=False,
                                               recursive=False)
     
-    select_edges = []
-    for d, t in all_cross_edges:
-        x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
-        if abs(x) < w_cross and abs(y) < w_cross:
-            # now we check if it is vertical
-            d_l = gmsh.model.get_derivative(d, t, [0])
-            if d_l[0] == 0 and d_l[1] == 0:
-                select_edges.append(t)
     
     # set element size per region
     min_el = min(el_ag, el_air)
@@ -281,7 +300,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
         "bound_port_out_periodic_xp": 25,
         "bound_port_out_periodic_ym": 26,
         "bound_port_out_periodic_yp": 27,
-        "refine_edges": 28
+        # "refine_edges": 28
     }
 
     domain_physical_ids_0d = {
@@ -309,7 +328,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
         "bound_port_out_periodic_xp": xp_bnd_port_out,
         "bound_port_out_periodic_ym": ym_bnd_port_out,
         "bound_port_out_periodic_yp": yp_bnd_port_out,
-        "refine_edges": select_edges
+        # "refine_edges": select_edges
     }
 
     generate_physical_ids(domain_physical_ids, domain_regions)
@@ -325,17 +344,17 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
 
 
 nel = 6
-min_wavelength = 1
+min_wavelength = 0.35
 
 el_ag = min_wavelength/nel
 el_air = min_wavelength/nel
 el_sub = min_wavelength/(1.55*nel)
 
 def set_orig_params():
-    w_domain = 650/1000  #l_cross+100, so we have 50nm on each side
+    w_domain = 325/1000  #l_cross+100, so we have 50nm on each side
     h_air = 200/1000
-    w_cross = 100/1000
-    l_cross = 400/1000 #3*w_cross
+    w_cross = 75/1000
+    l_cross = 225/1000 #3*w_cross
     h_silver = 60/1000
     h_sub = 100/1000
     d_cross = h_silver
