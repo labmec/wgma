@@ -1334,7 +1334,7 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
 void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                   const std::set<int64_t> &indep_cons, int from_current) {
   TPZSimpleTimer solve("SetupPrecond", true);
-  constexpr REAL tol = 5e-6;
+  constexpr REAL tol = 5e-5;
       
   auto &solver = dynamic_cast<TPZStepSolver<CSTATE>&>(scatt_an.GetSolver());
 
