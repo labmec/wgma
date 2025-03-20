@@ -300,7 +300,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
         "bound_port_out_periodic_xp": 25,
         "bound_port_out_periodic_ym": 26,
         "bound_port_out_periodic_yp": 27,
-        # "refine_edges": 28
+        "refine_edges": 28
     }
 
     domain_physical_ids_0d = {
@@ -328,7 +328,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
         "bound_port_out_periodic_xp": xp_bnd_port_out,
         "bound_port_out_periodic_ym": ym_bnd_port_out,
         "bound_port_out_periodic_yp": yp_bnd_port_out,
-        # "refine_edges": select_edges
+        "refine_edges": select_edges
     }
 
     generate_physical_ids(domain_physical_ids, domain_regions)
