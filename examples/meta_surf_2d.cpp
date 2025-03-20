@@ -34,6 +34,10 @@ using namespace std::complex_literals;
 struct SimData{
   //!.msh mesh
   std::string meshfile;
+  //!wavelength vector
+  TPZVec<STATE> wl_vec;
+  //!map of refractive indices
+  TPZVec<std::map<std::string,CSTATE>> ref_index_vec;
   //!wavelength
   STATE lambda{4.0};
   //!geometric scaling (floating point precision)
@@ -117,7 +121,8 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                 const TPZVec<std::map<std::string, int>> &gmshmats,
                 const std::map<int,int> &split_mats,
                 const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
-                const SimData &simdata);
+                const SimData &simdata,
+                TPZFMatrix<CSTATE> &last_sol);
 
 int main(int argc, char *argv[]) {
 
@@ -213,51 +218,67 @@ int main(int argc, char *argv[]) {
     wgma::gmeshtools::PrintGeoMesh(gmesh, filename);
   }
 
-  //in port modal analysis
-  TPZAutoPointer<ModalData>
-    modal_an_in{nullptr};
-  {
-    modal_an_in =  ComputeModalAnalysis(gmesh,gmshmats,simdata, periodic_els,
-                                        simdata.mats_port_in,
-                                        simdata.max_k_in,"_port_in");
-  }
 
-  //out port modal analysis
-  TPZAutoPointer<ModalData>
-    modal_an_out{nullptr};
-  if(simdata.mats_port_out.size()){
-    modal_an_out = ComputeModalAnalysis(gmesh,gmshmats,simdata, periodic_els,
-                                        simdata.mats_port_out,
-                                        simdata.max_k_out,"_port_out");
-  }
-
-  std::set<int> all_matids;
-  for(auto &mats : gmshmats){//dim
-    for(auto &[name,id] : mats){//name,matid
-      all_matids.insert(id);
-    }
-  }
-  
-  auto modal_l_map =
-    SplitMaterialsNearWpbc(modal_an_in->cmesh_mf,all_matids);
-  std::map<int,int> modal_r_map;
-    if(modal_an_out){
-      modal_r_map = 
-        SplitMaterialsNearWpbc(modal_an_out->cmesh_mf,all_matids);
-    }
-
-  //now we combine the maps but inverting key->value, so we have new_mat->old_mat
+  //this map will be filled in the first iteration and
+  //allows for a faster assembly of the scatt matrix
   std::map<int,int> split_mats;
-  for(auto [old_mat,new_mat] : modal_l_map){
-    split_mats[new_mat] = old_mat;
-  }
-  for(auto [old_mat,new_mat] : modal_r_map){
-    split_mats[new_mat] = old_mat;
-  }
+  //this matrix will store the solution from the previous iteration
+  TPZFMatrix<CSTATE> last_sol;
+  //number of wavelength points
+  const int nwl_pts = simdata.wl_vec.size();
+  for(int iwl = 0; iwl < nwl_pts; iwl++){
+    auto timer_begin = std::chrono::high_resolution_clock::now();
+    simdata.lambda = simdata.wl_vec[iwl];
+    simdata.refractive_indices = simdata.ref_index_vec[iwl];
+    //in port modal analysis
+    TPZAutoPointer<ModalData> modal_an_in =
+      ComputeModalAnalysis(gmesh,gmshmats,simdata, periodic_els,
+                           simdata.mats_port_in,
+                           simdata.max_k_in,"_port_in");
 
-  std::cout<<"split mats"<<std::endl;
-  SolveScattering(gmesh, modal_an_in,  modal_an_out, gmshmats,
-                  split_mats,periodic_els, simdata);
+    //out port modal analysis
+    TPZAutoPointer<ModalData>
+      modal_an_out{nullptr};
+    if(simdata.mats_port_out.size()){
+      modal_an_out = ComputeModalAnalysis(gmesh,gmshmats,simdata, periodic_els,
+                                          simdata.mats_port_out,
+                                          simdata.max_k_out,"_port_out");
+    }
+
+    
+
+    if(iwl == 0){
+      std::set<int> all_matids;
+      for(auto &mats : gmshmats){//dim
+        for(auto &[name,id] : mats){//name,matid
+          all_matids.insert(id);
+        }
+      }
+      //we just need to do it on the first iteration
+      auto modal_l_map =
+        SplitMaterialsNearWpbc(modal_an_in->cmesh_mf,all_matids);
+      std::map<int,int> modal_r_map;
+      if(modal_an_out){
+        modal_r_map = 
+          SplitMaterialsNearWpbc(modal_an_out->cmesh_mf,all_matids);
+      }
+
+      //now we combine the maps but inverting key->value, so we have new_mat->old_mat
+      for(auto [old_mat,new_mat] : modal_l_map){
+        split_mats[new_mat] = old_mat;
+      }
+      for(auto [old_mat,new_mat] : modal_r_map){
+        split_mats[new_mat] = old_mat;
+      }
+
+      std::cout<<"split mats"<<std::endl;
+    }
+    SolveScattering(gmesh, modal_an_in,  modal_an_out, gmshmats,
+                    split_mats,periodic_els, simdata, last_sol);
+    auto timer_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration = timer_end-timer_begin;
+    std::cout<<"wavelength "<<simdata.lambda<<" took "<<duration.count()<<" ms"<<std::endl;
+  }
   return 0;
 }
 
@@ -366,54 +387,61 @@ SimData ReadSimData(const std::string &dataname){
   tmpvec_str = data.value("mats_port_out",std::vector<std::string>{});
   for(auto mat : tmpvec_str){sd.mats_port_out.push_back(mat);}
 
-  
-  auto tmpvec_map =
-    data["refractive indices"].get<std::map<std::string,std::vector<double>>>();
-  for(const auto &[name,n] : tmpvec_map){
-    if(n.size() == 0 || n.size()>2){
-      DebugStop();
-    }
-    if(n.size()==2){
-      sd.refractive_indices[name] = {n[0],n[1]};
-    }else{
-      sd.refractive_indices[name] = {n[0],0};
-    }
-    std::cout<<"Read material "<<name<<" with refractive index "
-             <<sd.refractive_indices[name]<<std::endl;
-  }
-  //now we check if every material has a refractive index
-  for(auto mat : sd.mats_3d){
-    if(sd.refractive_indices.count(mat)==0){
-      PZError<<__PRETTY_FUNCTION__
-             <<"\nCould not find refractive index of material: "<<mat<<std::endl;
-      DebugStop();
-    }
-  }
-  //including the port materials
+  //we check if every port material has a corresponding 3d mat
+
   for(auto mat : sd.mats_port_in){
     const auto suffix_length = std::strlen("_port_in");
     const auto name = mat.substr(0,mat.length()-suffix_length);
-    if(sd.refractive_indices.count(name)==0){
+    if ( std::find(sd.mats_3d.begin(), sd.mats_3d.end(), name) == sd.mats_3d.end() ){
       PZError<<__PRETTY_FUNCTION__
-             <<"\nCould not find refractive index of material: "<<mat<<std::endl;
+             <<"\nCould not find corresponding material of "<<mat<<std::endl;
       DebugStop();
     }
   }
+
   for(auto mat : sd.mats_port_out){
     const auto suffix_length = std::strlen("_port_out");
     const auto name = mat.substr(0,mat.length()-suffix_length);
-    if(sd.refractive_indices.count(name)==0){
+    if ( std::find(sd.mats_3d.begin(), sd.mats_3d.end(), name) == sd.mats_3d.end() ){
       PZError<<__PRETTY_FUNCTION__
-             <<"\nCould not find refractive index of material: "<<mat<<std::endl;
+             <<"\nCould not find corresponding material of "<<mat<<std::endl;
       DebugStop();
     }
+  }
+  
+  auto test_str_ad =
+    data["test_str"].get<std::vector<std::tuple<double,std::map<std::string,std::vector<double>>>>>();
+
+  for(auto [wl, matinfo] : test_str_ad){
+    sd.wl_vec.push_back(wl);
+
+    std::map<std::string,CSTATE> refractive_indices;
+    
+    for(const auto &[name,n] : matinfo){
+      if(n.size() == 0 || n.size()>2){
+        DebugStop();
+      }
+      if(n.size()==2){
+        refractive_indices[name] = {n[0],n[1]};
+      }else{
+        refractive_indices[name] = {n[0],0};
+      }
+    }
+    //now we check if every material has a refractive index
+    for(auto mat : sd.mats_3d){
+      if(refractive_indices.count(mat)==0){
+        PZError<<__PRETTY_FUNCTION__
+               <<"\nCould not find refractive index of material: "<<mat<<std::endl;
+        DebugStop();
+      }
+    }
+    sd.ref_index_vec.push_back(refractive_indices);
   }
 
   sd.refine_regions = data.value("refine_regions", std::map<std::string,int> {});
   
   sd.meshfile = data["meshfile"];
   sd.prefix =  data["prefix"];
-  sd.lambda =  data["wavelength"];
   sd.scale = data["scale"];
   sd.direct_solver = data.value("direct_solver",false);
 
@@ -616,7 +644,8 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
                      const std::map<int,int> &split_mats,
                      const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
-                     const SimData &simdata)
+                     const SimData &simdata,
+                     TPZFMatrix<CSTATE> &last_sol)
 {
   /*********************
    * solve(scattering) *  
@@ -704,14 +733,13 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   std::set<int64_t> bound_connects_left, bound_connects_right;
   
   {
-    TPZFMatrix<CSTATE> init_vec;
     //eq num for obtaining reflection and transmittivity
     int64_t refl_pos{-1},trans_pos{-1};
     REAL computed_res =
       RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
                            src_coeffs, nmodes_left,nmodes_right,
                            mats_near_wpbc,simdata,
-                           init_vec,
+                           last_sol,
                            refl_pos,
                            trans_pos
                            );
@@ -1105,20 +1133,14 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     const int bufsz = maxsz*maxsz;
     strmtrx->BufferSizeForUserMatrix(bufsz);
   }
-  std::cout<<"Assembling..."<<std::endl;
   TPZSimpleTimer timer("WPBC:Assemble+solve",true);
   {
-    std::set<int> mat_ids;
-    for(auto [id,mat]: scatt_mesh->MaterialVec()){
-      auto nullmat = dynamic_cast<TPZNullMaterial<CSTATE>*>(mat);
-      if(!nullmat){
-        mat_ids.insert(id);
-      }
-    }
     TPZSimpleTimer tassemble("Assemble",true);
     if(sol_vec.Rows() > 0){
+      std::cout<<"running with custom init vec"<<std::endl;
       scatt_an.SetInitVecCustom(sol_vec);
     }
+    std::cout<<"Assembling..."<<std::endl;
     scatt_an.Assemble();
   
     //for now we unwrap the groups as they seem to interfere with the solving stage
@@ -1190,6 +1212,8 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     const auto neq = eqfilt.NActiveEquations();
     sol_vec.Resize(neq,1);
     eqfilt.Gather(sol, sol_vec);
+  }else{
+    sol_vec = sol;
   }
 
   const auto &block = scatt_mesh->Block();
