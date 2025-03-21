@@ -60,6 +60,8 @@ struct SimData{
   int max_k_out;
   //! whether to use direct solver
   bool direct_solver;
+  //! tolerance for the iterative solver
+  REAL solver_tol;
   //!pairs of mode index/coefficient to be used as source
   std::vector<std::pair<int,double>> source_coeffs;
   //!whether to filter dirichlet eqs
@@ -114,7 +116,7 @@ ComputeModalAnalysis(
 std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &modal_mesh,
                                          std::set<int> &all_matids);
 
-void
+REAL
 SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                 TPZAutoPointer<ModalData> &src_an,
                 TPZAutoPointer<ModalData> &match_an,
@@ -273,11 +275,15 @@ int main(int argc, char *argv[]) {
 
       std::cout<<"split mats"<<std::endl;
     }
-    SolveScattering(gmesh, modal_an_in,  modal_an_out, gmshmats,
-                    split_mats,periodic_els, simdata, last_sol);
+    const auto res = SolveScattering(gmesh, modal_an_in,  modal_an_out, gmshmats,
+                                     split_mats,periodic_els, simdata, last_sol);
     auto timer_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> duration = timer_end-timer_begin;
     std::cout<<"wavelength "<<simdata.lambda<<" took "<<duration.count()<<" ms"<<std::endl;
+    if(res > simdata.solver_tol){
+      //fall back to direct solver
+      simdata.direct_solver = true;
+    }
   }
   return 0;
 }
@@ -369,6 +375,7 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
 
 void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                   const std::set<int64_t> &indep_cons,
+                  const REAL tol,
                   int from_current);
 
 //! Reads sim data from file
@@ -444,7 +451,7 @@ SimData ReadSimData(const std::string &dataname){
   sd.prefix =  data["prefix"];
   sd.scale = data["scale"];
   sd.direct_solver = data.value("direct_solver",false);
-
+  sd.solver_tol = data.value("solver_tol",(REAL)5e-5);
   
   sd.porder = data["porder"];
   sd.source_coeffs = data["source_coeffs"].get<std::vector<std::pair<int,double>>>();
@@ -638,7 +645,7 @@ std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &moda
 }
 
 
-void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
+REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      TPZAutoPointer<ModalData> &src_an,
                      TPZAutoPointer<ModalData> &match_an,
                      const TPZVec<std::map<std::string, int>> &gmshmats,
@@ -731,63 +738,66 @@ void SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     being removed as well
   */
   std::set<int64_t> bound_connects_left, bound_connects_right;
-  
-  {
-    //eq num for obtaining reflection and transmittivity
-    int64_t refl_pos{-1},trans_pos{-1};
-    REAL computed_res =
-      RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
-                           src_coeffs, nmodes_left,nmodes_right,
-                           mats_near_wpbc,simdata,
-                           last_sol,
-                           refl_pos,
-                           trans_pos
-                           );
-    //plot
-    if(simdata.export_vtk_scatt){vtk.Do();}
-    //get reflection and transmission
 
-    TPZFMatrix<CSTATE> &sol = scatt_mesh_wpbc->Solution();
+  
+  
+  //eq num for obtaining reflection and transmittivity
+  int64_t refl_pos{-1},trans_pos{-1};
     
-    {
-      //for now we assume they are sequential
-      const int nm = simdata.source_coeffs.size();
-      std::cout<<"wavelength: "<<simdata.lambda;
-      for(int i = 0; i < nm; i++){
-        const auto s11 = sol.GetVal(refl_pos+i,0)-src_coeffs[i];
-        const auto s21 =  trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
-        const auto ref = std::abs(s11)*std::abs(s11);
-        const auto trans = std::abs(s21)*std::abs(s21);
-        std::cout<<" src "<<src_coeffs[i]
-                 <<" s11 "<<s11
-                 <<" ref "<<ref
-                 <<" s21 "<<s21
-                 <<" trans "<<trans
-                 <<" t + r "<<trans+ref<<std::endl;
-      }
-      std::string outputfile = simdata.prefix+"_reflection.csv";
-      std::ofstream ost;
-      ost.open(outputfile, std::ios_base::app);
-      ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
-      ost << simdata.lambda<<',';
-      for(int i = 0; i < nm; i++){
-        const CSTATE s11 = sol.GetVal(refl_pos+i,0)-src_coeffs[i];
-        const CSTATE s21 = trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
-        const char s11_sign = s11.imag() > 0 ? '+' : '-';
-        const char s21_sign = s21.imag() > 0 ? '+' : '-';
-        ost <<s11.real()<<s11_sign<<std::abs(s11.imag())<<'j'<<','
-            <<s21.real()<<s21_sign<<std::abs(s21.imag())<<'j'<<',';
-      }
-      //useful for debuggin weird results
-      ost <<computed_res<<std::endl;
+  const REAL computed_res =
+    RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
+                         src_coeffs, nmodes_left,nmodes_right,
+                         mats_near_wpbc,simdata,
+                         last_sol,
+                         refl_pos,
+                         trans_pos
+                         );
+  //plot
+  if(simdata.export_vtk_scatt){vtk.Do();}
+  //get reflection and transmission
+
+  TPZFMatrix<CSTATE> &sol = scatt_mesh_wpbc->Solution();
+    
+  {
+    //for now we assume they are sequential
+    const int nm = simdata.source_coeffs.size();
+    std::cout<<"wavelength: "<<simdata.lambda;
+    for(int i = 0; i < nm; i++){
+      const auto s11 = sol.GetVal(refl_pos+i,0)-src_coeffs[i];
+      const auto s21 =  trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
+      const auto ref = std::abs(s11)*std::abs(s11);
+      const auto trans = std::abs(s21)*std::abs(s21);
+      std::cout<<" src "<<src_coeffs[i]
+               <<" s11 "<<s11
+               <<" ref "<<ref
+               <<" s21 "<<s21
+               <<" trans "<<trans
+               <<" t + r "<<trans+ref<<std::endl;
     }
-    //removing restrictions
-    wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wpbc);
-    scatt_mesh_wpbc->ComputeNodElCon();
-    scatt_mesh_wpbc->CleanUpUnconnectedNodes();
+    std::string outputfile = simdata.prefix+"_reflection.csv";
+    std::ofstream ost;
+    ost.open(outputfile, std::ios_base::app);
+    ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
+    ost << simdata.lambda<<',';
+    for(int i = 0; i < nm; i++){
+      const CSTATE s11 = sol.GetVal(refl_pos+i,0)-src_coeffs[i];
+      const CSTATE s21 = trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
+      const char s11_sign = s11.imag() > 0 ? '+' : '-';
+      const char s21_sign = s21.imag() > 0 ? '+' : '-';
+      ost <<s11.real()<<s11_sign<<std::abs(s11.imag())<<'j'<<','
+          <<s21.real()<<s21_sign<<std::abs(s21.imag())<<'j'<<',';
+    }
+    //useful for debuggin weird results
+    ost <<computed_res<<std::endl;
   }
+  //removing restrictions
+  wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wpbc);
+  scatt_mesh_wpbc->ComputeNodElCon();
+  scatt_mesh_wpbc->CleanUpUnconnectedNodes();
+  
   wgma::cmeshtools::RemovePeriodicity(src_data.cmesh);
   if(match_data.cmesh){wgma::cmeshtools::RemovePeriodicity(match_data.cmesh);}
+  return computed_res;
 }
 
 
@@ -1197,12 +1207,12 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                                  nmodes_match, match_data.wgbc_k, match_data.wgbc_f);
     }
   }
-  
+
   if(!simdata.direct_solver){
     std::set<int64_t> indices = {indep_con_id_src};
     if(match_mesh){indices.insert(indep_con_id_match);}
     int from_current = sol_vec.Rows() > 0 ? 1 : 0;
-    SetupPrecond(scatt_an, indices, from_current);
+    SetupPrecond(scatt_an, indices, simdata.solver_tol, from_current);
   }
   TPZSimpleTimer tsolve("Solve",true);
   scatt_an.Solve();
@@ -1332,9 +1342,10 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
 }
 
 void SetupPrecond(wgma::scattering::Analysis &scatt_an,
-                  const std::set<int64_t> &indep_cons, int from_current) {
+                  const std::set<int64_t> &indep_cons,
+                  const REAL tol,
+                  int from_current) {
   TPZSimpleTimer solve("SetupPrecond", true);
-  constexpr REAL tol = 5e-5;
       
   auto &solver = dynamic_cast<TPZStepSolver<CSTATE>&>(scatt_an.GetSolver());
 
