@@ -102,6 +102,10 @@ struct WpbcData{
 
 //! Reads sim data from file
 SimData ReadSimData(const std::string &dataname);
+//! Refine geometric mesh
+void RefineRegions(TPZAutoPointer<TPZGeoMesh> &gmesh,
+                   const TPZVec<std::map<std::string, int>> &gmshmats,
+                   const std::map<std::string,int> &refine_regions);
 //! Compute modal analysis for a waveguide port
 TPZAutoPointer<ModalData>
 ComputeModalAnalysis(
@@ -190,29 +194,10 @@ int main(int argc, char *argv[]) {
                                           periodic_els);
   }
 
-  //this might break periodicity!
-  for(auto [name,nref] : simdata.refine_regions){
-    //we need to find the material
-    int matid{-1};
-    bool found{false};
-    for(const auto &mats : gmshmats){
-      if(found) break;
-      for(const auto &[matname,id] : mats){
-        if(found) break;
-        if (matname == name){
-          matid = id;
-          found = true;
-        }
-      }
-    }
-    if(found){
-      std::cout<<"Refining around "<<name<<" with id "<<matid
-               <<" "<<nref<<" times "<<std::endl;
-      wgma::gmeshtools::DirectionalRefinement(gmesh,{matid},nref);
-    }else{
-      std::cout<<"Could not find refinement target "<<name<<std::endl;
-    }
-  }
+
+  //now we refine towards any given entities in refined_regions
+  RefineRegions(gmesh, gmshmats, simdata.refine_regions);
+  
   // print wgma_gmesh to .txt and .vtk format
   if (simdata.print_gmesh) {
     // prefix for the wgma_gmesh files
@@ -466,6 +451,48 @@ SimData ReadSimData(const std::string &dataname){
   sd.vtk_res = data.value("vtk_res",(int)0);
   sd.n_threads = data.value("n_threads",(int)std::thread::hardware_concurrency());
   return sd;
+}
+
+//! Refine geometric mesh
+void
+RefineRegions(TPZAutoPointer<TPZGeoMesh> &gmesh,
+              const TPZVec<std::map<std::string, int>> &gmshmats,
+              const std::map<std::string,int> &refine_regions)
+{
+
+  TPZVec<std::map<std::string,int>> arranged_mats(4,{});
+  //this might break periodicity!
+  for(auto [name,nref] : refine_regions){
+    //we need to find the material
+    int matid{-1};
+    bool found{false};
+    for(int idim = 0; idim < 4; idim++){
+      const auto &mats = gmshmats[idim];
+      if(found) break;
+      for(const auto &[matname,id] : mats){
+        if(found) break;
+        if (matname == name){
+          matid = id;
+          arranged_mats[idim].insert({name,matid});
+          found = true;
+        }
+      }
+    }
+    if(!found){
+      std::cout<<"Could not find refinement target "<<name<<std::endl;
+    }
+  }
+  for(auto allmats : arranged_mats){
+    for(auto [name,matid] : allmats){
+      const auto nref = refine_regions.at(name);
+      //maybe we only want to set porder==0 next to it
+      if(nref > 0){
+        std::cout<<"Refining around "<<name<<" with id "<<matid
+                 <<" "<<nref<<" times "<<std::endl;
+        wgma::gmeshtools::DirectionalRefinement(gmesh,{matid},nref);
+      }
+    }
+  }
 }
 
 TPZAutoPointer<ModalData>
@@ -872,7 +899,7 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
   for(const auto &name : mats){
     const CSTATE n = simdata.refractive_indices.at(name);
     scatt_mats[name] = std::pair<CSTATE,CSTATE>(n*n,1.);
-  }
+  } 
   std::map<std::string, wgma::bc::type> scatt_bcs;
 
   constexpr int dim{3};
