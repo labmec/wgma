@@ -106,7 +106,11 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
         #     d_l = gmsh.model.get_derivative(d, t, [0])
         #     if d_l[0] == 0 and d_l[1] == 0:
         #         select_edges.append(t)
-
+    select_pts = gmsh.model.get_boundary(
+        [(1, tag) for tag in select_edges],
+        combined=False, oriented=False, recursive=False)
+    select_pts = [t for _,t in select_pts]
+    
     if '-curve' in sys.argv:
         new_ag = gmsh.model.occ.fillet(ag,select_edges,[5/1000])
         ag = [new_ag[0][1]]
@@ -304,6 +308,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
     }
 
     domain_physical_ids_0d = {
+        "refine_pts": 30,
     }
 
     domain_physical_ids = [domain_physical_ids_0d,
@@ -328,7 +333,8 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
         "bound_port_out_periodic_xp": xp_bnd_port_out,
         "bound_port_out_periodic_ym": ym_bnd_port_out,
         "bound_port_out_periodic_yp": yp_bnd_port_out,
-        "refine_edges": select_edges
+        "refine_edges": select_edges,
+        "refine_pts": select_pts,
     }
 
     generate_physical_ids(domain_physical_ids, domain_regions)
