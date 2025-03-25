@@ -709,7 +709,8 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   TPZVec<std::string> fvars_3d = {
     "Field_real",
     "Field_imag",
-    "Field_abs"};
+    "Field_abs",
+    "Material"};
   
   
 
