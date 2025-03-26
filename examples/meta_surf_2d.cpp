@@ -671,7 +671,7 @@ std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &moda
   return matid_map;
 }
 
-
+#include "TPZCompMeshTools.h"
 REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      TPZAutoPointer<ModalData> &src_an,
                      TPZAutoPointer<ModalData> &match_an,
@@ -718,6 +718,82 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc =
     CreateScattMesh(gmesh,gmshmats,split_mats,mats_near_wpbc,simdata,periodic_els);
 
+  //now we reduce the polynomial order on refined edges
+  {
+    //just to avoid iterating through the same elemnet over and over
+    std::set<int64_t> refined_els;
+    
+    for(auto [name,nref] : simdata.refine_regions){
+      bool found{false};
+      int matid{-1};
+      for(auto idim = 0; idim < 3 && found==false; idim++){
+        auto &mats_dim = gmshmats[idim];
+        if(mats_dim.count(name)){
+          found=true;
+          matid = mats_dim.at(name);
+        }
+      }
+      if(found==false){
+        DebugStop();
+      }
+      //now we iterate through the mesh
+      for(auto gel : gmesh->ElementVec()){
+        if(!gel){continue;}
+        if(gel->MaterialId() !=matid){continue;}
+        //we want the most refined subelements
+        if(gel->NSubElements()){continue;}
+        //now we found an element that resulted from refinement, we need to see
+        //its neighbouring compels
+        const auto nsides = gel->NSides();
+        for(auto is = 0; is < nsides-1; is++){
+          TPZGeoElSide gelside(gel,is);
+          TPZGeoElSide neigh = gelside.Neighbour();
+          while(neigh && neigh != gelside){
+            auto neigh_gel = neigh.Element();
+            if(!neigh_gel){DebugStop();}
+            auto cel = neigh_gel->Reference();
+            if(cel){
+              if(cel->Mesh() == scatt_mesh_wpbc.operator->()){
+                if(refined_els.count(cel->Index())==0){
+                  //ok, now we found someone that needs their p-order reduced
+                  refined_els.insert(cel->Index());
+                  //we need to distinguish between edge and face/interior connects
+                  const int nedges = neigh_gel->NSides(1);
+                  const int ncon = cel->NConnects();
+                  for(auto icon = 0; icon < ncon; icon++){
+                    TPZConnect &c = cel->Connect(icon);
+                    if(c.Order()>0 && c.NShape() > 0){
+                      if(c.HasDependency()) {DebugStop();}
+                      const auto cindex = cel->ConnectIndex(icon);
+                      const int64_t seq = c.SequenceNumber();
+                      if(seq < 0){
+                        DebugStop();
+                      }
+                      c.SetOrder(0,cindex);
+
+                      //edges will have one function, faces and interior 0
+                      const int nshape = icon < nedges ?  1 : 0;
+                      c.SetNShape(nshape);
+                      // reset the size of the block of the connect
+                      scatt_mesh_wpbc->Block().Set(seq,nshape);
+                    }
+                  }//for connects
+                }//if first time checking el
+              }//if same mesh
+            }//if cel
+            neigh = neigh.Neighbour();
+          }//while neigh
+        }//for sides
+      }//for gel
+    }//for mat
+    if(refined_els.size()){
+      scatt_mesh_wpbc->ComputeNodElCon();
+      scatt_mesh_wpbc->CleanUpUnconnectedNodes();
+      scatt_mesh_wpbc->ExpandSolution();
+    }
+    TPZCompMeshTools::CreatedCondensedElements(scatt_mesh_wpbc.operator->(),
+                                               false, false);
+  }
   const std::string suffix = "wpbc";
   const std::string scatt_file = simdata.prefix+"_scatt"+suffix;
   auto vtk = TPZVTKGenerator(scatt_mesh_wpbc, fvars_3d, scatt_file, simdata.vtk_res);
@@ -925,6 +1001,7 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
 
   //materials that will represent our source
   std::set<int> src_ids;
+
   /*
     probe mats are regions of the domain in which we want to be able
     to evaluate our solution
@@ -940,52 +1017,18 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     const std::string pattern_right{"port_out"};
     const auto rx_right =
       std::regex{pattern_right, std::regex_constants::icase };
-    const std::string pattern_probe_left{"probe_in"};
-    const auto rx_probe_left =
-      std::regex{pattern_probe_left, std::regex_constants::icase };
-    const std::string pattern_probe_right{"probe_out"};
-    const auto rx_probe_right =
-      std::regex{pattern_probe_right, std::regex_constants::icase };
-
     constexpr int dim{3};
     constexpr int probedim{dim-1};
     for(const auto &[name,id] : gmshmats[probedim]){
       const bool found_pattern =
         std::regex_search(name, rx_left) ||
-        std::regex_search(name, rx_right) ||
-        std::regex_search(name, rx_probe_left) ||
-        std::regex_search(name, rx_probe_right);
+        std::regex_search(name, rx_right);
       if(found_pattern){
         scatt_data.probevec.push_back({id,probedim});
       }
     }
   }
-    
-    
-
-    
-    
-  //due to the waveguide port bc we need to filter out some PML regions
-  {
-    std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
-    for(const auto &pml : scatt_data.pmlvec){
-      const std::string pattern_left{"zm"};
-      const auto rx_left = std::regex{pattern_left, std::regex_constants::icase };
-      const std::string pattern_right{"zp"};
-      const auto rx_right = std::regex{pattern_right, std::regex_constants::icase };
-    
-      const bool found_pattern =
-        std::regex_search(*(pml->names.begin()), rx_left) ||
-        std::regex_search(*(pml->names.begin()), rx_right);
-        
-      if(found_pattern){//we discard these regions
-        continue;
-      }
-      pmlvec.push_back(pml);
-    }
-    scatt_data.pmlvec = pmlvec;
-  }
-
+  
   std::set<int> volids;
   for(auto [id,dummy1,dummy2] : scatt_data.matinfovec){
     volids.insert(id);
@@ -994,11 +1037,14 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
   mats_near_wpbc =
     UpdatePhysicalDataSplittedMats(gmesh, scatt_data, split_mats,
                                    volids, dim);
+  const bool verbose{true};
+  //we must not condense since we will change p order
+  const bool condense{false};
   auto cmesh =
     wgma::scattering::CMeshScattering3DPeriodic(gmesh, pOrder, scatt_data,
                                                 el_map,
                                                 src_ids,
-                                                lambda,scale,true);
+                                                lambda,scale,verbose,condense);
   return cmesh;
 }
 
