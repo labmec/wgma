@@ -672,6 +672,7 @@ std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &moda
 }
 
 #include "TPZCompMeshTools.h"
+#include "pzsubcmesh.h"
 REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      TPZAutoPointer<ModalData> &src_an,
                      TPZAutoPointer<ModalData> &match_an,
@@ -786,11 +787,69 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
         }//for sides
       }//for gel
     }//for mat
+
+    
     if(refined_els.size()){
       scatt_mesh_wpbc->ComputeNodElCon();
       scatt_mesh_wpbc->CleanUpUnconnectedNodes();
       scatt_mesh_wpbc->ExpandSolution();
     }
+
+
+    if constexpr (0)//now we will create the subcmesh
+    {
+      std::cout<<"creating subcmesh with "<<refined_els.size()<<" elements"<<std::endl;
+      TPZSubCompMesh * subcmesh = new TPZSubCompMesh(*scatt_mesh_wpbc);
+      for(auto el_index : refined_els){
+        subcmesh->TransferElement(scatt_mesh_wpbc.operator->(), el_index);
+      }
+
+
+      scatt_mesh_wpbc->ComputeNodElCon();
+      subcmesh->MakeAllInternal();
+      
+      scatt_mesh_wpbc->ComputeNodElCon();
+      {
+        int64_t nc = scatt_mesh_wpbc->NConnects();
+        for (int64_t ic = 0; ic<nc; ic++) {
+            TPZConnect &c = scatt_mesh_wpbc->ConnectVec()[ic];
+            if(c.NElConnected() == 0 && c.HasDependency())
+            {
+                c.RemoveDepend();
+            }
+        }
+      }
+      scatt_mesh_wpbc->ComputeNodElCon();
+      scatt_mesh_wpbc->CleanUpUnconnectedNodes();
+
+
+
+      subcmesh->ComputeNodElCon();
+      subcmesh->CleanUpUnconnectedNodes();
+
+      
+      TPZAutoPointer<TPZCompMesh> subcmeshptr(subcmesh);
+      wgma::cmeshtools::PrintCompMesh(subcmeshptr, simdata.prefix+"subcmesh.txt");
+      subcmesh->Print();
+      subcmesh->InitializeBlock();
+      TPZCompEl *cel = dynamic_cast<TPZCompEl*>(subcmesh);
+      int64_t numeq2=0;
+      //??
+      int64_t ic;
+      for (ic=0; ic<cel->NConnects(); ic++) {
+        int64_t conindex = cel->ConnectIndex(ic);
+        TPZConnect &cn = cel->Mesh()->ConnectVec()[conindex];
+        if (cn.SequenceNumber()<0 || cn.HasDependency()) {
+          DebugStop();
+        }
+        int64_t seqnum = cn.SequenceNumber();
+        int blsize = cel->Mesh()->Block().Size(seqnum);
+        numeq2 += blsize;
+      }
+      std::cout<<"neq "<<numeq2
+               <<" n int "<<subcmesh->NumInternalEquations()<<std::endl;
+    }
+    
     TPZCompMeshTools::CreatedCondensedElements(scatt_mesh_wpbc.operator->(),
                                                false, false);
   }
