@@ -859,7 +859,8 @@ namespace wgma::scattering{
                             const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
                             const std::set<int> src_id_set,
                             const STATE lambda, const REAL scale,
-                            bool verbose)
+                            const bool verbose,
+                            const bool condense)
   {
     static constexpr bool isComplex{true};
     static constexpr int dim{3};
@@ -1069,8 +1070,17 @@ namespace wgma::scattering{
       wgma::cmeshtools::SetPeriodic(scatt_cmesh,periodic_els);
     }
 
-    //this will already call cleanup unconnected nodes
-    TPZCompMeshTools::CreatedCondensedElements(scatt_cmesh.operator->(), false, false);
+    if(condense){
+      //this will already call cleanup unconnected nodes
+      TPZCompMeshTools::CreatedCondensedElements(scatt_cmesh.operator->(),
+                                                 false, false);
+    }else{
+      std::cout<<"This mesh won't condense internal dofs!\n"
+               <<"Is this on purpose?"<<std::endl;
+      scatt_cmesh->ComputeNodElCon();
+      scatt_cmesh->CleanUpUnconnectedNodes();
+      scatt_cmesh->ExpandSolution();
+    } 
     return scatt_cmesh;
   }
 

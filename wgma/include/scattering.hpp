@@ -210,7 +210,8 @@ Usually the source will be the result of a previously computed modal analysis.
                             const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
                             const std::set<int> source_ids,
                             const STATE lambda, const REAL scale,
-                            const bool verbose=false);
+                            const bool verbose=false,
+                            const bool condense=true);
 
   /**
      @brief Creates the computational mesh used for the scattering analysis in 3D.
@@ -231,10 +232,11 @@ Usually the source will be the result of a previously computed modal analysis.
                     cmeshtools::PhysicalData &data,
                     const std::set<int> source_ids,
                     const STATE lambda, const REAL scale,
-                    const bool verbose=false)
+                    const bool verbose=false,
+                    const bool condense = true)
   {
     return CMeshScattering3DPeriodic(gmesh,pOrder,data,{},
-                                     source_ids,lambda,scale,verbose);
+                                     source_ids,lambda,scale,verbose,condense);
   }
 
   /**
