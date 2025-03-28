@@ -17,7 +17,7 @@ from utils.gmsh import (
 #############################################
 
 
-def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
+def create_cross_mesh(w_domain, h_air, w_cross, l_cross, 
                       h_silver,h_sub,el_ag, el_air, el_sub, filename):
     """
     Creates a mesh representing the unit cell of a metasurface consisting
@@ -31,7 +31,6 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
     h_air: height of air domain (not including cross depth)
     w_cross: width of cross's arms
     l_cross: width of cross
-    d_cross: depth of cross (in ag substrate)
     h_silver: height of ag
     h_sub: height of substrate
     el_ag: element size in silver
@@ -50,7 +49,6 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
     # We can log all messages for further processing with:
     gmsh.logger.start()
 
-    h_cross = h_silver+h_sub-d_cross
     # air upper half domain
     air = BoxData(-w_domain/2, -w_domain/2, h_silver+h_sub, w_domain, w_domain, h_air)
     create_box(air)
@@ -61,10 +59,10 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
     ag = BoxData(-w_domain/2, -w_domain/2, h_sub, w_domain, w_domain, h_silver)
     create_box(ag)
     # cross 1
-    c1 = BoxData(-l_cross/2, -w_cross/2, h_cross, l_cross, w_cross, d_cross)
+    c1 = BoxData(-l_cross/2, -w_cross/2, h_sub, l_cross, w_cross, h_silver)
     create_box(c1)
     # cross 2
-    c2 = BoxData(-w_cross/2, -l_cross/2, h_cross, w_cross, l_cross, d_cross)
+    c2 = BoxData(-w_cross/2, -l_cross/2, h_sub, w_cross, l_cross, h_silver)
     create_box(c2)
     # now we fuse the cross domains
     cross = fuse_domains([(3, t) for t in c1.tag], [(3, t) for t in c2.tag])
@@ -245,9 +243,9 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
     gmsh.model.mesh.field.set_number(
         field_ct, "YMax",  l_cross/2+margin)
     gmsh.model.mesh.field.set_number(
-        field_ct, "ZMin",  h_cross-margin)
+        field_ct, "ZMin",  h_sub-margin)
     gmsh.model.mesh.field.set_number(
-        field_ct, "ZMax",  h_cross+d_cross+margin)
+        field_ct, "ZMax",  h_sub+h_silver+margin)
 
     field_ct += 1
     gmsh.model.mesh.field.add("Box", field_ct)
@@ -266,9 +264,9 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross, d_cross,
     gmsh.model.mesh.field.set_number(
         field_ct, "YMax",  w_cross/2+margin)
     gmsh.model.mesh.field.set_number(
-        field_ct, "ZMin",  h_cross-margin)
+        field_ct, "ZMin",  h_sub-margin)
     gmsh.model.mesh.field.set_number(
-        field_ct, "ZMax",  h_cross+d_cross+margin)
+        field_ct, "ZMax",  h_sub+h_silver+margin)
     
     field_ct += 1
     gmsh.model.mesh.field.add("Min", field_ct)
@@ -363,12 +361,11 @@ def set_orig_params():
     l_cross = 225/1000 #3*w_cross
     h_silver = 60/1000
     h_sub = 100/1000
-    d_cross = h_silver
-    return w_domain, h_air, w_cross, l_cross, h_silver, h_sub, d_cross
+    return w_domain, h_air, w_cross, l_cross, h_silver, h_sub
 
 count = 0
 
-w_domain,h_air,w_cross,l_cross,h_silver,h_sub, d_cross = set_orig_params()
+w_domain,h_air,w_cross,l_cross,h_silver,h_sub = set_orig_params()
 filename = "../../build/examples/meshes/cross_ag_"+str(count)
 create_cross_mesh(w_domain, h_air, w_cross, l_cross,
-                  d_cross, h_silver, h_sub, el_ag, el_air, el_sub, filename)
+                  h_silver, h_sub, el_ag, el_air, el_sub, filename)
