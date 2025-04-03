@@ -1281,6 +1281,16 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     TPZSimpleTimer tassemble("Assemble",true);
     if(sol_vec.Rows() > 0){
       std::cout<<"running with custom init vec"<<std::endl;
+      const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
+      int64_t neq {0};
+      if(eqfilt.IsActive()){
+        neq = eqfilt.NActiveEquations();
+      }else{
+        neq = scatt_mesh->NEquations();
+      }
+      if(sol_vec.Rows() != neq){
+        sol_vec.Redim(neq,1);
+      }
       scatt_an.SetInitVecCustom(sol_vec);
     }
     std::cout<<"Assembling..."<<std::endl;
