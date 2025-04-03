@@ -16,12 +16,12 @@ PlaneWaveSolutions::PlaneWaveSolutions(int id, STATE wl, CSTATE ref_index,
   m_lx(lx), m_ly(ly)
 {
   ComputeBeta();
-  const int sz = (2*m_max_k+1)*(2*m_max_k+1);
+  const int sz = m_beta.size();
   SetNumLoadCases(2*sz);
 }
 
 int PlaneWaveSolutions::MinimumNumberofLoadCases() const{
-  const int sz = (2*m_max_k+1)*(2*m_max_k+1);
+  const int sz = m_beta.size();
   return 2*sz;
 }
 
@@ -32,10 +32,10 @@ void PlaneWaveSolutions::ComputeBeta()
   const CSTATE k2{wavenumber*wavenumber};
 
   const int max_k = m_max_k;
-  const int sz = (max_k*2+1)*(max_k*2+1);
+  const int max_sz = (max_k*2+1)*(max_k*2+1);
   //temporary vectors to keep the code simple
-  TPZVec<STATE> kx(sz,0), ky(sz,0);
-  TPZVec<CSTATE> beta(sz,0);
+  TPZVec<STATE> kx(max_sz,0), ky(max_sz,0);
+  TPZVec<CSTATE> beta(max_sz,0);
 
   auto is_propagating = [](CSTATE b){
     return std::abs(b.real()) > std::abs(b.imag());
@@ -44,10 +44,13 @@ void PlaneWaveSolutions::ComputeBeta()
   int count{0};
   for(int i = -max_k; i <= max_k; i++){
     for(int j = -max_k; j <= max_k; j++){
-      kx[count] = i*2*M_PI/m_lx;
-      ky[count] = j*2*M_PI/m_ly;
-      const auto kt2 = kx[count]*kx[count]+ky[count]*ky[count];
+      const auto kxval = i*2*M_PI/m_lx;
+      const auto kyval = j*2*M_PI/m_ly;
+      const auto kt2 = kxval*kxval + kyval*kyval;
       CSTATE betaval = std::sqrt((CSTATE)(k2 - kt2));
+      if(IsZero(betaval)){continue;}
+      kx[count] = kxval;
+      ky[count] = kyval;
       //we ensure that beta has negative imag part for evanescent modes
       if(!is_propagating(betaval) && betaval.imag() > 0){
         betaval = -betaval;
@@ -56,7 +59,12 @@ void PlaneWaveSolutions::ComputeBeta()
       count++;
     }
   }
-
+  const auto sz = count;
+  //we may have had solutions with beta==0
+  beta.Resize(sz);
+  kx.Resize(sz);
+  ky.Resize(sz);
+  
   //now we sort beta as we want and keep the indices
 
   // initialize original index locations
@@ -109,7 +117,7 @@ void PlaneWaveSolutions::ComputeBeta()
 
 void PlaneWaveSolutions::GetBeta(TPZVec<CSTATE> &beta)
 {
-  const int nsol = (2*m_max_k+1)*(2*m_max_k+1);
+  const int nsol = m_beta.size();
   const int nsolvec = 2*nsol;
   beta.resize(nsolvec);
   for(int i = 0; i < nsol; i++){
@@ -122,7 +130,7 @@ void
 PlaneWaveSolutions::Contribute(const TPZVec<TPZMaterialDataT<CSTATE>> &datavec,
                                REAL weight,TPZFMatrix<CSTATE> &ek, TPZFMatrix<CSTATE> &ef)
 {
-  const int nsol = (2*m_max_k+1)*(2*m_max_k+1);
+  const int nsol = m_beta.size();
 
   const auto &phi_hcurl_real = datavec[m_hcurl_index].phi;
   const auto &phi_h1_real = datavec[m_h1_index].phi;
