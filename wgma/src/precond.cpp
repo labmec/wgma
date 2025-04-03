@@ -738,7 +738,7 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
 
     std::atomic<int> blcount{0};
     std::cout<<__PRETTY_FUNCTION__;
-    std::cout<<"\nDecomposing sparse blocks ..."<<std::flush;
+    std::cout<<"\nDecomposing sparse blocks ..."<<std::endl;
     //first we decompose sparse blocks
     for(auto ibl = 0; ibl < nbl; ibl++){
       if(!m_sparse_mats[ibl]){continue;}
@@ -748,9 +748,9 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
       prds.SetMessageLevel(0);
       block->Decompose(ELU);
       blcount++;
-      std::cout<<"\rcomputed "<<blcount<<" out of "<<nbl<< " blocks"<<std::flush;
+      // std::cout<<"\rcomputed "<<blcount<<" out of "<<nbl<< " blocks"<<std::flush;
     }
-    std::cout<<"\rDecomposing full mat blocks ..."<<std::flush;
+    std::cout<<"Decomposing full mat blocks ..."<<std::endl;
     //decompose blocks (coloring need not be taken into account)
     std::mutex mymut;
     pzutils::ParallelFor(0,nbl, [&](int ibl){
@@ -761,12 +761,12 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
       refmat->GetSub(indices,*block);
       block->Decompose_LU();
       blcount++;
-      if(blcount%100==0){
-        std::lock_guard lock(mymut);
-        std::cout<<"\rcomputed "<<blcount<<" out of "<<nbl<< " blocks"<<std::flush;
-      }
+      // if(blcount%100==0){
+      //   std::lock_guard lock(mymut);
+      //   std::cout<<"\rcomputed "<<blcount<<" out of "<<nbl<< " blocks"<<std::flush;
+      // }
     });
-    std::cout<<"\rcomputed "<<nbl<<" out of "<<nbl<<" blocks" << std::endl;;
+    std::cout<<"Computed "<<nbl<<" out of "<<nbl<<" blocks" << std::endl;;
   }
 }
 
