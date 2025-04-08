@@ -52,6 +52,8 @@ struct SimData{
   std::map<std::string,CSTATE> refractive_indices;
   //!map of domain regions and number of directional refinement steps
   std::map<std::string,int> refine_regions;
+  //!whether curved regions are described in csv file
+  bool curved_els{false};
   //!polynomial order
   int porder{-1};
   //! maximum integer used on in port (nmodes = 2*(2*k+1)(2*k+1)
@@ -106,6 +108,11 @@ SimData ReadSimData(const std::string &dataname);
 void RefineRegions(TPZAutoPointer<TPZGeoMesh> &gmesh,
                    const TPZVec<std::map<std::string, int>> &gmshmats,
                    const std::map<std::string,int> &refine_regions);
+
+//! Replace elements for curved elements in cylinder/spherical regions
+void ReplaceForCurvedEls(const std::string & meshfile,
+                         TPZAutoPointer<TPZGeoMesh> &gmesh,
+                         const REAL scale);
 //! Compute modal analysis for a waveguide port
 TPZAutoPointer<ModalData>
 ComputeModalAnalysis(
@@ -192,6 +199,11 @@ int main(int argc, char *argv[]) {
                                           desired_mats,
                                           periodic_data,
                                           periodic_els);
+
+
+    if(simdata.curved_els){
+      ReplaceForCurvedEls(simdata.meshfile, gmesh, simdata.scale);
+    }
   }
 
 
@@ -431,7 +443,8 @@ SimData ReadSimData(const std::string &dataname){
   }
 
   sd.refine_regions = data.value("refine_regions", std::map<std::string,int> {});
-  
+
+  sd.curved_els = data["curved_els"];
   sd.meshfile = data["meshfile"];
   sd.prefix =  data["prefix"];
   sd.scale = data["scale"];
@@ -495,6 +508,96 @@ RefineRegions(TPZAutoPointer<TPZGeoMesh> &gmesh,
   }
 }
 
+//! Replace elements for curved elements in cylinder/spherical regions
+void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh> &gmesh,
+                         const REAL scale)
+{
+  //useful lambda for reading csv file
+  auto getNextLineAndSplitIntoTokens =
+    [](std::istream &str) -> std::vector<std::string> {
+    std::vector<std::string> result;
+    std::string line;
+    std::getline(str, line);
+
+    std::stringstream lineStream(line);
+    std::string cell;
+
+    while (std::getline(lineStream, cell, ',')) {
+      result.push_back(cell);
+    }
+    // This checks for a trailing comma with no data after it.
+    if (!lineStream && cell.empty()) {
+      // If there was a trailing comma then add an empty element.
+      result.push_back("");
+    }
+    return result;
+  };
+
+  //let us remove the .msh extension
+  const std::string file_prefix = meshfile.substr(0, meshfile.length() - 4);
+  //first arcs
+  {
+    const std::string arc_suffix = "_arcdata.csv";
+    const std::string arc_file = file_prefix + arc_suffix;
+    std::ifstream read(arc_file);
+    if (!read) {
+      std::cout << "Couldn't find the arc data file " << arc_file << std::endl;
+    }
+    auto line = getNextLineAndSplitIntoTokens(read); // header
+    line = getNextLineAndSplitIntoTokens(read);
+    // we expect xc, yc, zc, r (in um), and matid
+    TPZVec<wgma::gmeshtools::ArcData> arcs;
+    const auto factor = 1./scale;
+    while (line.size() == 5) {
+      wgma::gmeshtools::ArcData arc;
+
+      arc.m_xc = std::stod(line[0]) * factor;
+      arc.m_yc = std::stod(line[1]) * factor;
+      arc.m_zc = std::stod(line[2]) * factor;
+      arc.m_radius = std::stod(line[3]) * factor;
+      arc.m_matid = std::stoi(line[4]);
+      const int narcs = arcs.size();
+      arcs.Resize(narcs + 1);
+      arcs[narcs] = arc;
+
+      line = getNextLineAndSplitIntoTokens(read);
+    }
+    wgma::gmeshtools::SetExactArcRepresentation(gmesh, arcs);
+  }
+  //then cylinders
+  {
+    const std::string cyl_suffix = "_cyldata.csv";
+    const std::string cyl_file = file_prefix + cyl_suffix;
+    std::ifstream read(cyl_file);
+    if (!read) {
+      std::cout << "Couldn't find the cylinder data file " << cyl_file << std::endl;
+    }
+    auto line = getNextLineAndSplitIntoTokens(read); // header
+    line = getNextLineAndSplitIntoTokens(read);
+    // we expect xc, yc, zc, xaxis, yaxis, zaxis, r, and matid
+    TPZVec<wgma::gmeshtools::CylinderData> cyls;
+    const auto factor = 1./scale;
+    while (line.size() == 8) {
+      wgma::gmeshtools::CylinderData cyl;
+      cyl.m_xc = std::stod(line[0]) * factor;
+      cyl.m_yc = std::stod(line[1]) * factor;
+      cyl.m_zc = std::stod(line[2]) * factor;
+      cyl.m_xaxis = std::stod(line[3]) * factor;
+      cyl.m_yaxis = std::stod(line[4]) * factor;
+      cyl.m_zaxis = std::stod(line[5]) * factor;
+      cyl.m_radius = std::stod(line[6]) * factor;
+      cyl.m_matid = std::stoi(line[7]);
+      const int ncyls = cyls.size();
+      cyls.Resize(ncyls + 1);
+      cyls[ncyls] = cyl;
+
+      line = getNextLineAndSplitIntoTokens(read);
+    }
+    wgma::gmeshtools::SetExactCylinderRepresentation(gmesh, cyls);
+  }
+  
+  //then spheres
+}
 TPZAutoPointer<ModalData>
 ComputeModalAnalysis(
   TPZAutoPointer<TPZGeoMesh> gmesh,
