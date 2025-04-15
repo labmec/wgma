@@ -1164,6 +1164,137 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
   }
 }
 
+void wgma::gmeshtools::SetExactSphereRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
+                                                    const TPZVec<SphereData> &spheres)
+{
+
+  
+  std::map<int,int> sphere_ids;
+  std::map<int,bool> found_spheres;
+  for(auto i = 0; i < spheres.size(); i++){
+    sphere_ids[spheres[i].m_matid] = i;
+    found_spheres[spheres[i].m_matid] = false;
+  }
+
+
+  TPZManVector<TPZGeoElSide, 50> neighs;
+
+  std::set<TPZGeoEl*> blend_neighs;
+  for(auto el : gmesh->ElementVec()){
+    //this way we avoid processing recently inserted elements
+    if(!el || el->IsLinearMapping() == false) continue;
+    const int matid = el->MaterialId();
+    const bool is_sphere = sphere_ids.find(matid) != sphere_ids.end();
+
+    if(is_sphere){//found sphere
+      found_spheres[matid] = true;
+      const int sphere_pos = sphere_ids[matid];
+      const auto &spheredata = spheres[sphere_pos];
+      const REAL r = spheredata.m_radius;
+      TPZManVector<REAL,3> xc = {spheredata.m_xc,spheredata.m_yc,spheredata.m_zc};
+
+      TPZGeoEl *sp =
+        TPZChangeEl::ChangeToSphere(gmesh.operator->(), el->Index(), xc, r);
+      el = nullptr;
+    }//if(is_sphere)
+  }//for(auto el : gmesh->ElementVec())
+
+  
+  for(auto el : gmesh->ElementVec()){
+    if(!el || el->IsLinearMapping()==false){continue;}
+    const auto nnodes = el->NCornerNodes();
+    const auto nsides = el->NSides();
+    bool changed=false;
+    for(int iside = nnodes; iside < nsides; iside++){
+      if(changed){break;}
+      TPZGeoElSide elside(el,iside);
+      for(auto neigh = elside.Neighbour(); neigh != elside; neigh++){
+        if(changed){break;}
+        const bool neighlinear = neigh.IsLinearMapping();
+        if(!neighlinear){
+          TPZChangeEl::ChangeToGeoBlend(gmesh.operator->(), el->Index());
+          changed=true;
+        }
+      }
+    }
+  }
+
+  
+  for(auto sphere : found_spheres){
+    if(!sphere.second){
+      PZError<<__PRETTY_FUNCTION__
+             <<"\n sphere "<<sphere.first<<" not found in mesh"<<std::endl;
+    }
+  }
+}
+
+void wgma::gmeshtools::SetExactTorusRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
+                                                    const TPZVec<TorusData> &toruses)
+{
+
+  
+  std::map<int,int> torus_ids;
+  std::map<int,bool> found_torus;
+  for(auto i = 0; i < toruses.size(); i++){
+    torus_ids[toruses[i].m_matid] = i;
+    found_torus[toruses[i].m_matid] = false;
+  }
+
+
+  TPZManVector<TPZGeoElSide, 50> neighs;
+
+  std::set<TPZGeoEl*> blend_neighs;
+  for(auto el : gmesh->ElementVec()){
+    //this way we avoid processing recently inserted elements
+    if(!el || el->IsLinearMapping() == false) continue;
+    const int matid = el->MaterialId();
+    const bool is_torus = torus_ids.find(matid) != torus_ids.end();
+
+    if(is_torus){//found torus
+      found_torus[matid] = true;
+      const int torus_pos = torus_ids[matid];
+      const auto &torusdata = toruses[torus_pos];
+      const REAL rsmall = torusdata.m_r_small;
+      const REAL rlarge = torusdata.m_r_large;
+      TPZManVector<REAL,3> xc = {torusdata.m_xc,torusdata.m_yc,torusdata.m_zc};
+
+      TPZGeoEl *to =
+        TPZChangeEl::ChangeToTorus(gmesh.operator->(), el->Index(),
+                                   xc, rsmall,rlarge);
+      el = nullptr;
+    }//if(is_torus)
+  }//for(auto el : gmesh->ElementVec())
+
+  
+  for(auto el : gmesh->ElementVec()){
+    if(!el || el->IsLinearMapping()==false){continue;}
+    const auto nnodes = el->NCornerNodes();
+    const auto nsides = el->NSides();
+    bool changed=false;
+    for(int iside = nnodes; iside < nsides; iside++){
+      if(changed){break;}
+      TPZGeoElSide elside(el,iside);
+      for(auto neigh = elside.Neighbour(); neigh != elside; neigh++){
+        if(changed){break;}
+        const bool neighlinear = neigh.IsLinearMapping();
+        if(!neighlinear){
+          TPZChangeEl::ChangeToGeoBlend(gmesh.operator->(), el->Index());
+          changed=true;
+        }
+      }
+    }
+  }
+  
+  for(auto torus : found_torus){
+    if(!torus.second){
+      PZError<<__PRETTY_FUNCTION__
+             <<"\n torus "<<torus.first<<" not found in mesh"<<std::endl;
+    }
+  }
+}
+
+
+
 void wgma::gmeshtools::DirectionalRefinement(TPZAutoPointer<TPZGeoMesh>& gmesh,
                            std::set<int> matids, const int nrefs)
 {

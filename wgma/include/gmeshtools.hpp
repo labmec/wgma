@@ -231,6 +231,25 @@ namespace wgma::gmeshtools{
     REAL m_yaxis{0};//<y-coordinate of cylinder axis
     REAL m_zaxis{0};//<z-coordinate of cylinder axis
   };
+
+  //! Stores data for allowing exact geometric representation of spherical shells
+  struct SphereData{
+    int m_matid{-10};//< material identifier
+    REAL m_radius{-1};//< radius
+    REAL m_xc{0};//< x-coordinate of sphere center
+    REAL m_yc{0};//< y-coordinate of sphere center
+    REAL m_zc{0};//< z-coordinate of sphere center
+  };
+
+  //! Stores data for allowing exact geometric representation of toroidal shells
+  struct TorusData{
+    int m_matid{-10};//< material identifier
+    REAL m_r_small{-1};//< small radius
+    REAL m_r_large{-1};//< large radius
+    REAL m_xc{0};//< x-coordinate of torus center
+    REAL m_yc{0};//< y-coordinate of torus center
+    REAL m_zc{0};//< z-coordinate of torus center
+  };
   /**
      @brief Converts linear line elements to TPZArc3D elements,
      allowing for an exact geometric representation of curved geometries.
@@ -254,6 +273,30 @@ namespace wgma::gmeshtools{
    */
   void SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
                                       const TPZVec<CylinderData> &cylinders);
+
+  /**
+     @brief Converts linear 2D elements to TPZTriangleSphere/TPZQuadSphere<T> elements,
+     allowing for an exact geometric representation of curved shell of a Sphere.
+     The neighbouring elements will be converted to TPZGeoBlend<T> so that
+     they take the curved sides into account.
+     @param [in] gmesh geometric mesh to be transformed.
+     @param [in] spheres data of all spheres
+     @note TPZGeoMesh::BuildConnectivity should have been called beforehand.
+   */
+  void SetExactSphereRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
+                                    const TPZVec<SphereData> &cylinders);
+
+  /**
+     @brief Converts linear 2D elements to TPZTriangleTorus/TPZQuadTorus<T> elements,
+     allowing for an exact geometric representation of curved shell of a Torus.
+     The neighbouring elements will be converted to TPZGeoBlend<T> so that
+     they take the curved sides into account.
+     @param [in] gmesh geometric mesh to be transformed.
+     @param [in] spheres data of all spheres
+     @note TPZGeoMesh::BuildConnectivity should have been called beforehand.
+   */
+  void SetExactTorusRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
+                                   const TPZVec<TorusData> &cylinders);
   
   /**
      @brief Refines elements whose neighbours have materials in matids. 
