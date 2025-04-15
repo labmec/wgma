@@ -177,9 +177,10 @@ def find_new_id(tags):
     return max_physical_id+1
 
 
-def add_circ_regions(circdata, physical_ids, regions):
+
+def add_nlin_regions(nlindata,origname,physical_ids,regions):
     """
-    Create unique physical ids for circular regions and insert
+    Create unique physical ids for non linear regions and insert
 them into lists of physical_ids and regions
 
 
@@ -187,8 +188,10 @@ them into lists of physical_ids and regions
 
     Parameters
     ----------
-    circdata: list
+    nlindata: list
         list of regions (CircData)
+    origname: string
+        string to be used as physical group name
     physical_ids: list
         position i contains a map containing (name, physical id) of all regions with dim i
     regions: list
@@ -198,45 +201,21 @@ them into lists of physical_ids and regions
 
     new_physical_id = find_new_id(physical_ids)
 
-    physical_ids_1d = physical_ids[1]
-    for circ in circdata:
-        name = "circ"+str(new_physical_id)
+    physical_ids_list = physical_ids[1] if hasattr(nlindata[0],'linetag') else physical_ids[2]
+    for nlin in nlindata:
+        name = origname+str(new_physical_id)
         assert (name not in regions)
-        physical_ids_1d[name] = new_physical_id
-        regions[name] = circ.linetag
-        circ.matid = new_physical_id
+        physical_ids_list[name] = new_physical_id
+        regions[name] = nlin.linetag if hasattr(nlin,'linetag') else nlin.surftag
+        nlin.matid = new_physical_id
         new_physical_id += 1
+        
+def add_circ_regions(circdata, physical_ids, regions):
+    add_nlin_regions(circdata,"circ",physical_ids,regions)
 
 
 def add_cylindrical_regions(cyldata, physical_ids, regions):
-    """
-    Create unique physical ids for cylindrical regions and insert
-them into lists of physical_ids and regions
-
-
-
-
-    Parameters
-    ----------
-    circdata: list
-        list of regions (CylinderData)
-    physical_ids: list
-        position i contains a map containing (name, physical id) of all regions with dim i
-    regions: list
-        position i contains a map containing (name, list of entities) of all regions with dim i
-
-    """
-
-    new_physical_id = find_new_id(physical_ids)
-
-    physical_ids_2d = physical_ids[2]
-    for cyl in cyldata:
-        name = "cyl"+str(new_physical_id)
-        assert (name not in regions)
-        physical_ids_2d[name] = new_physical_id
-        regions[name] = cyl.surftag
-        cyl.matid = new_physical_id
-        new_physical_id += 1
+    add_nlin_regions(cyldata,"cyl",physical_ids,regions)
 
 
 def create_box(box, elsize: float = 0.1):
