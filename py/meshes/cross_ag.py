@@ -1,10 +1,14 @@
 import gmsh
+import numpy as np
+import csv
 import sys
 
 from utils.gmsh import (
+    add_cylindrical_regions,
     apply_boolean_operation,
     create_box,
     BoxData,
+    CylinderData,
     fuse_domains,
     generate_physical_ids,
     remap_tags,
@@ -58,6 +62,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     # silver
     ag = BoxData(-w_domain/2, -w_domain/2, h_sub, w_domain, w_domain, h_silver)
     create_box(ag)
+
     # cross 1
     c1 = BoxData(-l_cross/2, -w_cross/2, h_sub, l_cross, w_cross, h_silver)
     create_box(c1)
@@ -108,11 +113,13 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
         [(1, tag) for tag in select_edges],
         combined=False, oriented=False, recursive=False)
     select_pts = [t for _,t in select_pts]
-    
+
+    radius = 5/1000
     if '-curve' in sys.argv:
-        new_ag = gmsh.model.occ.fillet(ag,select_edges,[5/1000])
+        new_ag = gmsh.model.occ.fillet(ag,select_edges,[radius])
         ag = [new_ag[0][1]]
         gmsh.model.occ.synchronize()
+        
     
 
     # now we get boundaries from ag + cross
@@ -125,6 +132,76 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
         t for _, t in gmsh.model.get_boundary(
             [(3, tag) for tag in ag],
             combined=True, oriented=False)]
+    all_cyls = []
+    all_spheres = []
+    all_toruses = []
+    if '-curve' in sys.argv:
+        margin = h_silver/4
+        for t in ag_bnds:
+            surf_type = gmsh.model.get_type(2,t)
+            d = 2
+            x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
+            if surf_type == "Cylinder":
+                x_axis = y_axis = z_axis = 0
+                x_center = y_center= z_center = 0
+                if z > h_sub + h_silver/2 + margin:
+                    #horizontal cylinders, top layer
+                    edge_mid = w_cross/2 + (l_cross/2-w_cross/2)/2
+                    if max(abs(x),abs(y)) < edge_mid+margin:
+                        if abs(x) > abs(y):
+                            x_center = edge_mid if x > 0 else -edge_mid
+                            y_center = w_cross/2+radius if y > 0 else -w_cross/2-radius
+                            x_axis = 1
+                        else:
+                            x_center = w_cross/2+radius if x > 0 else -w_cross/2-radius
+                            y_center = edge_mid if y > 0 else -edge_mid
+                            y_axis = 1
+                    else:
+                        if abs(x) > abs(y):
+                            x_center = l_cross/2+radius if x > 0 else -l_cross/2 - radius
+                            y_center = 0
+                            y_axis = 1
+                        else:
+                            x_center = 0
+                            y_center = l_cross/2+radius if y > 0 else -l_cross/2 - radius
+                            x_axis = 1
+                    z_center = h_sub+h_silver-radius
+                else:
+                    #vertical cylinders
+                    x_axis = 0
+                    y_axis = 0
+                    z_axis = 1
+                    if max(abs(y),abs(x)) > w_cross/2+margin:
+                        #outer cylinders
+                        if abs(x) > abs(y):
+                            x_center = l_cross/2-radius if x > 0 else -l_cross/2+radius
+                            y_center = w_cross/2-radius if y > 0 else -w_cross/2+radius
+                        else: 
+                            x_center = w_cross/2-radius if x > 0 else -w_cross/2+radius
+                            y_center = l_cross/2-radius if y > 0 else -l_cross/2+radius
+                    else:
+                        #inner cylinders
+                        x_center = w_cross/2+radius if x > 0 else -w_cross/2-radius
+                        y_center = w_cross/2+radius if y > 0 else -w_cross/2-radius
+                    z_center = h_sub
+                diff = (x_center-x)**2+(y_center-y)**2
+                if diff > radius:
+                    input()
+
+                cyl = CylinderData()
+                cyl.xc = [x_center, y_center, z_center]
+                cyl.axis = [x_axis, y_axis, z_axis]
+                cyl.radius = radius
+                cyl.surftag = [t]
+                all_cyls.append(cyl)
+            
+            elif surf_type == "Sphere":
+                x_center = w_cross/2+radius if x > 0 else -w_cross/2-radius
+                y_center = w_cross/2+radius if y > 0 else -w_cross/2-radius
+                z_center = h_sub+h_silver - radius 
+                all_spheres.append(t)
+            elif surf_type == "Torus":
+                all_toruses.append(t)
     cross_bnds = [t for t in ag_bnds if t not in ag_cross_bnds]
 
     def get_boundary_in_dir(dt, dirsign):
@@ -302,11 +379,10 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
         "bound_port_out_periodic_xp": 25,
         "bound_port_out_periodic_ym": 26,
         "bound_port_out_periodic_yp": 27,
-        "refine_edges": 28
+        # "refine_edges": 28
     }
 
     domain_physical_ids_0d = {
-        "refine_pts": 30,
     }
 
     domain_physical_ids = [domain_physical_ids_0d,
@@ -331,9 +407,10 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
         "bound_port_out_periodic_xp": xp_bnd_port_out,
         "bound_port_out_periodic_ym": ym_bnd_port_out,
         "bound_port_out_periodic_yp": yp_bnd_port_out,
-        "refine_edges": select_edges,
-        "refine_pts": select_pts,
+        # "refine_edges": select_edges
     }
+
+    add_cylindrical_regions(all_cyls, domain_physical_ids, domain_regions)
 
     generate_physical_ids(domain_physical_ids, domain_regions)
 
@@ -341,6 +418,18 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     gmsh.model.mesh.optimize("Netgen")
 
     gmsh.write(filename+".msh")
+
+
+    if '-curve' in sys.argv:
+        
+        with open(filename+'_cyldata.csv', 'w', encoding='UTF8') as f:
+            writer = csv.writer(f)
+            header = ["xc(um)", "yc(um)", "zc(um)", "xaxis(um)",
+                      "yaxis(um)", "zaxis(um)", "radius(um)", "matid"]
+            writer.writerow(header)
+            for cyl in all_cyls:
+                row = [*cyl.xc, *cyl.axis, cyl.radius, cyl.matid]
+                writer.writerow(row)
 
     if '-nopopup' not in sys.argv:
         gmsh.fltk.run()
