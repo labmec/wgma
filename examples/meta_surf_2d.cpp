@@ -597,6 +597,33 @@ void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh
   }
   
   //then spheres
+  {
+    const std::string sphere_suffix = "_spheredata.csv";
+    const std::string sphere_file = file_prefix + sphere_suffix;
+    std::ifstream read(sphere_file);
+    if (!read) {
+      std::cout << "Couldn't find the sphere data file " << sphere_file << std::endl;
+    }
+    auto line = getNextLineAndSplitIntoTokens(read); // header
+    line = getNextLineAndSplitIntoTokens(read);
+    // we expect xc, yc, zc, xaxis, yaxis, zaxis, r, and matid
+    TPZVec<wgma::gmeshtools::SphereData> spheres;
+    const auto factor = 1./scale;
+    while (line.size() == 8) {
+      wgma::gmeshtools::SphereData sphere;
+      sphere.m_xc = std::stod(line[0]) * factor;
+      sphere.m_yc = std::stod(line[1]) * factor;
+      sphere.m_zc = std::stod(line[2]) * factor;
+      sphere.m_radius = std::stod(line[6]) * factor;
+      sphere.m_matid = std::stoi(line[7]);
+      const int nspheres = spheres.size();
+      spheres.Resize(nspheres + 1);
+      spheres[nspheres] = sphere;
+
+      line = getNextLineAndSplitIntoTokens(read);
+    }
+    wgma::gmeshtools::SetExactSphereRepresentation(gmesh, spheres);
+  }
 }
 TPZAutoPointer<ModalData>
 ComputeModalAnalysis(
