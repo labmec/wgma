@@ -5,6 +5,8 @@ import sys
 
 from utils.gmsh import (
     add_cylindrical_regions,
+    add_sphere_regions,
+    add_torus_regions,
     apply_boolean_operation,
     create_box,
     BoxData,
@@ -12,7 +14,9 @@ from utils.gmsh import (
     fuse_domains,
     generate_physical_ids,
     remap_tags,
-    split_region_dir
+    split_region_dir,
+    SphereData,
+    TorusData
 )
 
 
@@ -196,12 +200,27 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
                 all_cyls.append(cyl)
             
             elif surf_type == "Sphere":
-                x_center = w_cross/2+radius if x > 0 else -w_cross/2-radius
-                y_center = w_cross/2+radius if y > 0 else -w_cross/2-radius
-                z_center = h_sub+h_silver - radius 
-                all_spheres.append(t)
+                x_center = np.sign(x)*(w_cross/2+radius)
+                y_center = np.sign(y)*(w_cross/2+radius)
+                z_center = h_sub+h_silver - radius
+                sp = SphereData()
+                sp.xc = [x_center, y_center, z_center]
+                sp.radius = radius
+                sp.surftag = [t]
+                all_spheres.append(sp)
             elif surf_type == "Torus":
-                all_toruses.append(t)
+                edge_mid = w_cross/2 + (l_cross/2-w_cross/2)/2
+                x_center = np.sign(x)*(w_cross/2-radius) \
+                    if abs(x) < edge_mid else np.sign(x)*(l_cross/2 - radius)
+                y_center = np.sign(y)*(w_cross/2-radius) \
+                    if abs(y) < edge_mid else np.sign(y)*(l_cross/2 - radius)
+                z_center = h_sub+h_silver-radius
+                to = TorusData()
+                to.xc = [x_center, y_center, z_center]
+                to.r_small = radius
+                to.r_large = radius+radius
+                to.surftag = [t]
+                all_toruses.append(to)
     cross_bnds = [t for t in ag_bnds if t not in ag_cross_bnds]
 
     def get_boundary_in_dir(dt, dirsign):
@@ -411,6 +430,8 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     }
 
     add_cylindrical_regions(all_cyls, domain_physical_ids, domain_regions)
+    add_sphere_regions(all_spheres, domain_physical_ids, domain_regions)
+    add_torus_regions(all_toruses, domain_physical_ids, domain_regions)
 
     generate_physical_ids(domain_physical_ids, domain_regions)
 
@@ -429,6 +450,13 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
             writer.writerow(header)
             for cyl in all_cyls:
                 row = [*cyl.xc, *cyl.axis, cyl.radius, cyl.matid]
+                writer.writerow(row)
+        with open(filename+'_spheredata.csv', 'w', encoding='UTF8') as f:
+            writer = csv.writer(f)
+            header = ["xc(um)", "yc(um)", "zc(um)",  "radius(um)", "matid"]
+            writer.writerow(header)
+            for sphere in all_spheres:
+                row = [*sphere.xc, sphere.radius, sphere.matid]
                 writer.writerow(row)
 
     if '-nopopup' not in sys.argv:
