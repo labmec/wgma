@@ -168,13 +168,13 @@ def create_circle(data: CircleData, elsize: float = 0.1):
 
 
 def find_new_id(tags):
-    new_physical_id = 0
+    max_physical_id = 0
     for _, groups in enumerate(tags):
         if not groups:
             continue
         for _, id in groups.items():
-            new_physical_id += id
-    return new_physical_id
+            max_physical_id = max(id,max_physical_id)
+    return max_physical_id+1
 
 
 def add_circ_regions(circdata, physical_ids, regions):
