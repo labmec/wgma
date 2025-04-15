@@ -84,6 +84,30 @@ class CylinderData(VolData):
         self.xc = []
         self.axis = []
 
+class SphereData(VolData):
+    """
+    will be used to feed wgma::gmeshtools::SetExactSphereRepresentation
+    """
+
+    def __init__(self):
+        VolData.__init__(self)
+        self.matid = -10  # physical identifier for the cylinder surface
+        self.surftag = []  # tags for the cylinder surface
+        self.radius = -1.
+        self.xc = []
+
+class TorusData(VolData):
+    """
+    will be used to feed wgma::gmeshtools::SetExactTorusRepresentation
+    """
+
+    def __init__(self):
+        VolData.__init__(self)
+        self.matid = -10  # physical identifier for the cylinder surface
+        self.surftag = []  # tags for the cylinder surface
+        self.r_small = -1.
+        self.r_large = -1.
+        self.xc = []
 
 def create_line(line: LineData, elsize: float = 0.1):
     """
@@ -217,7 +241,13 @@ def add_circ_regions(circdata, physical_ids, regions):
 def add_cylindrical_regions(cyldata, physical_ids, regions):
     add_nlin_regions(cyldata,"cyl",physical_ids,regions)
 
+def add_sphere_regions(cyldata, physical_ids, regions):
+    add_nlin_regions(cyldata,"sphere",physical_ids,regions)
+    
+def add_torus_regions(cyldata, physical_ids, regions):
+    add_nlin_regions(cyldata,"torus",physical_ids,regions)
 
+    
 def create_box(box, elsize: float = 0.1):
     """
     Creates a parallelepipedic region and insert it in the model
