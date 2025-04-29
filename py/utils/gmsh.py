@@ -241,11 +241,11 @@ def add_circ_regions(circdata, physical_ids, regions):
 def add_cylindrical_regions(cyldata, physical_ids, regions):
     add_nlin_regions(cyldata,"cyl",physical_ids,regions)
 
-def add_sphere_regions(cyldata, physical_ids, regions):
-    add_nlin_regions(cyldata,"sphere",physical_ids,regions)
+def add_sphere_regions(spdata, physical_ids, regions):
+    add_nlin_regions(spdata,"sphere",physical_ids,regions)
     
-def add_torus_regions(cyldata, physical_ids, regions):
-    add_nlin_regions(cyldata,"torus",physical_ids,regions)
+def add_torus_regions(todata, physical_ids, regions):
+    add_nlin_regions(todata,"torus",physical_ids,regions)
 
     
 def create_box(box, elsize: float = 0.1):
@@ -758,9 +758,8 @@ def apply_boolean_operation(
     orig_ent = []
     for dimtag in objs:
         orig_ent.append(dimtag)
-    if removetool:
-        for dimtag in tools:
-            orig_ent.append(dimtag)
+    for dimtag in tools:
+        orig_ent.append(dimtag)
     domain_map = {}
     for i, surf in enumerate(interfacemap):
         if len(surf) == 0:
