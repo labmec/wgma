@@ -533,6 +533,10 @@ void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh
     return result;
   };
 
+  TPZVec<wgma::gmeshtools::ArcData> arcs;
+  TPZVec<wgma::gmeshtools::CylinderData> cyls;
+  TPZVec<wgma::gmeshtools::SphereData> spheres;
+  TPZVec<wgma::gmeshtools::TorusData> toruses;
   //let us remove the .msh extension
   const std::string file_prefix = meshfile.substr(0, meshfile.length() - 4);
   //first arcs
@@ -546,7 +550,6 @@ void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh
     auto line = getNextLineAndSplitIntoTokens(read); // header
     line = getNextLineAndSplitIntoTokens(read);
     // we expect xc, yc, zc, r (in um), and matid
-    TPZVec<wgma::gmeshtools::ArcData> arcs;
     const auto factor = 1./scale;
     while (line.size() == 5) {
       wgma::gmeshtools::ArcData arc;
@@ -562,7 +565,6 @@ void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh
 
       line = getNextLineAndSplitIntoTokens(read);
     }
-    wgma::gmeshtools::SetExactArcRepresentation(gmesh, arcs);
   }
   //then cylinders
   {
@@ -575,7 +577,6 @@ void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh
     auto line = getNextLineAndSplitIntoTokens(read); // header
     line = getNextLineAndSplitIntoTokens(read);
     // we expect xc, yc, zc, xaxis, yaxis, zaxis, r, and matid
-    TPZVec<wgma::gmeshtools::CylinderData> cyls;
     const auto factor = 1./scale;
     while (line.size() == 8) {
       wgma::gmeshtools::CylinderData cyl;
@@ -587,13 +588,10 @@ void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh
       cyl.m_zaxis = std::stod(line[5]) * factor;
       cyl.m_radius = std::stod(line[6]) * factor;
       cyl.m_matid = std::stoi(line[7]);
-      const int ncyls = cyls.size();
-      cyls.Resize(ncyls + 1);
-      cyls[ncyls] = cyl;
+      cyls.push_back(cyl);
 
       line = getNextLineAndSplitIntoTokens(read);
     }
-    wgma::gmeshtools::SetExactCylinderRepresentation(gmesh, cyls);
   }
   
   //then spheres
@@ -607,24 +605,53 @@ void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh
     auto line = getNextLineAndSplitIntoTokens(read); // header
     line = getNextLineAndSplitIntoTokens(read);
     // we expect xc, yc, zc, xaxis, yaxis, zaxis, r, and matid
-    TPZVec<wgma::gmeshtools::SphereData> spheres;
     const auto factor = 1./scale;
-    while (line.size() == 8) {
+    while (line.size() == 5) {
       wgma::gmeshtools::SphereData sphere;
       sphere.m_xc = std::stod(line[0]) * factor;
       sphere.m_yc = std::stod(line[1]) * factor;
       sphere.m_zc = std::stod(line[2]) * factor;
-      sphere.m_radius = std::stod(line[6]) * factor;
-      sphere.m_matid = std::stoi(line[7]);
-      const int nspheres = spheres.size();
-      spheres.Resize(nspheres + 1);
-      spheres[nspheres] = sphere;
+      sphere.m_radius = std::stod(line[3]) * factor;
+      sphere.m_matid = std::stoi(line[4]);
+      spheres.push_back(sphere);
 
       line = getNextLineAndSplitIntoTokens(read);
     }
-    wgma::gmeshtools::SetExactSphereRepresentation(gmesh, spheres);
   }
+  //then toruses
+  {
+    const std::string torus_suffix = "_torusdata.csv";
+    const std::string torus_file = file_prefix + torus_suffix;
+    std::ifstream read(torus_file);
+    if (!read) {
+      std::cout << "Couldn't find the torus data file " << torus_file << std::endl;
+    }
+    auto line = getNextLineAndSplitIntoTokens(read); // header
+    line = getNextLineAndSplitIntoTokens(read);
+    // we expect xc, yc, zc, r_small, r_large (in um), and matid
+    const auto factor = 1./scale;
+    while (line.size() == 6) {
+      wgma::gmeshtools::TorusData torus;
+
+      torus.m_xc = std::stod(line[0]) * factor;
+      torus.m_yc = std::stod(line[1]) * factor;
+      torus.m_zc = std::stod(line[2]) * factor;
+      torus.m_r_small = std::stod(line[3]) * factor;
+      torus.m_r_large = std::stod(line[4]) * factor;
+      torus.m_matid = std::stoi(line[5]);
+      toruses.push_back(torus);
+
+      line = getNextLineAndSplitIntoTokens(read);
+    }
+  }
+  
+  wgma::gmeshtools::SetExactArcRepresentation(gmesh, arcs, false);
+  wgma::gmeshtools::SetExactCylinderRepresentation(gmesh, cyls, false);
+  wgma::gmeshtools::SetExactSphereRepresentation(gmesh, spheres, false);
+  wgma::gmeshtools::SetExactTorusRepresentation(gmesh, toruses, false);
+  wgma::gmeshtools::ReplaceNeighsWithBlend(*gmesh);
 }
+
 TPZAutoPointer<ModalData>
 ComputeModalAnalysis(
   TPZAutoPointer<TPZGeoMesh> gmesh,
