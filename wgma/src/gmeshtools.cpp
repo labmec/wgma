@@ -981,7 +981,8 @@ wgma::gmeshtools::FindBCNeighbourMat(TPZAutoPointer<TPZGeoMesh>& gmesh,
 }
 
 void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
-                                                 const TPZVec<ArcData> &circles)
+                                                 const TPZVec<ArcData> &circles,
+                                                 const bool replace_neighs)
 {
   std::map<int,int> arc_ids;
   std::map<int,bool> found_arcs;
@@ -1010,6 +1011,7 @@ void wgma::gmeshtools::SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh>& gme
       auto *arc =
         TPZChangeEl::ChangeToArc3D(gmesh.operator->(), el->Index(), {xc,yc,zc}, r);
 
+      if(replace_neighs == false){continue;}
       /**now we need to replace each neighbour by a blend element,
          so it can be deformed accordingly*/
       TPZGeoElSide gelside(arc,arc->NSides()-1);
@@ -1050,7 +1052,8 @@ void CheckCylMap(TPZGeoEl *cyl, const TPZVec<REAL> &axis,
                  const TPZVec<REAL> &xc, const REAL r,  const REAL tol);
 
 void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
-                                                      const TPZVec<CylinderData> &cylinders)
+                                                      const TPZVec<CylinderData> &cylinders,
+                                                      const bool replace_neighs)
 {
 
   
@@ -1080,92 +1083,29 @@ void wgma::gmeshtools::SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>
       TPZManVector<REAL,3> axis = {cyldata.m_xaxis, cyldata.m_yaxis,cyldata.m_zaxis};
 
       TPZGeoEl *cyl{nullptr};
-      //just for debugging TPZCylMap
-      if constexpr(1){
-        cyl =
-          TPZChangeEl::ChangeToCylinder(gmesh.operator->(), el->Index(), xc, axis,r);
-        el = nullptr;
-        constexpr REAL tol{1e-11};
-        CheckCylMap(cyl, axis, xc, r, tol);
-      }
-      else{
-        cyl =
-          TPZChangeEl::ChangeToQuadratic(gmesh.operator->(), el->Index());
-        const int nnodes = cyl->NNodes();
-        const int ncorner = cyl->NCornerNodes();
-        TPZManVector<REAL,3> co(3,0.);
-        for(int in = ncorner; in < nnodes; in++){
-          cyl->NodePtr(in)->GetCoordinates(co);
-          const REAL z = co[2];
-          co[2]=0;
-          const REAL prev_radius = Norm(co);
-          co[0] = co[0]*(r/prev_radius);
-          co[1] = co[1]*(r/prev_radius);
-          co[2] = z;
-          cyl->NodePtr(in)->SetCoord(co);
-        }
-        el = nullptr;
-      }
+      cyl =
+        TPZChangeEl::ChangeToCylinder(gmesh.operator->(), el->Index(), xc, axis,r);
+      el = nullptr;
+      constexpr REAL tol{1e-11};
+      CheckCylMap(cyl, axis, xc, r, tol);
     }//if(is_cylinder)
   }//for(auto el : gmesh->ElementVec())
 
-  
-  for(auto el : gmesh->ElementVec()){
-    if(!el || el->IsLinearMapping()==false){continue;}
-    const auto nnodes = el->NCornerNodes();
-    const auto nsides = el->NSides();
-    bool changed=false;
-    for(int iside = nnodes; iside < nsides; iside++){
-      if(changed){break;}
-      TPZGeoElSide elside(el,iside);
-      for(auto neigh = elside.Neighbour(); neigh != elside; neigh++){
-        if(changed){break;}
-        const bool neighlinear = neigh.IsLinearMapping();
-        if(!neighlinear){
-          TPZChangeEl::ChangeToGeoBlend(gmesh.operator->(), el->Index());
-          changed=true;
-        }
-      }
-    }
-  }
-
-  //just for debugging
-  
-  // for(auto el : gmesh->ElementVec()){
-  //   if(!el){continue;}
-  //   if(el->IsLinearMapping()==false){continue;}
-  //   const auto nnodes = el->NCornerNodes();
-  //   const auto nsides = el->NSides();
-  //   for(int iside = nnodes; iside < nsides; iside++){
-  //     const bool iamlinear = el->IsLinearMapping(iside);
-  //     TPZGeoElSide elside(el,iside);
-  //     for(auto neigh = elside.Neighbour(); neigh != elside; neigh++){
-  //       auto neigh_el = neigh.Element();
-  //       auto neigh_side = neigh.Side();
-  //       const bool neighlinear = neigh_el->IsLinearMapping(neigh_side);
-  //       if(!neighlinear && iamlinear){
-  //         std::cout<<"myself: "<<el->Index()
-  //                  <<"\nneigh: "<<neigh.Element()->Index()
-  //                  <<std::endl;
-  //         el->Print();
-  //         neigh_el->Print();
-  //         DebugStop();
-  //       }
-  //     }
-  //   }
-  // }
-
-  
   for(auto cylinder : found_cylinders){
     if(!cylinder.second){
       PZError<<__PRETTY_FUNCTION__
              <<"\n cylinder "<<cylinder.first<<" not found in mesh"<<std::endl;
     }
   }
+
+  if(replace_neighs == false){return;}
+
+  ReplaceNeighsWithBlend(*gmesh);
 }
 
 void wgma::gmeshtools::SetExactSphereRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
-                                                    const TPZVec<SphereData> &spheres)
+                                                    const TPZVec<SphereData> &spheres,
+                                                    const bool replace_neighs)
 {
 
   
@@ -1199,25 +1139,6 @@ void wgma::gmeshtools::SetExactSphereRepresentation(TPZAutoPointer<TPZGeoMesh>& 
     }//if(is_sphere)
   }//for(auto el : gmesh->ElementVec())
 
-  
-  for(auto el : gmesh->ElementVec()){
-    if(!el || el->IsLinearMapping()==false){continue;}
-    const auto nnodes = el->NCornerNodes();
-    const auto nsides = el->NSides();
-    bool changed=false;
-    for(int iside = nnodes; iside < nsides; iside++){
-      if(changed){break;}
-      TPZGeoElSide elside(el,iside);
-      for(auto neigh = elside.Neighbour(); neigh != elside; neigh++){
-        if(changed){break;}
-        const bool neighlinear = neigh.IsLinearMapping();
-        if(!neighlinear){
-          TPZChangeEl::ChangeToGeoBlend(gmesh.operator->(), el->Index());
-          changed=true;
-        }
-      }
-    }
-  }
 
   
   for(auto sphere : found_spheres){
@@ -1226,10 +1147,15 @@ void wgma::gmeshtools::SetExactSphereRepresentation(TPZAutoPointer<TPZGeoMesh>& 
              <<"\n sphere "<<sphere.first<<" not found in mesh"<<std::endl;
     }
   }
+
+  if(replace_neighs == false){return;}
+
+  ReplaceNeighsWithBlend(*gmesh);
 }
 
 void wgma::gmeshtools::SetExactTorusRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
-                                                    const TPZVec<TorusData> &toruses)
+                                                   const TPZVec<TorusData> &toruses,
+                                                   const bool replace_neighs)
 {
 
   
@@ -1266,7 +1192,22 @@ void wgma::gmeshtools::SetExactTorusRepresentation(TPZAutoPointer<TPZGeoMesh>& g
   }//for(auto el : gmesh->ElementVec())
 
   
-  for(auto el : gmesh->ElementVec()){
+  
+  
+  for(auto torus : found_torus){
+    if(!torus.second){
+      PZError<<__PRETTY_FUNCTION__
+             <<"\n torus "<<torus.first<<" not found in mesh"<<std::endl;
+    }
+  }
+  if(replace_neighs == false){return;}
+
+  ReplaceNeighsWithBlend(*gmesh);
+}
+
+void wgma::gmeshtools::ReplaceNeighsWithBlend(TPZGeoMesh &gmesh)
+{
+  for(auto el : gmesh.ElementVec()){
     if(!el || el->IsLinearMapping()==false){continue;}
     const auto nnodes = el->NCornerNodes();
     const auto nsides = el->NSides();
@@ -1278,22 +1219,13 @@ void wgma::gmeshtools::SetExactTorusRepresentation(TPZAutoPointer<TPZGeoMesh>& g
         if(changed){break;}
         const bool neighlinear = neigh.IsLinearMapping();
         if(!neighlinear){
-          TPZChangeEl::ChangeToGeoBlend(gmesh.operator->(), el->Index());
+          TPZChangeEl::ChangeToGeoBlend(&gmesh, el->Index());
           changed=true;
         }
       }
     }
   }
-  
-  for(auto torus : found_torus){
-    if(!torus.second){
-      PZError<<__PRETTY_FUNCTION__
-             <<"\n torus "<<torus.first<<" not found in mesh"<<std::endl;
-    }
-  }
 }
-
-
 
 void wgma::gmeshtools::DirectionalRefinement(TPZAutoPointer<TPZGeoMesh>& gmesh,
                            std::set<int> matids, const int nrefs)
@@ -1310,7 +1242,7 @@ void wgma::gmeshtools::DirectionalRefinement(TPZAutoPointer<TPZGeoMesh>& gmesh,
     const int nels = gmesh->NElements();
     for(int el = 0; el < nels; el++){
       auto *gel = gmesh->Element(el);
-      if(gel && gel->NSubElements() == 0){
+      if(gel && gel->NSubElements() == 0 && gel->MaterialId() == 1){
         TPZRefPatternTools::RefineDirectional(gel, matids);
       }
     }

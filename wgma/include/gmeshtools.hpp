@@ -257,10 +257,12 @@ namespace wgma::gmeshtools{
      they take the curved sides into account.
      @param [in] gmesh geometric mesh to be transformed.
      @param [in] circles data of all circumference arcs.
+     @param [in] whether to replace neighbouring els for blend or not
      @note TPZGeoMesh::BuildConnectivity should have been called beforehand.
    */
   void SetExactArcRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
-                                 const TPZVec<ArcData> &circles);
+                                 const TPZVec<ArcData> &circles,
+                                 const bool replace_neighs=true);
 
   /**
      @brief Converts linear 2D elements to TPZCylinderMap<T> elements,
@@ -269,10 +271,12 @@ namespace wgma::gmeshtools{
      they take the curved sides into account.
      @param [in] gmesh geometric mesh to be transformed.
      @param [in] cylinders data of all cylinders
+     @param [in] whether to replace neighbouring els for blend or not
      @note TPZGeoMesh::BuildConnectivity should have been called beforehand.
    */
   void SetExactCylinderRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
-                                      const TPZVec<CylinderData> &cylinders);
+                                      const TPZVec<CylinderData> &cylinders,
+                                      const bool replace_neighs=true);
 
   /**
      @brief Converts linear 2D elements to TPZTriangleSphere/TPZQuadSphere<T> elements,
@@ -281,10 +285,12 @@ namespace wgma::gmeshtools{
      they take the curved sides into account.
      @param [in] gmesh geometric mesh to be transformed.
      @param [in] spheres data of all spheres
+     @param [in] whether to replace neighbouring els for blend or not
      @note TPZGeoMesh::BuildConnectivity should have been called beforehand.
    */
   void SetExactSphereRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
-                                    const TPZVec<SphereData> &cylinders);
+                                    const TPZVec<SphereData> &cylinders,
+                                    const bool replace_neighs=true);
 
   /**
      @brief Converts linear 2D elements to TPZTriangleTorus/TPZQuadTorus<T> elements,
@@ -293,10 +299,14 @@ namespace wgma::gmeshtools{
      they take the curved sides into account.
      @param [in] gmesh geometric mesh to be transformed.
      @param [in] spheres data of all spheres
+     @param [in] whether to replace neighbouring els for blend or not
      @note TPZGeoMesh::BuildConnectivity should have been called beforehand.
    */
   void SetExactTorusRepresentation(TPZAutoPointer<TPZGeoMesh>& gmesh,
-                                   const TPZVec<TorusData> &cylinders);
+                                   const TPZVec<TorusData> &cylinders,
+                                   const bool replace_neighs=true);
+
+  void ReplaceNeighsWithBlend(TPZGeoMesh& gmesh);
   
   /**
      @brief Refines elements whose neighbours have materials in matids. 
