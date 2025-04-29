@@ -429,9 +429,10 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
         # "refine_edges": select_edges
     }
 
-    add_cylindrical_regions(all_cyls, domain_physical_ids, domain_regions)
-    add_sphere_regions(all_spheres, domain_physical_ids, domain_regions)
-    add_torus_regions(all_toruses, domain_physical_ids, domain_regions)
+    if '-curve' in sys.argv:
+        add_cylindrical_regions(all_cyls, domain_physical_ids, domain_regions)
+        add_sphere_regions(all_spheres, domain_physical_ids, domain_regions)
+        add_torus_regions(all_toruses, domain_physical_ids, domain_regions)
 
     generate_physical_ids(domain_physical_ids, domain_regions)
 
@@ -457,6 +458,17 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
             writer.writerow(header)
             for sphere in all_spheres:
                 row = [*sphere.xc, sphere.radius, sphere.matid]
+                writer.writerow(row)
+        with open(filename+'_torusdata.csv', 'w', encoding='UTF8') as f:
+            writer = csv.writer(f)
+            header = ["xc(um)", "yc(um)", "zc(um)",  "r_small(um)", "r_large(um)", "matid"]
+            writer.writerow(header)
+            coord, parametricCoord, dim, tag = gmsh.model.mesh.getNode(457)
+            print(f"node coord {coord}")
+            for torus in all_toruses:
+                row = [*torus.xc, torus.r_small, torus.r_large, torus.matid]
+                print(f"torus has center {torus.xc[0]}, {torus.xc[1]}, {torus.xc[2]}")
+                # print(gmsh.model.get_entity_properties(2,torus.surftag[0]))
                 writer.writerow(row)
 
     if '-nopopup' not in sys.argv:
