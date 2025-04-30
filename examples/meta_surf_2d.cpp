@@ -444,7 +444,7 @@ SimData ReadSimData(const std::string &dataname){
 
   sd.refine_regions = data.value("refine_regions", std::map<std::string,int> {});
 
-  sd.curved_els = data["curved_els"];
+  sd.curved_els = data.value("curved_els", false);
   sd.meshfile = data["meshfile"];
   sd.prefix =  data["prefix"];
   sd.scale = data["scale"];
