@@ -1,12 +1,16 @@
 import gmsh
+import numpy as np
+import csv
 import sys
 
 from utils.gmsh import (
+    add_cylindrical_regions,
+    add_sphere_regions,
     apply_boolean_operation,
     create_box,
-    create_rect,
     BoxData,
-    RectData,
+    CylinderData,
+    SphereData,
     generate_physical_ids,
     remap_tags,
     split_region_dir
@@ -70,41 +74,6 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     gmsh.model.occ.remove_all_duplicates()
     gmsh.model.occ.synchronize()
 
-    h_domain = h_sub+h_air+h_metal
-    plane_y = RectData()
-    plane_y.xc = -P/2
-    plane_y.yc = 0
-    plane_y.zc = 0
-    plane_y.h = h_domain
-    plane_y.w = P
-
-    create_rect(plane_y, el_air, 'y')
-
-    plane_x = RectData()
-    plane_x.xc = 0
-    plane_x.yc = -P/2
-    plane_x.zc = h_domain
-    plane_x.h = P
-    plane_x.w = h_domain
-
-    create_rect(plane_x, el_air, 'x')
-    gmsh.model.occ.remove_all_duplicates()
-    gmsh.model.occ.synchronize()
-        
-    objs = []
-    [objs.append((3, v)) for vol in [air,metal,sub] for v in vol.tag]
-    tools = []
-    [tools.append((2, t)) for plane in [plane_x,plane_y] for t in plane.tag]
-    [tools.append(b)
-     for plane in [plane_x,plane_y]
-     for s in plane.tag
-     for b in gmsh.model.get_boundary([(2, s)],
-                                      oriented=False)]
-    plane_map = apply_boolean_operation(objs, tools, "fragment", True)
-    remap_tags([air,metal,sub]+[plane_x,plane_y], plane_map)
-    # now we cut the cross from the silver
-    gmsh.model.occ.remove_all_duplicates()
-    gmsh.model.occ.synchronize()
     
     # we dont need the box data anymore, so
     metal = metal.tag
@@ -185,20 +154,36 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
                   gmsh.model.get_boundary([(3, tag)
                                            for tag in metal],
                                           combined=False, oriented=False)]
+    
     metal_inner_bnds = [t for t in metal_inner_bnds if t not in metal_bnds]
+    
     air_bnds = [t for _, t in
                   gmsh.model.get_boundary([(3, tag)
                                            for tag in air],
                                           combined=True, oriented=False)]
     select_faces = list(set(metal_bnds) & set(air_bnds))
 
-    metal_edges = gmsh.model.get_boundary([(2,t) for t in metal_bnds],combined=False,
+    metal_outer_edges = gmsh.model.get_boundary([(2,t) for t in metal_bnds],
+                                          combined=False,
                                           oriented=False)
 
-    metal_inner_edges = gmsh.model.get_boundary([(2,t) for t in metal_inner_bnds],combined=False,
-                                          oriented=False)
-    metal_edges = [t for t in metal_edges if t not in metal_inner_edges]
-    metal_edges = [t for _,t in metal_edges]
+    metal_all_edges = gmsh.model.get_boundary([(2,t) for t in metal_inner_bnds],
+                                                combined=False,
+                                                oriented=False)
+    
+    metal_outer_edges = [t for t in metal_outer_edges if t not in metal_all_edges]
+    metal_outer_edges = [t for _,t in metal_outer_edges]
+    #now we need to distinguish which are the actual edges at the corner
+    metal_edges = []
+    for t in metal_outer_edges:
+        x, y, z = gmsh.model.occ.get_center_of_mass(1, t)
+        if abs(x) > W/2*0.9 and abs(y) > W/2*0.9:
+            metal_edges.append(t)
+        elif (abs(x) > W/2*0.9 or abs(y) > W/2*0.9) and z > (h_sub+h_metal)*0.9:
+            metal_edges.append(t)
+    metal_edges = list(set(metal_edges))
+        
+    
     select_edges = []
     for t in metal_edges:
         d_l = gmsh.model.get_derivative(1, t, [0])
@@ -209,6 +194,72 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
                                             combined=False,
                                             oriented=False)
     select_points = [t for _,t in select_points]
+
+
+    all_cyls = []
+    all_spheres = []
+    radius = 5/1000
+    if '-curve' in sys.argv:
+        #now we find the curved edges
+        # metal_edges = [34, 35, 36, 47, 48, 49, 19, 20, 21, 59, 60, 61]
+        # metal_edges = [36]
+        new_metal = gmsh.model.occ.fillet(metal,metal_edges,[radius])
+        metal = [new_metal[0][1]]
+        gmsh.model.occ.synchronize()
+
+        metal_bnds = [t for _, t in
+                      gmsh.model.get_boundary([(3, tag)
+                                               for tag in metal],
+                                              combined=True, oriented=False)]
+        margin = h_metal/4
+        for t in metal_bnds:
+            surf_type = gmsh.model.get_type(2,t)
+            d = 2
+            x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
+            if surf_type == "Cylinder":
+                x_axis = y_axis = z_axis = 0
+                x_center = y_center= z_center = 0
+                if z > h_sub + h_metal/2 + margin:
+                    x_axis = 0
+                    y_axis = 0
+                    z_axis = 0
+                    #horizontal cylinders, top layer
+                    if abs(x) < margin:
+                        x_center = 0
+                        y_center = np.sign(y)*(W/2-radius)
+                        x_axis = 1
+                    else:
+                        x_center = np.sign(x)*(W/2-radius)
+                        y_center = 0
+                        y_axis = 1
+                    z_center = h_sub + h_metal - radius
+                else:
+                    #vertical cylinders
+                    x_axis = 0
+                    y_axis = 0
+                    z_axis = 1
+                    x_center = (W/2 - radius)*np.sign(x)
+                    y_center = (W/2 - radius)*np.sign(y)
+                    z_center = h_sub + h_metal/2
+
+                cyl = CylinderData()
+                cyl.xc = [x_center, y_center, z_center]
+                cyl.axis = [x_axis, y_axis, z_axis]
+                cyl.radius = radius
+                cyl.surftag = [t]
+                
+                all_cyls.append(cyl)
+            
+            elif surf_type == "Sphere":
+                x_center = np.sign(x)*(W/2-radius)
+                y_center = np.sign(y)*(W/2+radius)
+                z_center = h_sub+h_metal - radius
+                sp = SphereData()
+                sp.xc = [x_center, y_center, z_center]
+                sp.radius = radius
+                sp.surftag = [t]
+                all_spheres.append(sp)
+    
     
     field_ct = 1
     gmsh.model.mesh.field.add("Constant", field_ct)
@@ -228,23 +279,23 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
         field_ct, "VolumesList", sub)
     gmsh.model.mesh.field.set_number(
         field_ct, "VIn", el_sub)
-    field_ct += 1
-    gmsh.model.mesh.field.add("Distance", field_ct)
+    # field_ct += 1
+    # gmsh.model.mesh.field.add("Distance", field_ct)
+    # # gmsh.model.mesh.field.set_numbers(
+    # #     field_ct, "PointsList", select_points)
     # gmsh.model.mesh.field.set_numbers(
-    #     field_ct, "PointsList", select_points)
-    gmsh.model.mesh.field.set_numbers(
-        field_ct, "EdgesList", metal_edges)
-    # gmsh.model.mesh.field.set_numbers(
-    #     field_ct, "SurfacesList", select_faces)
+    #     field_ct, "EdgesList", metal_edges)
+    # # gmsh.model.mesh.field.set_numbers(
+    # #     field_ct, "SurfacesList", select_faces)
     
-    field_ct += 1
-    gmsh.model.mesh.field.add("Threshold", field_ct)
-    gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
-    gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
-    gmsh.model.mesh.field.set_number(field_ct, "DistMin", h_metal/4)
-    gmsh.model.mesh.field.set_number(field_ct, "DistMax", h_metal/2)
-    gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_metal/4)
-    gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_metal)
+    # field_ct += 1
+    # gmsh.model.mesh.field.add("Threshold", field_ct)
+    # gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
+    # gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
+    # gmsh.model.mesh.field.set_number(field_ct, "DistMin", h_metal/4)
+    # gmsh.model.mesh.field.set_number(field_ct, "DistMax", h_metal/2)
+    # gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_metal/4)
+    # gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_metal)
     field_ct += 1
     gmsh.model.mesh.field.add("Min", field_ct)
     gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList",
@@ -269,9 +320,10 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
         "bound_periodic_xp": 13,
         "bound_periodic_ym": 14,
         "bound_periodic_yp": 15,
-        "refine_faces": 16,
     }
-
+    if '-curve' not in sys.argv:
+        domain_physical_ids_2d["refine_faces"] = 16
+        
     domain_physical_ids_1d = {
         "bound_port_in_periodic_xm": 20,
         "bound_port_in_periodic_xp": 21,
@@ -284,8 +336,10 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     }
 
     domain_physical_ids_0d = {
-        "refine_points": 30,
     }
+
+    if '-curve' not in sys.argv:
+        domain_physical_ids_0d["refine_points"] = 30
 
     domain_physical_ids = [domain_physical_ids_0d,
                            domain_physical_ids_1d,
@@ -309,9 +363,14 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
         "bound_port_out_periodic_xp": xp_bnd_port_out,
         "bound_port_out_periodic_ym": ym_bnd_port_out,
         "bound_port_out_periodic_yp": yp_bnd_port_out,
-        "refine_faces": select_faces,
-        "refine_points": select_points,
     }
+    if '-curve' not in sys.argv:
+        domain_regions["refine_faces"] =  select_faces
+        domain_regions["refine_points"] =  select_points
+
+    else:
+        add_cylindrical_regions(all_cyls, domain_physical_ids, domain_regions)
+        add_sphere_regions(all_spheres, domain_physical_ids, domain_regions)
 
     generate_physical_ids(domain_physical_ids, domain_regions)
 
@@ -320,6 +379,25 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
 
     gmsh.write(filename+".msh")
 
+
+    if '-curve' in sys.argv:
+        
+        with open(filename+'_cyldata.csv', 'w', encoding='UTF8') as f:
+            writer = csv.writer(f)
+            header = ["xc(um)", "yc(um)", "zc(um)", "xaxis(um)",
+                      "yaxis(um)", "zaxis(um)", "radius(um)", "matid"]
+            writer.writerow(header)
+            for cyl in all_cyls:
+                row = [*cyl.xc, *cyl.axis, cyl.radius, cyl.matid]
+                writer.writerow(row)
+        with open(filename+'_spheredata.csv', 'w', encoding='UTF8') as f:
+            writer = csv.writer(f)
+            header = ["xc(um)", "yc(um)", "zc(um)",  "radius(um)", "matid"]
+            writer.writerow(header)
+            for sphere in all_spheres:
+                row = [*sphere.xc, sphere.radius, sphere.matid]
+                writer.writerow(row)
+    
     if '-nopopup' not in sys.argv:
         gmsh.fltk.run()
     gmsh.finalize()
@@ -329,7 +407,7 @@ nel = 8
 min_wavelength = 0.35
 
 h_sub = 0.1
-h_metal = 0.04
+h_metal = 0.02
 h_air = 0.1
 el_metal = min_wavelength/(nel*2)
 el_air = min_wavelength/nel
