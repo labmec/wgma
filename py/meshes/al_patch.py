@@ -60,9 +60,41 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     # metal
     metal = BoxData(-W/2, -W/2, h_sub, W, W, h_metal)
     create_box(metal)
+    # should we fillet first?
+    radius = 10/1000
+    if '-curve' in sys.argv:
+        gmsh.model.occ.remove_all_duplicates()
+        gmsh.model.occ.synchronize()
+        metal_bnds = [t for _, t in
+                      gmsh.model.get_boundary([(3, tag)
+                                               for tag in metal.tag],
+                                              combined=True, oriented=False)]
+        metal_outer_edges = gmsh.model.get_boundary([(2,t) for t in metal_bnds],
+                                                    combined=False,
+                                                    oriented=False)
+    
+        metal_outer_edges = [t for _,t in metal_outer_edges]
+        #now we need to distinguish which are the actual edges at the corner
+        metal_edges = []
+        for t in metal_outer_edges:
+            x, y, z = gmsh.model.occ.get_center_of_mass(1, t)
+            if abs(x) > W/2*0.9 and abs(y) > W/2*0.9:
+                metal_edges.append(t)
+            elif (abs(x) > W/2*0.9 or abs(y) > W/2*0.9) and z > (h_sub+h_metal)*0.9:
+                metal_edges.append(t)
+                metal_edges = list(set(metal_edges))
+                
+        new_metal = gmsh.model.occ.fillet(metal.tag,metal_edges,[radius])
+        metal.tag = [new_metal[0][1]]
+        gmsh.model.occ.remove_all_duplicates()
+        gmsh.model.occ.synchronize()
+
+    
+
     # air+metal
     air = BoxData(-P/2, -P/2, h_sub, P, P, h_metal+h_air)
     create_box(air)
+    
     # now we remove the metal from air
     objs = []
     [objs.append((3, t)) for t in air.tag]
@@ -74,139 +106,21 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     gmsh.model.occ.remove_all_duplicates()
     gmsh.model.occ.synchronize()
 
-    
     # we dont need the box data anymore, so
     metal = metal.tag
     air = air.tag
     sub = sub.tag
 
-    def get_boundary_in_dir(dt, dirsign):
-        dirmap = {'xp': 'x', 'xm': 'x',
-                  'yp': 'y', 'ym': 'y',
-                  'zp': 'z', 'zm': 'z'}
-        direction = dirmap[dirsign]
-        sign = '+' if 'p' in dirsign else '-'
-        reg_m, reg_p = split_region_dir(dt, direction)
-        vol = reg_p if sign == '+' else reg_m
-        bnd = gmsh.model.get_boundary(vol, combined=True, oriented=False)
-        reg_m, reg_p = split_region_dir(bnd, direction, True)
-        res = {}
-        res = reg_p if sign == '+' else reg_m
-        res = [t for _, t in res]
-        return res
-    # now we define modal analysis domains
-    dim = 3
-    vol_domains = gmsh.model.get_entities(dim)
-    sub_bot_ma = get_boundary_in_dir(vol_domains, 'zm')
-    air_top_ma = get_boundary_in_dir(vol_domains, 'zp')
-
-    # and get their boundaries
-
-    xp_bnd_port_in = get_boundary_in_dir([(2, t) for t in sub_bot_ma], 'xp')
-    xm_bnd_port_in = get_boundary_in_dir([(2, t) for t in sub_bot_ma], 'xm')
-    yp_bnd_port_in = get_boundary_in_dir([(2, t) for t in sub_bot_ma], 'yp')
-    ym_bnd_port_in = get_boundary_in_dir([(2, t) for t in sub_bot_ma], 'ym')
-
-    
-    xp_bnd_port_out = get_boundary_in_dir([(2, t) for t in air_top_ma], 'xp')
-    xm_bnd_port_out = get_boundary_in_dir([(2, t) for t in air_top_ma], 'xm')
-    yp_bnd_port_out = get_boundary_in_dir([(2, t) for t in air_top_ma], 'yp')
-    ym_bnd_port_out = get_boundary_in_dir([(2, t) for t in air_top_ma], 'ym')
-
-    # finally, we set periodic BCs
-
-    xm_bnd = get_boundary_in_dir(vol_domains, 'xm')
-    xp_bnd = get_boundary_in_dir(vol_domains, 'xp')
-    ym_bnd = get_boundary_in_dir(vol_domains, 'ym')
-    yp_bnd = get_boundary_in_dir(vol_domains, 'yp')
-
-    affine = [1.0 if i == j else 0 for i in range(4) for j in range(4)]
-    pos = {"dx": 3, "dy": 7, "dz": 11}
-    val = {"dx": 0, "dy": 0, "dz": 0}
-
-    dim = 2
-
-    val['dx'] = P
-    val['dy'] = 0
-    val['dz'] = 0
-    affine[pos["dx"]] = val["dx"]
-    affine[pos["dy"]] = val["dy"]
-    affine[pos["dz"]] = val["dz"]
-
-    gmsh.model.mesh.set_periodic(dim, xp_bnd, xm_bnd, affine)
-    val['dx'] = 0
-    val['dy'] = P
-    val['dz'] = 0
-    affine[pos["dx"]] = val["dx"]
-    affine[pos["dy"]] = val["dy"]
-    affine[pos["dz"]] = val["dz"]
-
-    gmsh.model.mesh.set_periodic(dim, yp_bnd, ym_bnd, affine)
 
 
     #setting element size
 
-    metal_bnds = [t for _, t in
-                  gmsh.model.get_boundary([(3, tag)
-                                           for tag in metal],
-                                          combined=True, oriented=False)]
-    metal_inner_bnds = [t for _, t in
-                  gmsh.model.get_boundary([(3, tag)
-                                           for tag in metal],
-                                          combined=False, oriented=False)]
     
-    metal_inner_bnds = [t for t in metal_inner_bnds if t not in metal_bnds]
-    
-    air_bnds = [t for _, t in
-                  gmsh.model.get_boundary([(3, tag)
-                                           for tag in air],
-                                          combined=True, oriented=False)]
-    select_faces = list(set(metal_bnds) & set(air_bnds))
-
-    metal_outer_edges = gmsh.model.get_boundary([(2,t) for t in metal_bnds],
-                                          combined=False,
-                                          oriented=False)
-
-    metal_all_edges = gmsh.model.get_boundary([(2,t) for t in metal_inner_bnds],
-                                                combined=False,
-                                                oriented=False)
-    
-    metal_outer_edges = [t for t in metal_outer_edges if t not in metal_all_edges]
-    metal_outer_edges = [t for _,t in metal_outer_edges]
-    #now we need to distinguish which are the actual edges at the corner
-    metal_edges = []
-    for t in metal_outer_edges:
-        x, y, z = gmsh.model.occ.get_center_of_mass(1, t)
-        if abs(x) > W/2*0.9 and abs(y) > W/2*0.9:
-            metal_edges.append(t)
-        elif (abs(x) > W/2*0.9 or abs(y) > W/2*0.9) and z > (h_sub+h_metal)*0.9:
-            metal_edges.append(t)
-    metal_edges = list(set(metal_edges))
-        
-    
-    select_edges = []
-    for t in metal_edges:
-        d_l = gmsh.model.get_derivative(1, t, [0])
-        if d_l[0] == 0 and d_l[1] == 0:
-            select_edges.append(t)
-
-    select_points = gmsh.model.get_boundary([(1,t) for t in select_edges],
-                                            combined=False,
-                                            oriented=False)
-    select_points = [t for _,t in select_points]
 
 
     all_cyls = []
     all_spheres = []
-    radius = 2/1000
     if '-curve' in sys.argv:
-        #now we find the curved edges
-        # metal_edges = [34, 35, 36, 47, 48, 49, 19, 20, 21, 59, 60, 61]
-        # metal_edges = [36]
-        new_metal = gmsh.model.occ.fillet(metal,metal_edges,[radius])
-        metal = [new_metal[0][1]]
-        gmsh.model.occ.synchronize()
-
         metal_bnds = [t for _, t in
                       gmsh.model.get_boundary([(3, tag)
                                                for tag in metal],
@@ -260,6 +174,74 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
                 sp.surftag = [t]
                 all_spheres.append(sp)
     
+
+
+    def get_boundary_in_dir(dt, dirsign):
+        dirmap = {'xp': 'x', 'xm': 'x',
+                  'yp': 'y', 'ym': 'y',
+                  'zp': 'z', 'zm': 'z'}
+        direction = dirmap[dirsign]
+        sign = '+' if 'p' in dirsign else '-'
+        reg_m, reg_p = split_region_dir(dt, direction)
+        vol = reg_p if sign == '+' else reg_m
+        bnd = gmsh.model.get_boundary(vol, combined=True, oriented=False)
+        reg_m, reg_p = split_region_dir(bnd, direction, True)
+        res = {}
+        res = reg_p if sign == '+' else reg_m
+        res = [t for _, t in res]
+        return res
+                
+# now we define modal analysis domains
+    dim = 3
+    vol_domains = gmsh.model.get_entities(dim)
+    sub_bot_ma = get_boundary_in_dir(vol_domains, 'zm')
+    air_top_ma = get_boundary_in_dir(vol_domains, 'zp')
+
+    # and get their boundaries
+
+    xp_bnd_port_in = get_boundary_in_dir([(2, t) for t in sub_bot_ma], 'xp')
+    xm_bnd_port_in = get_boundary_in_dir([(2, t) for t in sub_bot_ma], 'xm')
+    yp_bnd_port_in = get_boundary_in_dir([(2, t) for t in sub_bot_ma], 'yp')
+    ym_bnd_port_in = get_boundary_in_dir([(2, t) for t in sub_bot_ma], 'ym')
+
+    
+    xp_bnd_port_out = get_boundary_in_dir([(2, t) for t in air_top_ma], 'xp')
+    xm_bnd_port_out = get_boundary_in_dir([(2, t) for t in air_top_ma], 'xm')
+    yp_bnd_port_out = get_boundary_in_dir([(2, t) for t in air_top_ma], 'yp')
+    ym_bnd_port_out = get_boundary_in_dir([(2, t) for t in air_top_ma], 'ym')
+
+    # finally, we set periodic BCs
+
+    xm_bnd = get_boundary_in_dir(vol_domains, 'xm')
+    xp_bnd = get_boundary_in_dir(vol_domains, 'xp')
+    ym_bnd = get_boundary_in_dir(vol_domains, 'ym')
+    yp_bnd = get_boundary_in_dir(vol_domains, 'yp')
+
+    affine = [1.0 if i == j else 0 for i in range(4) for j in range(4)]
+    pos = {"dx": 3, "dy": 7, "dz": 11}
+    val = {"dx": 0, "dy": 0, "dz": 0}
+
+    dim = 2
+
+    val['dx'] = P
+    val['dy'] = 0
+    val['dz'] = 0
+    affine[pos["dx"]] = val["dx"]
+    affine[pos["dy"]] = val["dy"]
+    affine[pos["dz"]] = val["dz"]
+
+    gmsh.model.mesh.set_periodic(dim, xp_bnd, xm_bnd, affine)
+    val['dx'] = 0
+    val['dy'] = P
+    val['dz'] = 0
+    affine[pos["dx"]] = val["dx"]
+    affine[pos["dy"]] = val["dy"]
+    affine[pos["dz"]] = val["dz"]
+
+    gmsh.model.mesh.set_periodic(dim, yp_bnd, ym_bnd, affine)
+
+
+
     
     field_ct = 1
     gmsh.model.mesh.field.add("Constant", field_ct)
@@ -280,24 +262,24 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     gmsh.model.mesh.field.set_number(
         field_ct, "VIn", el_sub)
 
-    if '-curve' in sys.argv:
-        nlin_faces = []
-        [nlin_faces.append(sp.surftag[0]) for sp in all_spheres ]
-        [nlin_faces.append(cyl.surftag[0]) for cyl in all_cyls ]
+    # if '-curve' in sys.argv:
+    #     nlin_faces = []
+    #     [nlin_faces.append(sp.surftag[0]) for sp in all_spheres ]
+    #     [nlin_faces.append(cyl.surftag[0]) for cyl in all_cyls ]
         
-        field_ct += 1
-        gmsh.model.mesh.field.add("Distance", field_ct)
-        gmsh.model.mesh.field.set_numbers(
-            field_ct, "SurfacesList", nlin_faces)
+    #     field_ct += 1
+    #     gmsh.model.mesh.field.add("Distance", field_ct)
+    #     gmsh.model.mesh.field.set_numbers(
+    #         field_ct, "SurfacesList", nlin_faces)
     
-        field_ct += 1
-        gmsh.model.mesh.field.add("Threshold", field_ct)
-        gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
-        gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
-        gmsh.model.mesh.field.set_number(field_ct, "DistMin", min(5*radius,h_metal/4))
-        gmsh.model.mesh.field.set_number(field_ct, "DistMax", min(10*radius,h_metal/2))
-        gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_metal/4)
-        gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_metal)
+    #     field_ct += 1
+    #     gmsh.model.mesh.field.add("Threshold", field_ct)
+    #     gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
+    #     gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
+    #     gmsh.model.mesh.field.set_number(field_ct, "DistMin", min(5*radius,h_metal/4))
+    #     gmsh.model.mesh.field.set_number(field_ct, "DistMax", min(10*radius,h_metal/2))
+    #     gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_metal/2)
+    #     gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_metal)
         
     field_ct += 1
 
@@ -311,7 +293,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     gmsh.model.mesh.field.setAsBackgroundMesh(field_ct)
     gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
     gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
-    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 5)
 
     domain_physical_ids_3d = {
         "metal": 1,
