@@ -139,7 +139,7 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
 
 int main(int argc, char *argv[]) {
 
-  wgma::wganalysis::using_tbb_mat=true;
+  wgma::wganalysis::using_tbb_mat=false;
   wgma::scattering::using_tbb_mat=true;
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
@@ -201,6 +201,11 @@ int main(int argc, char *argv[]) {
                                           periodic_els);
 
 
+    if (simdata.print_gmesh) {
+      // prefix for the wgma_gmesh files
+      const std::string filename = simdata.prefix + "_gmesh";
+      wgma::gmeshtools::PrintGeoMesh(gmesh, filename);
+    }
     if(simdata.curved_els){
       ReplaceForCurvedEls(simdata.meshfile, gmesh, simdata.scale);
     }
@@ -512,6 +517,8 @@ RefineRegions(TPZAutoPointer<TPZGeoMesh> &gmesh,
 void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh> &gmesh,
                          const REAL scale)
 {
+
+  TPZSimpleTimer("Replacing curved els",true);
   //useful lambda for reading csv file
   auto getNextLineAndSplitIntoTokens =
     [](std::istream &str) -> std::vector<std::string> {
@@ -745,7 +752,7 @@ ComputeModalAnalysis(
   norm.Normalise();
   TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
   an->LoadSolution(mesh_sol);
-  auto normvec = norm.ComputeNorm();
+  // auto normvec = norm.ComputeNorm();
   
   // for(auto iev = 0; iev < betavec.size(); iev++){
   //   std::cout<<"iev "<<iev<<" beta "<<betavec[iev]<<" norm "<<normvec[iev]<<std::endl;
@@ -1006,6 +1013,21 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       std::cout<<"neq "<<numeq2
                <<" n int "<<subcmesh->NumInternalEquations()<<std::endl;
     }
+    
+    for(auto cel : scatt_mesh_wpbc->ElementVec()){
+      if(!cel){continue;}
+      auto gel = cel->Reference();
+      if(gel && gel->IsGeoBlendEl()){
+        auto *intrule = cel->GetIntegrationRule().Clone();
+        TPZManVector<int,3> ord(3,0);
+        intrule->GetOrder(ord);
+        for(auto &x : ord){x+=2;}
+        intrule->SetOrder(ord);
+        cel->SetIntegrationRule(intrule);
+        
+      }
+    }
+    
     
     TPZCompMeshTools::CreatedCondensedElements(scatt_mesh_wpbc.operator->(),
                                                false, false);
@@ -1451,6 +1473,7 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
       scatt_an.SetInitVecCustom(sol_vec);
     }
     std::cout<<"Assembling..."<<std::endl;
+
     scatt_an.Assemble();
   
     //for now we unwrap the groups as they seem to interfere with the solving stage
