@@ -198,7 +198,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
 
     all_cyls = []
     all_spheres = []
-    radius = 5/1000
+    radius = 2/1000
     if '-curve' in sys.argv:
         #now we find the curved edges
         # metal_edges = [34, 35, 36, 47, 48, 49, 19, 20, 21, 59, 60, 61]
@@ -279,27 +279,34 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
         field_ct, "VolumesList", sub)
     gmsh.model.mesh.field.set_number(
         field_ct, "VIn", el_sub)
-    # field_ct += 1
-    # gmsh.model.mesh.field.add("Distance", field_ct)
-    # # gmsh.model.mesh.field.set_numbers(
-    # #     field_ct, "PointsList", select_points)
-    # gmsh.model.mesh.field.set_numbers(
-    #     field_ct, "EdgesList", metal_edges)
-    # # gmsh.model.mesh.field.set_numbers(
-    # #     field_ct, "SurfacesList", select_faces)
+
+    if '-curve' in sys.argv:
+        nlin_faces = []
+        [nlin_faces.append(sp.surftag[0]) for sp in all_spheres ]
+        [nlin_faces.append(cyl.surftag[0]) for cyl in all_cyls ]
+        
+        field_ct += 1
+        gmsh.model.mesh.field.add("Distance", field_ct)
+        gmsh.model.mesh.field.set_numbers(
+            field_ct, "SurfacesList", nlin_faces)
     
-    # field_ct += 1
-    # gmsh.model.mesh.field.add("Threshold", field_ct)
-    # gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
-    # gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
-    # gmsh.model.mesh.field.set_number(field_ct, "DistMin", h_metal/4)
-    # gmsh.model.mesh.field.set_number(field_ct, "DistMax", h_metal/2)
-    # gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_metal/4)
-    # gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_metal)
+        field_ct += 1
+        gmsh.model.mesh.field.add("Threshold", field_ct)
+        gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
+        gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
+        gmsh.model.mesh.field.set_number(field_ct, "DistMin", min(5*radius,h_metal/4))
+        gmsh.model.mesh.field.set_number(field_ct, "DistMax", min(10*radius,h_metal/2))
+        gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_metal/4)
+        gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_metal)
+        
     field_ct += 1
+
+    fieldvec = [1,2,3]
+    if '-curve' in sys.argv:
+        fieldvec.append(5)
     gmsh.model.mesh.field.add("Min", field_ct)
     gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList",
-                                     [1, 2, 3,5])
+                                     fieldvec)
 
     gmsh.model.mesh.field.setAsBackgroundMesh(field_ct)
     gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
@@ -406,9 +413,9 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
 nel = 8
 min_wavelength = 0.35
 
-h_sub = 0.1
-h_metal = 0.02
-h_air = 0.1
+h_sub = 100/1000
+h_metal = 20/1000
+h_air = 100/1000
 el_metal = min_wavelength/(nel*2)
 el_air = min_wavelength/nel
 el_sub = min_wavelength/(nel*1.5)
