@@ -61,7 +61,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     metal = BoxData(-W/2, -W/2, h_sub, W, W, h_metal)
     create_box(metal)
     # should we fillet first?
-    radius = 10/1000
+    radius = 5/1000
     if '-curve' in sys.argv:
         gmsh.model.occ.remove_all_duplicates()
         gmsh.model.occ.synchronize()
@@ -120,6 +120,8 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
 
     all_cyls = []
     all_spheres = []
+    select_faces = []
+    select_points = []
     if '-curve' in sys.argv:
         metal_bnds = [t for _, t in
                       gmsh.model.get_boundary([(3, tag)
@@ -173,8 +175,32 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
                 sp.radius = radius
                 sp.surftag = [t]
                 all_spheres.append(sp)
-    
+    else:
+            metal_bnds = [t for _, t in
+                          gmsh.model.get_boundary([(3, tag)
+                                                   for tag in metal],
+                                                  combined=True, oriented=False)]
+            air_bnds = [t for _, t in
+                        gmsh.model.get_boundary([(3, tag)
+                                                 for tag in air],
+                                                combined=True, oriented=False)]
+            select_faces = list(set(metal_bnds) & set(air_bnds))
 
+            metal_edges = [t for _,t in
+                           gmsh.model.get_boundary([(2,t) for t in metal_bnds],
+                                                   combined=False,
+                                                   oriented=False)]
+
+            select_edges = []
+            for t in metal_edges:
+                d_l = gmsh.model.get_derivative(1, t, [0])
+                if d_l[0] == 0 and d_l[1] == 0:
+                    select_edges.append(t)
+
+            select_points = gmsh.model.get_boundary([(1,t) for t in select_edges],
+                                                    combined=False,
+                                                    oriented=False)
+            select_points = [t for _,t in select_points]
 
     def get_boundary_in_dir(dt, dirsign):
         dirmap = {'xp': 'x', 'xm': 'x',
@@ -276,16 +302,16 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     #     gmsh.model.mesh.field.add("Threshold", field_ct)
     #     gmsh.model.mesh.field.set_number(field_ct, "InField", field_ct-1)
     #     gmsh.model.mesh.field.set_number(field_ct, "StopAtDistMax", 1)
-    #     gmsh.model.mesh.field.set_number(field_ct, "DistMin", min(5*radius,h_metal/4))
-    #     gmsh.model.mesh.field.set_number(field_ct, "DistMax", min(10*radius,h_metal/2))
-    #     gmsh.model.mesh.field.set_number(field_ct, "SizeMin", el_metal/2)
+    #     gmsh.model.mesh.field.set_number(field_ct, "DistMin", min(radius/2,h_metal/4))
+    #     gmsh.model.mesh.field.set_number(field_ct, "DistMax", min(radius*4,h_metal))
+    #     gmsh.model.mesh.field.set_number(field_ct, "SizeMin", radius*np.pi/(2*3))
     #     gmsh.model.mesh.field.set_number(field_ct, "SizeMax", el_metal)
         
     field_ct += 1
 
     fieldvec = [1,2,3]
-    if '-curve' in sys.argv:
-        fieldvec.append(5)
+    # if '-curve' in sys.argv:
+    #     fieldvec.append(5)
     gmsh.model.mesh.field.add("Min", field_ct)
     gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList",
                                      fieldvec)
