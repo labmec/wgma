@@ -151,6 +151,7 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
+  auto total_timer_begin = std::chrono::high_resolution_clock::now();
   const std::string dataname = argv[1];
   SimData simdata = ReadSimData(dataname);
   
@@ -287,6 +288,9 @@ int main(int argc, char *argv[]) {
       simdata.direct_solver = true;
     }
   }
+  auto total_timer_end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::milli> duration = total_timer_end-total_timer_begin;
+  std::cout<<"analysis of  "<<nwl_pts<<" points took "<<duration.count()<<" ms"<<std::endl;
   return 0;
 }
 
