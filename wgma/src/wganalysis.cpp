@@ -296,7 +296,7 @@ namespace wgma::wganalysis{
     m_cmesh_hcurl = meshvec[1 + TPZWgma::HCurlIndex()];
 
     //we do not reorder eqs on multiphysics mesh
-    this->SetCompMeshInit(m_cmesh_mf.operator->(), false);
+    this->SetCompMeshInit(m_cmesh_mf.operator->(), RenumType::ENone);
     if(reorder_eqs){
       RenumberMultiphysicsMesh(m_cmesh_h1, m_cmesh_hcurl, m_cmesh_mf);
     }
@@ -618,7 +618,7 @@ STATE Wgma2D::ComputeResidual(){
     m_cmesh_hcurl = meshvec[1 + TPZAnisoWgma::HCurlIndex()];
 
     //we never reorder the mf mesh
-    this->SetCompMeshInit(m_cmesh_mf.operator->(),false);
+    this->SetCompMeshInit(m_cmesh_mf.operator->(),RenumType::ENone);
 
     if(reorder_eqs){
       RenumberMultiphysicsMesh(m_cmesh_h1, m_cmesh_hcurl, m_cmesh_mf);
@@ -808,7 +808,8 @@ STATE Wgma2D::ComputeResidual(){
     const auto renumtype = RenumType::ECutHillMcKee;
 #endif
     this->CreateRenumberObject(renumtype);
-    this->SetCompMeshInit(m_cmesh.operator->(),reorder_eqs);
+    const RenumType rtype = reorder_eqs? RenumType::EDefault : RenumType::ENone;
+    this->SetCompMeshInit(m_cmesh.operator->(),rtype);
 
     TPZAutoPointer<TPZStructMatrix> strmtrx{nullptr};
     if(using_tbb_mat){

@@ -48,7 +48,7 @@ namespace wgma::planewaveanalysis{
       }
     }
     //we do not reorder eqs on multiphysics mesh
-    this->SetCompMesh(m_cmesh_mf.operator->(), false);
+    this->SetCompMesh(m_cmesh_mf.operator->(), RenumType::ENone);
     if(reorder_eqs){
       RenumberMultiphysicsMesh(m_cmesh_h1, m_cmesh_hcurl, m_cmesh_mf);
     }

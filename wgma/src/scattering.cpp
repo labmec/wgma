@@ -42,8 +42,7 @@ namespace wgma::scattering{
 #else
     const auto renumtype = RenumType::ECutHillMcKee;
 #endif
-    this->CreateRenumberObject(renumtype);
-    this->SetCompMesh(mesh.operator->(), reorder_eqs);
+    this->SetCompMesh(mesh.operator->(), renumtype);
     m_cmesh = mesh;
 
     TPZAutoPointer<TPZStructMatrix> strmtrx = nullptr;

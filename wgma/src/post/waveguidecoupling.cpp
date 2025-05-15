@@ -179,8 +179,7 @@ namespace wgma::post{
 #endif
       }
       
-      tmp *= cte;
-      this->m_k_scratch[index].AddContribution(0, 0, rot_et, true, tmp, false);
+      this->m_k_scratch[index].AddContribution(0, 0, rot_et, true, tmp, false, cte);
 
 
 #ifdef CHECK_ORTH
