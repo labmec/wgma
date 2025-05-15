@@ -390,8 +390,8 @@ CreateAnalysis(TPZAutoPointer<TPZCompMesh> cmesh, const int nThreads,
                const bool optimizeBandwidth,const bool filterBoundaryEqs)
 {
     TPZQuadEigenAnalysis analysis;
-    analysis.SetRenumber(new TPZCutHillMcKee());
-    analysis.SetCompMesh(cmesh.operator->(), optimizeBandwidth);
+    const RenumType rtype = optimizeBandwidth? RenumType::EDefault : RenumType::ENone;
+    analysis.SetCompMesh(cmesh.operator->(), rtype);
     TPZAutoPointer<TPZStructMatrix> strmtrx =
       new TPZSpStructMatrix<CSTATE>(cmesh);
 
