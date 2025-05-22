@@ -319,7 +319,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     gmsh.model.mesh.field.setAsBackgroundMesh(field_ct)
     gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
     gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
-    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 5)
+    # gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 5)
 
     domain_physical_ids_3d = {
         "metal": 1,
