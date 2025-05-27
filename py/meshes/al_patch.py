@@ -422,7 +422,7 @@ nel = 8
 min_wavelength = 0.35
 
 h_sub = 100/1000
-h_metal = 20/1000
+h_metal = 40/1000
 h_air = 100/1000
 el_metal = min_wavelength/(nel*2)
 el_air = min_wavelength/nel
