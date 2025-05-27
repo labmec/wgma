@@ -49,20 +49,14 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
 
     h_domain = h_air + h_silver + h_sub
     gmsh.initialize()
-    gmsh.option.set_number("Geometry.Tolerance", 10**-14)
-    gmsh.option.set_number("Geometry.MatchMeshTolerance", 10**-14)
+    gmsh.option.set_number("Geometry.Tolerance", 10**-16)
+    gmsh.option.set_number("Geometry.MatchMeshTolerance", 10**-16)
 
     gmsh.model.add("cross_ag")
 
     # We can log all messages for further processing with:
     gmsh.logger.start()
 
-    # air upper half domain
-    air = BoxData(-w_domain/2, -w_domain/2, h_silver+h_sub, w_domain, w_domain, h_air)
-    create_box(air)
-    #substrate (bottom)
-    sub = BoxData(-w_domain/2, -w_domain/2, 0, w_domain, w_domain, h_sub)
-    create_box(sub)
     # silver
     ag = BoxData(-w_domain/2, -w_domain/2, h_sub, w_domain, w_domain, h_silver)
     create_box(ag)
@@ -82,56 +76,70 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     [objs.append((3, t)) for t in ag.tag]
     tools = []
     [tools.append((3, t)) for t in cross]
-    ag_map = apply_boolean_operation(objs, tools, "cut", False)
+    ag_map = apply_boolean_operation(objs, tools, "cut", True)
     remap_tags([ag], ag_map)
     # now we cut the cross from the silver
     gmsh.model.occ.remove_all_duplicates()
     gmsh.model.occ.synchronize()
 
-    # we dont need the box data anymore, so
-    ag = ag.tag
-    air = air.tag
-    sub = sub.tag
+    del cross  #it does not exist
+
 
     # finally, let us select some edges in the cross for refining
-    all_cross_surfs = gmsh.model.get_boundary(
-        [(3, tag) for tag in cross],
+    all_ag_surfs = gmsh.model.get_boundary(
+        [(3, tag) for tag in ag.tag],
         combined=True, oriented=False, recursive=False)
-    all_cross_edges = gmsh.model.get_boundary([dt for dt in all_cross_surfs],
+    all_ag_edges = gmsh.model.get_boundary([dt for dt in all_ag_surfs],
                                               combined=False,
                                               oriented=False,
                                               recursive=False)
     
     select_edges = []
-    for d, t in all_cross_edges:
+    for d, t in all_ag_edges:
         # select_edges.append(t)
         x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
-        if abs(z) > h_sub:
+        if abs(z) > h_sub and max(abs(x),abs(y)) < 1.1*(l_cross/2) :
             select_edges.append(t)
-        # if abs(x) < w_cross and abs(y) < w_cross:
-        #     # now we check if it is vertical
-        #     d_l = gmsh.model.get_derivative(d, t, [0])
-        #     if d_l[0] == 0 and d_l[1] == 0:
-        #         select_edges.append(t)
+    select_edges = list(set(select_edges))
     select_pts = gmsh.model.get_boundary(
         [(1, tag) for tag in select_edges],
         combined=False, oriented=False, recursive=False)
     select_pts = [t for _,t in select_pts]
 
+    ag = ag.tag
     radius = 5/1000
     if '-curve' in sys.argv:
         new_ag = gmsh.model.occ.fillet(ag,select_edges,[radius])
         ag = [new_ag[0][1]]
+        gmsh.model.occ.remove_all_duplicates()
         gmsh.model.occ.synchronize()
-        
     
+    # air domain
+    air = BoxData(-w_domain/2, -w_domain/2, h_sub, w_domain,
+                  w_domain, h_silver+h_air)
+    create_box(air)
+    #substrate (bottom)
+    sub = BoxData(-w_domain/2, -w_domain/2, 0, w_domain, w_domain, h_sub)
+    create_box(sub)
 
-    # now we get boundaries from ag + cross
+    # now we remove the metal from air
+    objs = []
+    [objs.append((3, t)) for t in air.tag]
+    tools = []
+    [tools.append((3, t)) for t in ag]
+    air_map = apply_boolean_operation(objs, tools, "cut", False)
+    remap_tags([air], air_map)
+    # now we cut the cross from the silver
+    gmsh.model.occ.remove_all_duplicates()
+    gmsh.model.occ.synchronize()
+
+
+    # we dont need the box data anymore, so
+    air = air.tag
+    sub = sub.tag
+
+    # now we get boundaries from
     # so that we can make element size smaller next to the cross
-    ag_cross_bnds = [
-        t for _, t in gmsh.model.get_boundary(
-            [(3, tag) for tag in cross+ag],
-            combined=True, oriented=False)]
     ag_bnds = [
         t for _, t in gmsh.model.get_boundary(
             [(3, tag) for tag in ag],
@@ -197,6 +205,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
                 cyl.axis = [x_axis, y_axis, z_axis]
                 cyl.radius = radius
                 cyl.surftag = [t]
+                
                 all_cyls.append(cyl)
             
             elif surf_type == "Sphere":
@@ -221,7 +230,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
                 to.r_large = radius+radius
                 to.surftag = [t]
                 all_toruses.append(to)
-    cross_bnds = [t for t in ag_bnds if t not in ag_cross_bnds]
+    cross_bnds = [t for t in ag_bnds if t not in ag_bnds]
 
     def get_boundary_in_dir(dt, dirsign):
         dirmap = {'xp': 'x', 'xm': 'x',
@@ -283,16 +292,6 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     affine[pos["dz"]] = val["dz"]
 
     gmsh.model.mesh.set_periodic(dim, yp_bnd, ym_bnd, affine)
-
-
-    # finally, let us select some edges in the cross for refining
-    all_cross_surfs = gmsh.model.get_boundary(
-        [(3, tag) for tag in cross],
-        combined=True, oriented=False, recursive=False)
-    all_cross_edges = gmsh.model.get_boundary([dt for dt in all_cross_surfs],
-                                              combined=False,
-                                              oriented=False,
-                                              recursive=False)
     
     
     # set element size per region
@@ -410,7 +409,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
                            domain_physical_ids_3d]
     domain_regions = {
         "Ag": ag,
-        "air": air+cross,
+        "air": air,
         "sub": sub,
         "air_port_in": air_top_ma,
         "sub_port_out": sub_bot_ma,
@@ -463,12 +462,8 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
             writer = csv.writer(f)
             header = ["xc(um)", "yc(um)", "zc(um)",  "r_small(um)", "r_large(um)", "matid"]
             writer.writerow(header)
-            coord, parametricCoord, dim, tag = gmsh.model.mesh.getNode(457)
-            print(f"node coord {coord}")
             for torus in all_toruses:
                 row = [*torus.xc, torus.r_small, torus.r_large, torus.matid]
-                print(f"torus has center {torus.xc[0]}, {torus.xc[1]}, {torus.xc[2]}")
-                # print(gmsh.model.get_entity_properties(2,torus.surftag[0]))
                 writer.writerow(row)
 
     if '-nopopup' not in sys.argv:
