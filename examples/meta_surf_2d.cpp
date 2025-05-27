@@ -289,8 +289,8 @@ int main(int argc, char *argv[]) {
     }
   }
   auto total_timer_end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double, std::milli> duration = total_timer_end-total_timer_begin;
-  std::cout<<"analysis of  "<<nwl_pts<<" points took "<<duration.count()<<" ms"<<std::endl;
+  std::chrono::duration<double> duration = total_timer_end-total_timer_begin;
+  std::cout<<"analysis of  "<<nwl_pts<<" points took "<<duration.count()<<" s"<<std::endl;
   return 0;
 }
 
