@@ -44,10 +44,16 @@ struct SimData{
   REAL scale{1};
   //!materials used in the 3D analysis
   TPZVec<std::string> mats_3d;
+  //!if the periodic boundaries follow a different nomenclature, we should use this
+  std::map<std::string,std::string> custom_periodic_bcs_3d;
   //!materials used in the ingoing waveguide port
   TPZVec<std::string> mats_port_in;
+  //!if the periodic boundaries follow a different nomenclature, we should use this
+  std::map<std::string,std::string> custom_periodic_bcs_port_in;
   //!materials used in the outgoing waveguide port
   TPZVec<std::string> mats_port_out;
+  //!if the periodic boundaries follow a different nomenclature, we should use this
+  std::map<std::string,std::string> custom_periodic_bcs_port_out;
   //!map of refractive indices
   std::map<std::string,CSTATE> refractive_indices;
   //!map of domain regions and number of directional refinement steps
@@ -450,7 +456,12 @@ SimData ReadSimData(const std::string &dataname){
     }
     sd.ref_index_vec.push_back(refractive_indices);
   }
-
+  sd.custom_periodic_bcs_3d = data.value("periodic_bcs_3d",
+                                         std::map<std::string,std::string>{});
+  sd.custom_periodic_bcs_port_in = data.value("periodic_bcs_port_in",
+                                         std::map<std::string,std::string>{});
+  sd.custom_periodic_bcs_port_out = data.value("periodic_bcs_port_out",
+                                         std::map<std::string,std::string>{});
   sd.refine_regions = data.value("refine_regions", std::map<std::string,int> {});
 
   sd.curved_els = data.value("curved_els", false);
@@ -1175,13 +1186,32 @@ FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
   constexpr int modal_dim{2};
   //first we check for periodic BCs
   constexpr int bcdim{1};
-  std::string depbc, indepbc;
-  FindPeriodicBoundaries(gmshmats,bcdim,suffix,"xm","xp",depbc,indepbc);
-  modal_bcs[depbc] = wgma::bc::type::PERIODIC;
-  modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
-  FindPeriodicBoundaries(gmshmats,bcdim,suffix,"ym","yp",depbc,indepbc);
-  modal_bcs[depbc] = wgma::bc::type::PERIODIC;
-  modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
+
+  if(suffix == "_port_in" && simdata.custom_periodic_bcs_port_in.size()){
+    for(auto [dep,indep] : simdata.custom_periodic_bcs_port_in){
+      modal_bcs[dep] = wgma::bc::type::PERIODIC;
+      modal_bcs[indep] = wgma::bc::type::PERIODIC;
+      std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;
+    }
+  }else if(suffix == "_port_out" && simdata.custom_periodic_bcs_port_out.size()){
+    for(auto [dep,indep] : simdata.custom_periodic_bcs_port_out){
+      modal_bcs[dep] = wgma::bc::type::PERIODIC;
+      modal_bcs[indep] = wgma::bc::type::PERIODIC;
+      std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;
+    }
+  }else{
+    std::string depbc, indepbc;
+    FindPeriodicBoundaries(gmshmats,bcdim,suffix,"xm","xp",depbc,indepbc);
+    modal_bcs[depbc] = wgma::bc::type::PERIODIC;
+    modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
+    std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;
+    FindPeriodicBoundaries(gmshmats,bcdim,suffix,"ym","yp",depbc,indepbc);
+    modal_bcs[depbc] = wgma::bc::type::PERIODIC;
+    modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
+    std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;
+  }
+  
+  
   // auto pec_bnd = CheckForBoundary(gmshmats,bcdim,"bound"+suffix);
   
   // if(pec_bnd.size() > 0){
@@ -1223,13 +1253,24 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
 
   constexpr int dim{3};
   constexpr int bcdim{2};
-  std::string depbc, indepbc;
-  FindPeriodicBoundaries(gmshmats,bcdim,"","xm","xp",depbc,indepbc);
-  scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
-  scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
-  FindPeriodicBoundaries(gmshmats,bcdim,"","ym","yp",depbc,indepbc);
-  scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
-  scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
+  
+  if(simdata.custom_periodic_bcs_3d.size()){
+    for(auto [dep,indep] : simdata.custom_periodic_bcs_3d){
+      std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;
+      scatt_bcs[dep] = wgma::bc::type::PERIODIC;
+      scatt_bcs[indep] = wgma::bc::type::PERIODIC;
+    }
+  }else{
+    std::string depbc, indepbc;
+    FindPeriodicBoundaries(gmshmats,bcdim,"","xm","xp",depbc,indepbc);
+    scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
+    scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
+    std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;
+    FindPeriodicBoundaries(gmshmats,bcdim,"","ym","yp",depbc,indepbc);
+    std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;
+    scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
+    scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
+  }
   auto pec_bnd = CheckForBoundary(gmshmats,bcdim,"bound_vol");
   
   if(pec_bnd.size() > 0){
