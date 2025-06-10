@@ -752,6 +752,9 @@ def apply_boolean_operation(
     elif op == "cut":
         interfacemap = gmsh.model.occ.cut(
             objs, tools, removeObject=True, removeTool=removetool)[1]
+    elif op == "intersect":
+        interfacemap = gmsh.model.occ.intersect(
+            objs, tools, removeObject=True, removeTool=removetool)[1]
 
     gmsh.model.occ.synchronize()
 
