@@ -23,8 +23,12 @@ def create_nanop_mesh(r, h_sub, h_air, el_sub, el_air, el_sphere):
     l = ((2+2/np.sqrt(3))*r)*1.001
     
     gmsh.initialize()
-    gmsh.option.set_number("Geometry.Tolerance", 10**-14)
-    gmsh.option.set_number("Geometry.MatchMeshTolerance", 10**-14)
+    # gmsh.option.set_number("Geometry.Tolerance", 10**-12)
+    # gmsh.option.set_number("Geometry.MatchMeshTolerance", 10**-12)
+    # gmsh.option.set_number("Geometry.MatchGeomAndMesh", 1)
+    # gmsh.option.set_number("Geometry.SnapX", 10**-12)
+    # gmsh.option.set_number("Geometry.SnapY", 10**-12)
+    # gmsh.option.set_number("Geometry.SnapZ", 10**-12)
 
     gmsh.model.add("nanop")
     # We can log all messages for further processing with:
@@ -47,8 +51,8 @@ def create_nanop_mesh(r, h_sub, h_air, el_sub, el_air, el_sphere):
         dimtags = gmsh.model.occ.extrude([(2,surf)],0,0,h)
         vol = [t for d,t in dimtags if d == 3]
         return vol[0]
-    sub = create_hexagon(l, -h_sub, h_sub)
-    air = create_hexagon(l, 0, h_air)
+    sub = create_hexagon(2*r, -h_sub, h_sub)
+    air = create_hexagon(2*r, 0, h_air)
     
     gmsh.model.occ.remove_all_duplicates()
     gmsh.model.occ.synchronize()
@@ -60,8 +64,16 @@ def create_nanop_mesh(r, h_sub, h_air, el_sub, el_air, el_sphere):
             y = 2*r*np.sin(i*2*np.pi/6)
             z = r
             spherevec.append(gmsh.model.occ.add_sphere(x,y,z,r))
+
+    gmsh.model.occ.synchronize()
+            
+    objs = [(3,sphere) for sphere in spherevec]
+    tools = [(3,air)]
+    sphere_map = apply_boolean_operation(objs, tools, "intersect", False)
+    spherevec = [sphere_map[(3,sp)][0] for sp in spherevec]
     
 
+    
     objs = [(3,air)]
     tools = [(3,sphere) for sphere in spherevec]
     air_map = apply_boolean_operation(objs, tools, "cut", False)
@@ -80,30 +92,46 @@ def create_nanop_mesh(r, h_sub, h_air, el_sub, el_air, el_sphere):
                 bnd_dt.append((2,t))
         return bnd_dt
                 
-    def find_opposing_bounds(all_bnd_dt):
+    def find_opposing_bounds(all_bnd_dt, check_align=False):
         mc_vec = []
         all_pairs = []
         all_dists = []
         bnd_dt = [t for _,t in all_bnd_dt]
+        #this is only used in 2d to check if the surfaces are aligned
+        normalvecs = []
         for d, t in all_bnd_dt:
             x,y,z = gmsh.model.occ.get_center_of_mass(d,t)
             mc_vec.append(np.array([x,y,z]))
-            
-        for i,t in enumerate(bnd_dt):
+            if check_align:
+                nx, ny, nz = gmsh.model.get_normal(t,[0,0])
+                normalvecs.append(np.array([nx,ny,nz]))
+        for i, it in enumerate(bnd_dt):
             my_pt = mc_vec[i]
-            
+            my_normal = []
+            if check_align:
+                my_normal = normalvecs[i]
             max_val = -1
             index = -1
             dist = []
-            for j,t in enumerate(bnd_dt):
+            for j, jt in enumerate(bnd_dt):
+                if j == i:
+                    continue
                 other_pt = mc_vec[j]
                 my_dist = other_pt-my_pt
                 val = np.linalg.norm(my_dist)
+                if check_align:
+                    #they might be inverted
+                    orient1 = np.linalg.norm(my_dist/val - my_normal)
+                    orient2 = np.linalg.norm(my_dist/val + my_normal)
+                    if orient1 > 1e-15 and orient2 > 1e-15:
+                        continue
                 if val > max_val:
                     max_val = val
                     index = j
                     dist = my_dist
-            
+            if index == -1:
+                print(f"could not find matching surface for surface {i}")
+                exit(-1)
             all_pairs.append((bnd_dt[i],bnd_dt[index]))
             all_dists.append(dist)
         pairs = []
@@ -117,11 +145,24 @@ def create_nanop_mesh(r, h_sub, h_air, el_sub, el_air, el_sphere):
     
     air_bnds = gmsh.model.get_boundary([(3,air)]+[(3,t) for t in spherevec],
                                        combined=True, oriented=False)
+    sphere_bnds = gmsh.model.get_boundary([(3,t) for t in spherevec],
+                                       combined=False, oriented=False)
     sub_bnds = gmsh.model.get_boundary([(3,sub)], combined=True, oriented=False)
     air_periodic_bnds = remove_horiz_bounds(air_bnds,0,h_air)
     sub_periodic_bnds = remove_horiz_bounds(sub_bnds,-h_sub,0)
-    air_pairs,air_dists = find_opposing_bounds(air_periodic_bnds)
-    sub_pairs,sub_dists = find_opposing_bounds(sub_periodic_bnds)
+
+
+    #now we need to distinguish between air bounds and sphere bounds
+    sphere_periodic_bnds = []
+    for dt in air_periodic_bnds:
+        if dt in sphere_bnds:
+            sphere_periodic_bnds.append(dt)
+    
+    air_periodic_bnds = [dt for dt in air_periodic_bnds if dt not in sphere_periodic_bnds]
+
+    sphere_pairs,sphere_dists = find_opposing_bounds(sphere_periodic_bnds,True)
+    air_pairs,air_dists = find_opposing_bounds(air_periodic_bnds,True)
+    sub_pairs,sub_dists = find_opposing_bounds(sub_periodic_bnds,True)
 
     #find bottom and top bounds
     def find_bound(bnds, top):
@@ -156,12 +197,12 @@ def create_nanop_mesh(r, h_sub, h_air, el_sub, el_air, el_sphere):
         for (i,j), dist in zip(pairvec,distvec):
             val['dx'] = dist[0]
             val['dy'] = dist[1]
-            val['dz'] = dist[2]
+            val['dz'] = 0
             affine[pos["dx"]] = val["dx"]
             affine[pos["dy"]] = val["dy"]
             affine[pos["dz"]] = val["dz"]
-
             gmsh.model.mesh.set_periodic(dim, [j], [i], affine)
+    set_periodic(sphere_pairs,sphere_dists,2)
     set_periodic(air_pairs,air_dists,2)
     set_periodic(sub_pairs,sub_dists,2)
     set_periodic(air_top_pairs,air_top_dists,1)
@@ -254,10 +295,12 @@ def create_nanop_mesh(r, h_sub, h_air, el_sub, el_air, el_sphere):
             else:
                 domain_physical_ids_1d[nameindep] = minid+2*i+1
             domain_regions[nameindep] = [indep]
+            
     insert_periodic_regions(air_pairs,"air_periodic_",10,True)
-    insert_periodic_regions(sub_pairs,"sub_periodic_",20,True)
-    insert_periodic_regions(air_top_pairs,"air_port_in_periodic_",30,False)
-    insert_periodic_regions(sub_bot_pairs,"sub_port_out_periodic_",40,False)
+    insert_periodic_regions(sub_pairs,"sub_periodic_",22,True)
+    insert_periodic_regions(sphere_pairs,"sphere_periodic_",30, True)
+    insert_periodic_regions(air_top_pairs,"air_port_in_periodic_",50,False)
+    insert_periodic_regions(sub_bot_pairs,"sub_port_out_periodic_",70,False)
 
 
     if '-curve' in sys.argv:
