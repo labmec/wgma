@@ -190,6 +190,68 @@ def create_nanop_mesh(r, h_sub, h_air, el_sub, el_air, el_sphere):
     air_top_pairs,air_top_dists = find_opposing_bounds(air_top_bnds)
     sub_bot_pairs,sub_bot_dists = find_opposing_bounds(sub_bot_bnds)
 
+
+    #we need to check if some periodic relationships are the same but inverted
+    #(i.e., a surface has been divided into two)
+    def find_repeated_periodic(allpairvec,alldistvec):
+        pairvec = []
+        distvec = []
+        checkvec = [False for _ in range(len(allpairvec))]
+        #sufficiently small number as compared to domain's size
+        eps = r/100
+        for i, dist1 in enumerate(alldistvec):
+            if checkvec[i] == True:
+                continue
+            checkvec[i] = True
+            p1, p2 = allpairvec[i]
+            dep = [p1]
+            indep = [p2]
+            for j, dist2 in enumerate(alldistvec):
+                if j <= i: continue
+                p1, p2 = allpairvec[j]
+                #their distance vectors point in the opposite direction
+                if np.linalg.norm(dist1+dist2) < eps:
+                    checkvec[j] = True
+                    dep.append(p2)
+                    indep.append(p1)
+                    print(f"inverted periodicity {p1} {p2}!")
+                elif np.linalg.norm(dist1-dist2) < eps:
+                    checkvec[j] = True
+                    dep.append(p1)
+                    indep.append(p2)
+                    print(f"repeated periodicity {p1} {p2}!")
+            pairvec.append((dep,indep))
+            distvec.append(dist1)
+        return pairvec, distvec
+                    
+    air_pairs, air_dists = find_repeated_periodic(air_pairs, air_dists)
+    sub_pairs, sub_dists = find_repeated_periodic(sub_pairs, sub_dists)
+    sphere_pairs, sphere_dists = find_repeated_periodic(sphere_pairs, sphere_dists)
+
+    air_top_pairs, air_top_dists = find_repeated_periodic(air_top_pairs, air_top_dists)
+    sub_bot_pairs, sub_bot_dists = find_repeated_periodic(sub_bot_pairs, sub_bot_dists)
+
+
+    #the same routine but for different physical ids
+    def align_periodic_regions(pv1, dv1, pv2, dv2):
+        #sufficiently small number as compared to domain's size
+        eps = r/100
+        for _, dist1 in enumerate(dv1):
+            for j, dist2 in enumerate(dv2):
+                p1, p2 = pv2[j]
+                #their distance vectors point in the opposite direction
+                if np.linalg.norm(dist1+dist2) < eps:
+                    pv2[j] = (p2,p1)
+                    dv2[j] = dist1
+                    print(f"now we inverted periodicity {p1} {p2}!")
+
+    align_periodic_regions(air_pairs, air_dists, sub_pairs, sub_dists)
+    align_periodic_regions(air_pairs, air_dists, sphere_pairs, sphere_dists)
+
+    align_periodic_regions(air_pairs, air_dists, air_top_pairs, air_top_dists)
+    align_periodic_regions(air_pairs, air_dists, sub_bot_pairs, sub_bot_dists)
+    
+    
     def set_periodic(pairvec,distvec,dim):
         affine = [1.0 if i == j else 0 for i in range(4) for j in range(4)]
         pos = {"dx": 3, "dy": 7, "dz": 11}
@@ -201,7 +263,7 @@ def create_nanop_mesh(r, h_sub, h_air, el_sub, el_air, el_sphere):
             affine[pos["dx"]] = val["dx"]
             affine[pos["dy"]] = val["dy"]
             affine[pos["dz"]] = val["dz"]
-            gmsh.model.mesh.set_periodic(dim, [j], [i], affine)
+            gmsh.model.mesh.set_periodic(dim, j, i, affine)
     set_periodic(sphere_pairs,sphere_dists,2)
     set_periodic(air_pairs,air_dists,2)
     set_periodic(sub_pairs,sub_dists,2)
@@ -288,13 +350,13 @@ def create_nanop_mesh(r, h_sub, h_air, el_sub, el_air, el_sphere):
                 domain_physical_ids_2d[namedep] = minid+2*i
             else:
                 domain_physical_ids_1d[namedep] = minid+2*i
-            domain_regions[namedep] = [dep]
+            domain_regions[namedep] = dep
             nameindep = prefix+str(i)+"_indep"
             if is_2d:
                 domain_physical_ids_2d[nameindep] = minid+2*i+1
             else:
                 domain_physical_ids_1d[nameindep] = minid+2*i+1
-            domain_regions[nameindep] = [indep]
+            domain_regions[nameindep] = indep
             
     insert_periodic_regions(air_pairs,"air_periodic_",10,True)
     insert_periodic_regions(sub_pairs,"sub_periodic_",22,True)
@@ -307,7 +369,7 @@ def create_nanop_mesh(r, h_sub, h_air, el_sub, el_air, el_sphere):
         add_sphere_regions(spheredata, domain_physical_ids, domain_regions)
     
     generate_physical_ids(domain_physical_ids, domain_regions)
-
+    
     gmsh.model.mesh.generate(3)
     gmsh.model.mesh.optimize("Netgen")
 
