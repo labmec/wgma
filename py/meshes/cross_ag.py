@@ -26,7 +26,8 @@ from utils.gmsh import (
 
 
 def create_cross_mesh(w_domain, h_air, w_cross, l_cross, 
-                      h_silver,h_sub,el_ag, el_air, el_sub, filename):
+                      h_silver,h_sub,el_ag, el_air, el_sub, radius,
+                      filename):
     """
     Creates a mesh representing the unit cell of a metasurface consisting
     of Ag layer in which a cross was carved over a substrate
@@ -46,7 +47,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     el_sub: element size in sub
     filename: filename (without .msh suffix)
     """
-
+    radius = radius/1000
     h_domain = h_air + h_silver + h_sub
     gmsh.initialize()
     gmsh.option.set_number("Geometry.Tolerance", 10**-16)
@@ -98,7 +99,8 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     for d, t in all_ag_edges:
         # select_edges.append(t)
         x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
-        if abs(z) > h_sub and max(abs(x),abs(y)) < 1.1*(l_cross/2) :
+        tol= h_silver/3
+        if abs(z-h_sub) > tol and max(abs(x),abs(y)) < 1.1*(l_cross/2) :
             select_edges.append(t)
     select_edges = list(set(select_edges))
     select_pts = gmsh.model.get_boundary(
@@ -107,8 +109,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     select_pts = [t for _,t in select_pts]
 
     ag = ag.tag
-    radius = 5/1000
-    if '-curve' in sys.argv:
+    if radius > 0:
         new_ag = gmsh.model.occ.fillet(ag,select_edges,[radius])
         ag = [new_ag[0][1]]
         gmsh.model.occ.remove_all_duplicates()
@@ -147,7 +148,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     all_cyls = []
     all_spheres = []
     all_toruses = []
-    if '-curve' in sys.argv:
+    if radius > 0:
         margin = h_silver/4
         for t in ag_bnds:
             surf_type = gmsh.model.get_type(2,t)
@@ -198,6 +199,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
                     z_center = h_sub
                 diff = (x_center-x)**2+(y_center-y)**2
                 if diff > radius:
+                    print("error")
                     input()
 
                 cyl = CylinderData()
@@ -428,7 +430,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
         # "refine_edges": select_edges
     }
 
-    if '-curve' in sys.argv:
+    if radius > 0:
         add_cylindrical_regions(all_cyls, domain_physical_ids, domain_regions)
         add_sphere_regions(all_spheres, domain_physical_ids, domain_regions)
         add_torus_regions(all_toruses, domain_physical_ids, domain_regions)
@@ -441,7 +443,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     gmsh.write(filename+".msh")
 
 
-    if '-curve' in sys.argv:
+    if radius > 0:
         
         with open(filename+'_cyldata.csv', 'w', encoding='UTF8') as f:
             writer = csv.writer(f)
@@ -473,6 +475,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
 
 nel = 6
 min_wavelength = 0.35
+min_wavelength = 1.00
 
 el_ag = min_wavelength/nel
 el_air = min_wavelength/nel
@@ -485,11 +488,41 @@ def set_orig_params():
     l_cross = 225/1000 #3*w_cross
     h_silver = 60/1000
     h_sub = 100/1000
+
+    w_domain = 650/1000
+    h_air = 300/1000
+    w_cross = 100/1000
+    l_cross = 400/1000
+    h_silver = 100/1000
+    h_sub = 100/1000
+
+    
     return w_domain, h_air, w_cross, l_cross, h_silver, h_sub
 
-count = 0
-
 w_domain,h_air,w_cross,l_cross,h_silver,h_sub = set_orig_params()
-filename = "../../build/examples/meshes/cross_ag_"+str(count)
+
+filename = "../../build/examples/meshes/cross_ag_straight"
+radius = 0  
 create_cross_mesh(w_domain, h_air, w_cross, l_cross,
-                  h_silver, h_sub, el_ag, el_air, el_sub, filename)
+                  h_silver, h_sub, el_ag, el_air, el_sub, radius,
+                  filename)
+radius = 1  
+filename = "../../build/examples/meshes/cross_ag_curved_"+str(int(radius))
+create_cross_mesh(w_domain, h_air, w_cross, l_cross,
+                  h_silver, h_sub, el_ag, el_air, el_sub, radius,
+                  filename)
+radius = 2  
+filename = "../../build/examples/meshes/cross_ag_curved_"+str(int(radius))
+create_cross_mesh(w_domain, h_air, w_cross, l_cross,
+                  h_silver, h_sub, el_ag, el_air, el_sub, radius,
+                  filename)
+radius = 5  
+filename = "../../build/examples/meshes/cross_ag_curved_"+str(int(radius))
+create_cross_mesh(w_domain, h_air, w_cross, l_cross,
+                  h_silver, h_sub, el_ag, el_air, el_sub, radius,
+                  filename)
+radius = 10
+filename = "../../build/examples/meshes/cross_ag_curved_"+str(int(radius))
+create_cross_mesh(w_domain, h_air, w_cross, l_cross,
+                  h_silver, h_sub, el_ag, el_air, el_sub, radius,
+                  filename)
