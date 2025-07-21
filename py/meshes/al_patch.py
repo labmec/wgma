@@ -22,7 +22,8 @@ from utils.gmsh import (
 #############################################
 
 
-def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, filename):
+def create_patch_mesh(P, W, h_air, h_metal, h_sub,
+                      el_metal, el_air, el_sub, radius,filename):
     """
     Creates a mesh representing the unit cell of a metasurface consisting
     of a unit cell with period P in which squares of size W and height h are deposited over a substrate
@@ -43,6 +44,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     filename: filename (without .msh suffix)
     """
 
+    radius = radius/1000
     gmsh.initialize()
     gmsh.option.set_number("Geometry.Tolerance", 10**-14)
     gmsh.option.set_number("Geometry.MatchMeshTolerance", 10**-14)
@@ -61,8 +63,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     metal = BoxData(-W/2, -W/2, h_sub, W, W, h_metal)
     create_box(metal)
     # should we fillet first?
-    radius = 5/1000
-    if '-curve' in sys.argv:
+    if radius > 0:
         gmsh.model.occ.remove_all_duplicates()
         gmsh.model.occ.synchronize()
         metal_bnds = [t for _, t in
@@ -122,7 +123,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     all_spheres = []
     select_faces = []
     select_points = []
-    if '-curve' in sys.argv:
+    if radius > 0:
         metal_bnds = [t for _, t in
                       gmsh.model.get_boundary([(3, tag)
                                                for tag in metal],
@@ -168,7 +169,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
             
             elif surf_type == "Sphere":
                 x_center = np.sign(x)*(W/2-radius)
-                y_center = np.sign(y)*(W/2+radius)
+                y_center = np.sign(y)*(W/2-radius)
                 z_center = h_sub+h_metal - radius
                 sp = SphereData()
                 sp.xc = [x_center, y_center, z_center]
@@ -288,7 +289,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     gmsh.model.mesh.field.set_number(
         field_ct, "VIn", el_sub)
 
-    # if '-curve' in sys.argv:
+    # if radius > 0:
     #     nlin_faces = []
     #     [nlin_faces.append(sp.surftag[0]) for sp in all_spheres ]
     #     [nlin_faces.append(cyl.surftag[0]) for cyl in all_cyls ]
@@ -310,7 +311,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     field_ct += 1
 
     fieldvec = [1,2,3]
-    # if '-curve' in sys.argv:
+    # if radius > 0:
     #     fieldvec.append(5)
     gmsh.model.mesh.field.add("Min", field_ct)
     gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList",
@@ -336,7 +337,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
         "bound_periodic_ym": 14,
         "bound_periodic_yp": 15,
     }
-    if '-curve' not in sys.argv:
+    if radius == 0:
         domain_physical_ids_2d["refine_faces"] = 16
         
     domain_physical_ids_1d = {
@@ -353,7 +354,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     domain_physical_ids_0d = {
     }
 
-    if '-curve' not in sys.argv:
+    if radius == 0:
         domain_physical_ids_0d["refine_points"] = 30
 
     domain_physical_ids = [domain_physical_ids_0d,
@@ -379,7 +380,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
         "bound_port_out_periodic_ym": ym_bnd_port_out,
         "bound_port_out_periodic_yp": yp_bnd_port_out,
     }
-    if '-curve' not in sys.argv:
+    if radius == 0:
         domain_regions["refine_faces"] =  select_faces
         domain_regions["refine_points"] =  select_points
 
@@ -395,7 +396,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, fil
     gmsh.write(filename+".msh")
 
 
-    if '-curve' in sys.argv:
+    if radius > 0:
         
         with open(filename+'_cyldata.csv', 'w', encoding='UTF8') as f:
             writer = csv.writer(f)
@@ -428,15 +429,35 @@ el_metal = min_wavelength/(nel*2)
 el_air = min_wavelength/nel
 el_sub = min_wavelength/(nel*1.5)
 
+radius = 0
 P=0.4
 W = P/2
-filename = "../../build/examples/meshes/patch_1"
-create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, filename)
+filename = "../../build/examples/meshes/patch_1_straight"
+create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, radius, filename)
 P=0.34
 W = P/2
-filename = "../../build/examples/meshes/patch_2"
-create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, filename)
+filename = "../../build/examples/meshes/patch_2_straight"
+create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, radius, filename)
 P=0.26
 W = P/2
-filename = "../../build/examples/meshes/patch_3"
-create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, filename)
+filename = "../../build/examples/meshes/patch_3_straight"
+create_patch_mesh(P, W, h_air, h_metal, h_sub, el_metal, el_air, el_sub, radius, filename)
+
+rvec = [1,2,5,10]
+for radius in rvec:
+    P=0.4
+    W = P/2
+    filename = "../../build/examples/meshes/patch_1_curved_"+str(int(radius))
+    create_patch_mesh(P, W, h_air, h_metal, h_sub,
+                      el_metal, el_air, el_sub, radius, filename)
+    P=0.34
+    W = P/2
+    filename = "../../build/examples/meshes/patch_2_curved_"+str(int(radius))
+    create_patch_mesh(P, W, h_air, h_metal, h_sub,
+                      el_metal, el_air, el_sub, radius, filename)
+    P=0.26
+    W = P/2
+    filename = "../../build/examples/meshes/patch_3_curved_"+str(int(radius))
+    create_patch_mesh(P, W, h_air, h_metal, h_sub,
+                      el_metal, el_air, el_sub, radius, filename)
+
