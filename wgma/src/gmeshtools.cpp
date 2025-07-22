@@ -1242,7 +1242,7 @@ void wgma::gmeshtools::DirectionalRefinement(TPZAutoPointer<TPZGeoMesh>& gmesh,
     const int nels = gmesh->NElements();
     for(int el = 0; el < nels; el++){
       auto *gel = gmesh->Element(el);
-      if(gel && gel->NSubElements() == 0 && gel->MaterialId() == 1){
+      if(gel && gel->NSubElements() == 0){
         TPZRefPatternTools::RefineDirectional(gel, matids);
       }
     }
