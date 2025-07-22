@@ -122,6 +122,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub,
     all_cyls = []
     all_spheres = []
     select_faces = []
+    select_edges = []
     select_points = []
     if radius > 0:
         metal_bnds = [t for _, t in
@@ -191,17 +192,15 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub,
                            gmsh.model.get_boundary([(2,t) for t in metal_bnds],
                                                    combined=False,
                                                    oriented=False)]
-
-            select_edges = []
             for t in metal_edges:
-                d_l = gmsh.model.get_derivative(1, t, [0])
-                if d_l[0] == 0 and d_l[1] == 0:
-                    select_edges.append(t)
+                select_edges.append(t)
+                # d_l = gmsh.model.get_derivative(1, t, [0])
+                # if d_l[0] == 0 and d_l[1] == 0:
 
             select_points = gmsh.model.get_boundary([(1,t) for t in select_edges],
                                                     combined=False,
                                                     oriented=False)
-            select_points = [t for _,t in select_points]
+            select_points = list(set([t for _,t in select_points]))
 
     def get_boundary_in_dir(dt, dirsign):
         dirmap = {'xp': 'x', 'xm': 'x',
@@ -351,6 +350,9 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub,
         "bound_port_out_periodic_yp": 27,
     }
 
+    if radius == 0:
+        domain_physical_ids_1d["refine_edges"] = 28
+
     domain_physical_ids_0d = {
     }
 
@@ -381,6 +383,7 @@ def create_patch_mesh(P, W, h_air, h_metal, h_sub,
         "bound_port_out_periodic_yp": yp_bnd_port_out,
     }
     if radius == 0:
+        domain_regions["refine_edges"] =  select_edges
         domain_regions["refine_faces"] =  select_faces
         domain_regions["refine_points"] =  select_points
 
