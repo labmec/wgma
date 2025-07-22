@@ -1175,12 +1175,15 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
         //now we found an element that resulted from refinement, we need to see
         //its neighbouring compels
         const auto nsides = gel->NSides();
-        for(auto is = 0; is < nsides-1; is++){
+        const auto nnodes = gel->NCornerNodes();
+        for(auto is = nnodes; is < nsides-1; is++){
           TPZGeoElSide gelside(gel,is);
           TPZGeoElSide neigh = gelside.Neighbour();
           while(neigh && neigh != gelside){
+            auto neigh_side = neigh.Side();
             auto neigh_gel = neigh.Element();
             if(!neigh_gel){DebugStop();}
+            auto neigh_nnodes = neigh_gel->NCornerNodes();
             auto cel = neigh_gel->Reference();
             if(cel){
               if(cel->Mesh() == scatt_mesh_wpbc.operator->()){
@@ -1191,12 +1194,33 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                   const int nedges = neigh_gel->NSides(1);
                   const int ncon = cel->NConnects();
                   for(auto icon = 0; icon < ncon; icon++){
+                    const auto iside = icon + neigh_nnodes;
+                    bool found_side {false};
+                    TPZStack<TPZGeoElSide> subelstack;
+                    neigh_gel->GetSubElements2(iside, subelstack);
+                    for(auto subside : subelstack){
+                      if(subside.Side() == neigh_side){
+                        found=true;
+                        break;
+                      }
+                    }
+                    if(iside == neigh_side){found=true;}
+                    if(!found){continue;}
+                    //now we need
                     TPZConnect &c = cel->Connect(icon);
                     if(c.Order()>0 && c.NShape() > 0){
-                      if(c.HasDependency()) {DebugStop();}
+                      if(c.HasDependency()) {
+                        PZError<<__PRETTY_FUNCTION__
+                               <<"\nError at connect "<<icon<<std::endl;
+                        cel->Print();
+                        DebugStop();
+                      }
                       const auto cindex = cel->ConnectIndex(icon);
                       const int64_t seq = c.SequenceNumber();
                       if(seq < 0){
+                        PZError<<__PRETTY_FUNCTION__
+                               <<"\nError at connect "<<icon<<std::endl;
+                        cel->Print();
                         DebugStop();
                       }
                       c.SetOrder(0,cindex);
@@ -1286,7 +1310,7 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
         auto *intrule = cel->GetIntegrationRule().Clone();
         TPZManVector<int,3> ord(3,0);
         intrule->GetOrder(ord);
-        for(auto &x : ord){x+=2;}
+        for(auto &x : ord){x+=3;}
         intrule->SetOrder(ord);
         cel->SetIntegrationRule(intrule);
         
