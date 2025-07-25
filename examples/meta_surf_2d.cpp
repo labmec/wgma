@@ -1265,11 +1265,11 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       {
         int64_t nc = scatt_mesh_wpbc->NConnects();
         for (int64_t ic = 0; ic<nc; ic++) {
-            TPZConnect &c = scatt_mesh_wpbc->ConnectVec()[ic];
-            if(c.NElConnected() == 0 && c.HasDependency())
-            {
-                c.RemoveDepend();
-            }
+          TPZConnect &c = scatt_mesh_wpbc->ConnectVec()[ic];
+          if(c.NElConnected() == 0 && c.HasDependency())
+          {
+            c.RemoveDepend();
+          }
         }
       }
       scatt_mesh_wpbc->ComputeNodElCon();
@@ -1302,25 +1302,29 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       std::cout<<"neq "<<numeq2
                <<" n int "<<subcmesh->NumInternalEquations()<<std::endl;
     }
-    
-    for(auto cel : scatt_mesh_wpbc->ElementVec()){
-      if(!cel){continue;}
-      auto gel = cel->Reference();
-      if(gel && gel->IsGeoBlendEl()){
-        auto *intrule = cel->GetIntegrationRule().Clone();
-        TPZManVector<int,3> ord(3,0);
-        intrule->GetOrder(ord);
-        for(auto &x : ord){x+=3;}
-        intrule->SetOrder(ord);
-        cel->SetIntegrationRule(intrule);
-        
-      }
-    }
-    
-    
-    TPZCompMeshTools::CreatedCondensedElements(scatt_mesh_wpbc.operator->(),
-                                               false, false);
+
+
   }
+
+
+  //now we adjust the integration rule order for blend elements
+  for(auto cel : scatt_mesh_wpbc->ElementVec()){
+    if(!cel){continue;}
+    auto gel = cel->Reference();
+    if(gel && gel->IsGeoBlendEl()){
+      auto *intrule = cel->GetIntegrationRule().Clone();
+      TPZManVector<int,3> ord(3,0);
+      intrule->GetOrder(ord);
+      for(auto &x : ord){x+=3;}
+      intrule->SetOrder(ord);
+      cel->SetIntegrationRule(intrule);
+        
+    }
+  }
+    
+    
+  TPZCompMeshTools::CreatedCondensedElements(scatt_mesh_wpbc.operator->(),
+                                             false, false);
   const std::string suffix = "wpbc";
   const std::string scatt_file = simdata.prefix+"_scatt"+suffix;
   auto vtk = TPZVTKGenerator(scatt_mesh_wpbc, fvars_3d, scatt_file, simdata.vtk_res,3,true);
