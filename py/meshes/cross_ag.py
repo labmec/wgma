@@ -58,9 +58,6 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     # We can log all messages for further processing with:
     gmsh.logger.start()
 
-    # silver
-    ag = BoxData(-w_domain/2, -w_domain/2, h_sub, w_domain, w_domain, h_silver)
-    create_box(ag)
 
     # cross 1
     c1 = BoxData(-l_cross/2, -w_cross/2, h_sub, l_cross, w_cross, h_silver)
@@ -72,6 +69,39 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     cross = fuse_domains([(3, t) for t in c1.tag], [(3, t) for t in c2.tag])
     cross = [t for _, t in cross]
 
+    # finally, let us select some edges in the cross for refining
+    all_cross_surfs = gmsh.model.get_boundary(
+        [(3, tcross) for tcross in cross],
+        combined=True, oriented=False, recursive=False)
+    all_cross_edges = gmsh.model.get_boundary([dt for dt in all_cross_surfs],
+                                              combined=False,
+                                              oriented=False,
+                                              recursive=False)
+    
+    select_edges = []
+    bottom_edges = []
+
+    for d, t in all_cross_edges:
+        # select_edges.append(t)
+        x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
+        tol= h_silver/3
+        # if abs(z-h_sub) > tol and max(abs(x),abs(y)) < 1.1*(l_cross/2) :
+        if abs(z -(h_sub+h_silver)) > tol:
+            bottom_edges.append(t)
+            select_edges.append(t)
+    bottom_edges = list(set(bottom_edges))
+
+    curve_bottom = False
+    if radius > 0 and curve_bottom == True:
+        new_cross = gmsh.model.occ.fillet(cross,bottom_edges,[radius])
+        cross = [new_cross[0][1]]
+        gmsh.model.occ.remove_all_duplicates()
+        gmsh.model.occ.synchronize()
+            
+    # silver
+    ag = BoxData(-w_domain/2, -w_domain/2, h_sub, w_domain, w_domain, h_silver)
+    create_box(ag)
+
     # now we cut the cross from the silver
     objs = []
     [objs.append((3, t)) for t in ag.tag]
@@ -82,10 +112,9 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     # now we cut the cross from the silver
     gmsh.model.occ.remove_all_duplicates()
     gmsh.model.occ.synchronize()
-
+    
     del cross  #it does not exist
-
-
+    
     # finally, let us select some edges in the cross for refining
     all_ag_surfs = gmsh.model.get_boundary(
         [(3, tag) for tag in ag.tag],
@@ -94,23 +123,25 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
                                               combined=False,
                                               oriented=False,
                                               recursive=False)
-    
-    select_edges = []
+    top_edges = []
     for d, t in all_ag_edges:
         # select_edges.append(t)
         x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
         tol= h_silver/3
         if abs(z-h_sub) > tol and max(abs(x),abs(y)) < 1.1*(l_cross/2) :
+            top_edges.append(t)
             select_edges.append(t)
+    top_edges = list(set(top_edges))
     select_edges = list(set(select_edges))
     select_pts = gmsh.model.get_boundary(
         [(1, tag) for tag in select_edges],
         combined=False, oriented=False, recursive=False)
     select_pts = [t for _,t in select_pts]
 
+    
     ag = ag.tag
     if radius > 0:
-        new_ag = gmsh.model.occ.fillet(ag,select_edges,[radius])
+        new_ag = gmsh.model.occ.fillet(ag,top_edges,[radius])
         ag = [new_ag[0][1]]
         gmsh.model.occ.remove_all_duplicates()
         gmsh.model.occ.synchronize()
@@ -154,54 +185,14 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
             surf_type = gmsh.model.get_type(2,t)
             d = 2
             x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
+            _, reals = gmsh.model.get_entity_properties(d,t)
             if surf_type == "Cylinder":
-                x_axis = y_axis = z_axis = 0
-                x_center = y_center= z_center = 0
-                if z > h_sub + h_silver/2 + margin:
-                    #horizontal cylinders, top layer
-                    edge_mid = w_cross/2 + (l_cross/2-w_cross/2)/2
-                    if max(abs(x),abs(y)) < edge_mid+margin:
-                        if abs(x) > abs(y):
-                            x_center = edge_mid if x > 0 else -edge_mid
-                            y_center = w_cross/2+radius if y > 0 else -w_cross/2-radius
-                            x_axis = 1
-                        else:
-                            x_center = w_cross/2+radius if x > 0 else -w_cross/2-radius
-                            y_center = edge_mid if y > 0 else -edge_mid
-                            y_axis = 1
-                    else:
-                        if abs(x) > abs(y):
-                            x_center = l_cross/2+radius if x > 0 else -l_cross/2 - radius
-                            y_center = 0
-                            y_axis = 1
-                        else:
-                            x_center = 0
-                            y_center = l_cross/2+radius if y > 0 else -l_cross/2 - radius
-                            x_axis = 1
-                    z_center = h_sub+h_silver-radius
-                else:
-                    #vertical cylinders
-                    x_axis = 0
-                    y_axis = 0
-                    z_axis = 1
-                    if max(abs(y),abs(x)) > w_cross/2+margin:
-                        #outer cylinders
-                        if abs(x) > abs(y):
-                            x_center = l_cross/2-radius if x > 0 else -l_cross/2+radius
-                            y_center = w_cross/2-radius if y > 0 else -w_cross/2+radius
-                        else: 
-                            x_center = w_cross/2-radius if x > 0 else -w_cross/2+radius
-                            y_center = l_cross/2-radius if y > 0 else -l_cross/2+radius
-                    else:
-                        #inner cylinders
-                        x_center = w_cross/2+radius if x > 0 else -w_cross/2-radius
-                        y_center = w_cross/2+radius if y > 0 else -w_cross/2-radius
-                    z_center = h_sub
-                diff = (x_center-x)**2+(y_center-y)**2
-                if diff > radius:
-                    print("error")
-                    input()
-
+                x_center = reals[0]
+                y_center = reals[1]
+                z_center = reals[2]
+                x_axis = reals[3]
+                y_axis = reals[4]
+                z_axis = reals[5]
                 cyl = CylinderData()
                 cyl.xc = [x_center, y_center, z_center]
                 cyl.axis = [x_axis, y_axis, z_axis]
@@ -211,27 +202,148 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
                 all_cyls.append(cyl)
             
             elif surf_type == "Sphere":
-                x_center = np.sign(x)*(w_cross/2+radius)
-                y_center = np.sign(y)*(w_cross/2+radius)
-                z_center = h_sub+h_silver - radius
+                x_center = reals[0]
+                y_center = reals[1]
+                z_center = reals[2]
                 sp = SphereData()
                 sp.xc = [x_center, y_center, z_center]
                 sp.radius = radius
                 sp.surftag = [t]
                 all_spheres.append(sp)
             elif surf_type == "Torus":
-                edge_mid = w_cross/2 + (l_cross/2-w_cross/2)/2
-                x_center = np.sign(x)*(w_cross/2-radius) \
-                    if abs(x) < edge_mid else np.sign(x)*(l_cross/2 - radius)
-                y_center = np.sign(y)*(w_cross/2-radius) \
-                    if abs(y) < edge_mid else np.sign(y)*(l_cross/2 - radius)
-                z_center = h_sub+h_silver-radius
+                x_center = reals[0]
+                y_center = reals[1]
+                z_center = reals[2]
+                x_axis = reals[3]
+                y_axis = reals[4]
+                z_axis = reals[5]
+                rsmall = reals[6]
+                rlarge = reals[7]
                 to = TorusData()
                 to.xc = [x_center, y_center, z_center]
                 to.r_small = radius
                 to.r_large = radius+radius
                 to.surftag = [t]
                 all_toruses.append(to)
+    # if radius > 0:
+    #     margin = h_silver/4
+    #     for t in ag_bnds:
+    #         surf_type = gmsh.model.get_type(2,t)
+    #         d = 2
+    #         x, y, z = gmsh.model.occ.getCenterOfMass(d, t)
+    #         if surf_type == "Cylinder":
+    #             x_axis = y_axis = z_axis = 0
+    #             x_center = y_center = z_center = 0
+    #             if z > h_sub + h_silver/2 + margin:
+    #                 #horizontal cylinders, top layer
+    #                 edge_mid = w_cross/2 + (l_cross/2-w_cross/2)/2
+    #                 if max(abs(x),abs(y)) < edge_mid+margin:
+    #                     if abs(x) > abs(y):
+    #                         x_center = np.sign(x)*(edge_mid)
+    #                         y_center = np.sign(y)*(w_cross/2+radius)
+    #                         x_axis = 1
+    #                     else:
+    #                         x_center = np.sign(x)*(w_cross/2+radius)
+    #                         y_center = np.sign(y)*(edge_mid)
+    #                         y_axis = 1
+    #                 else:
+    #                     if abs(x) > abs(y):
+    #                         x_center = np.sign(x)*(l_cross/2+radius)
+    #                         y_center = 0
+    #                         y_axis = 1
+    #                     else:
+    #                         x_center = 0
+    #                         y_center = np.sign(y)*(l_cross/2+radius)
+    #                         x_axis = 1
+    #                 z_center = h_sub+h_silver-radius
+    #             elif z < h_sub + margin:
+    #                 #horizontal cylinders, bottom layer
+    #                 edge_mid = w_cross/2 + (l_cross/2-w_cross/2)/2
+    #                 if max(abs(x),abs(y)) < edge_mid+margin:
+    #                     if abs(x) > abs(y):
+    #                         x_center = np.sign(x)*(edge_mid)
+    #                         y_center = np.sign(y)*(w_cross/2-radius)
+    #                         x_axis = 1
+    #                     else:
+    #                         x_center = np.sign(x)*(w_cross/2-radius)
+    #                         y_center = np.sign(y)*(edge_mid)
+    #                         y_axis = 1
+    #                 else:
+    #                     if abs(x) > abs(y):
+    #                         x_center = np.sign(x)*(l_cross/2-radius)
+    #                         y_center = 0
+    #                         y_axis = 1
+    #                     else:
+    #                         x_center = 0
+    #                         y_center = np.sign(y)*(l_cross/2-radius)
+    #                         x_axis = 1
+    #                 z_center = h_sub+radius
+    #             else:
+    #                 #vertical cylinders
+    #                 x_axis = 0
+    #                 y_axis = 0
+    #                 z_axis = 1
+    #                 if max(abs(y),abs(x)) > w_cross/2+margin:
+    #                     #outer cylinders
+    #                     if abs(x) > abs(y):
+    #                         x_center = np.sign(x)*(l_cross/2-radius)
+    #                         y_center = np.sign(y)*(w_cross/2-radius)
+    #                     else: 
+    #                         x_center = np.sign(x)*(w_cross/2-radius)
+    #                         y_center = np.sign(y)*(l_cross/2-radius)
+    #                 else:
+    #                     #inner cylinders
+    #                     x_center = np.sign(x)*(w_cross/2+radius)
+    #                     y_center = np.sign(y)*(w_cross/2+radius)
+    #                 z_center = h_sub
+    #             diff = (x_center-x)**2+(y_center-y)**2
+    #             if diff > radius:
+    #                 print("error")
+    #                 input()
+
+    #             cyl = CylinderData()
+    #             cyl.xc = [x_center, y_center, z_center]
+    #             cyl.axis = [x_axis, y_axis, z_axis]
+    #             cyl.radius = radius
+    #             cyl.surftag = [t]
+                
+    #             all_cyls.append(cyl)
+            
+    #         elif surf_type == "Sphere":
+    #             edge_mid = w_cross/2 + (l_cross/2-w_cross/2)/2
+    #             if z > h_sub + h_silver/2:
+    #                 x_center = np.sign(x)*(w_cross/2+radius)
+    #                 y_center = np.sign(y)*(w_cross/2+radius)
+    #                 z_center = h_sub+h_silver - radius
+    #             else:
+    #                 x_center = np.sign(x)*(w_cross/2-radius) \
+    #                     if abs(x) < edge_mid else np.sign(x)*(l_cross/2 - radius)
+    #                 y_center = np.sign(y)*(w_cross/2-radius) \
+    #                     if abs(y) < edge_mid else np.sign(y)*(l_cross/2 - radius)
+    #                 z_center = h_sub+radius
+    #             sp = SphereData()
+    #             sp.xc = [x_center, y_center, z_center]
+    #             sp.radius = radius
+    #             sp.surftag = [t]
+    #             all_spheres.append(sp)
+    #         elif surf_type == "Torus":
+    #             edge_mid = w_cross/2 + (l_cross/2-w_cross/2)/2
+    #             if z > h_sub + h_silver/2:
+    #                 x_center = np.sign(x)*(w_cross/2-radius) \
+    #                     if abs(x) < edge_mid else np.sign(x)*(l_cross/2 - radius)
+    #                 y_center = np.sign(y)*(w_cross/2-radius) \
+    #                     if abs(y) < edge_mid else np.sign(y)*(l_cross/2 - radius)
+    #                 z_center = h_sub+h_silver-radius
+    #             else:
+    #                 x_center = np.sign(x)*(w_cross/2+radius)
+    #                 y_center = np.sign(y)*(w_cross/2+radius)
+    #                 z_center = h_sub + radius
+    #             to = TorusData()
+    #             to.xc = [x_center, y_center, z_center]
+    #             to.r_small = radius
+    #             to.r_large = radius+radius
+    #             to.surftag = [t]
+    #             all_toruses.append(to)
     cross_bnds = [t for t in ag_bnds if t not in ag_bnds]
 
     def get_boundary_in_dir(dt, dirsign):
@@ -389,7 +501,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
         "bound_periodic_ym": 14,
         "bound_periodic_yp": 15
     }
-
+    
     domain_physical_ids_1d = {
         "bound_port_in_periodic_xm": 20,
         "bound_port_in_periodic_xp": 21,
@@ -401,6 +513,9 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
         "bound_port_out_periodic_yp": 27,
         # "refine_edges": 28
     }
+
+    if radius == 0:
+        domain_physical_ids_1d["cross_edges"] = 28
 
     domain_physical_ids_0d = {
     }
@@ -429,7 +544,10 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
         "bound_port_out_periodic_yp": yp_bnd_port_out,
         # "refine_edges": select_edges
     }
-
+    
+    if radius == 0:
+        domain_regions["cross_edges"] = select_edges
+    
     if radius > 0:
         add_cylindrical_regions(all_cyls, domain_physical_ids, domain_regions)
         add_sphere_regions(all_spheres, domain_physical_ids, domain_regions)
@@ -473,7 +591,7 @@ def create_cross_mesh(w_domain, h_air, w_cross, l_cross,
     gmsh.finalize()
 
 
-nel = 6
+nel = 12
 min_wavelength = 0.35
 min_wavelength = 1.00
 
