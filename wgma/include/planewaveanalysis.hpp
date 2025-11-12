@@ -39,7 +39,7 @@ namespace wgma::planewaveanalysis{
     /**
        @brief Assembles the algebraic system
      */
-    void Assemble();
+    void Assemble() override;
     /**
        @brief Assembles the rhs of the algebraic system
        @param[in] identifiers of the materials to be assembled (source materials)
@@ -48,7 +48,7 @@ namespace wgma::planewaveanalysis{
     /**
        @brief Solves the algebraic system
     */
-    void Solve();
+    void Solve() override;
     /**
        @brief Assembles and solves the algebraic system
      */
