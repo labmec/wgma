@@ -441,20 +441,24 @@ SimData ReadSimData(const std::string &dataname){
 
   //we check if every port material has a corresponding 3d mat
 
-  for(auto mat : sd.mats_port_in){
-    const auto suffix_length = std::strlen("_port_in");
+  auto find_mat = [] (const auto &all_mats, const auto mat, const auto suffix){
+    bool found = false;
+    const auto suffix_length = std::strlen(suffix);
     const auto name = mat.substr(0,mat.length()-suffix_length);
-    if ( std::find(sd.mats_3d.begin(), sd.mats_3d.end(), name) == sd.mats_3d.end() ){
+    if ( std::find(all_mats.begin(), all_mats.end(), name) == all_mats.end() ){
+      return false;
+    }
+    return true;
+  };
+  for(auto mat : sd.mats_port_in){
+    if (!find_mat(sd.mats_3d, mat, "_port_in") && !find_mat(sd.mats_3d, mat, "_port")){
       PZError<<__PRETTY_FUNCTION__
              <<"\nCould not find corresponding material of "<<mat<<std::endl;
       DebugStop();
     }
   }
-
   for(auto mat : sd.mats_port_out){
-    const auto suffix_length = std::strlen("_port_out");
-    const auto name = mat.substr(0,mat.length()-suffix_length);
-    if ( std::find(sd.mats_3d.begin(), sd.mats_3d.end(), name) == sd.mats_3d.end() ){
+    if (!find_mat(sd.mats_3d, mat, "_port_out") && !find_mat(sd.mats_3d, mat, "_port")){
       PZError<<__PRETTY_FUNCTION__
              <<"\nCould not find corresponding material of "<<mat<<std::endl;
       DebugStop();
