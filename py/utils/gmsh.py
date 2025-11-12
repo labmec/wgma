@@ -76,13 +76,13 @@ class CylinderData(VolData):
     will be used to feed wgma::gmeshtools::SetExactCylinderRepresentation
     """
 
-    def __init__(self):
+    def __init__(self, radius=-1, x=0, y=0, z=0, ax=0, ay=0, az=1):
         VolData.__init__(self)
         self.matid = -10  # physical identifier for the cylinder surface
         self.surftag = []  # tags for the cylinder surface
-        self.radius = -1.
-        self.xc = []
-        self.axis = []
+        self.radius = radius
+        self.xc = [x,y,z]
+        self.axis = [ax,ay,az]
 
 class SphereData(VolData):
     """
@@ -275,6 +275,34 @@ def create_box(box, elsize: float = 0.1):
     [gmsh.model.mesh.set_size([tag], elsize)
      for tag in boundary_dimtags if tag[0] == 0]
 
+def create_cyl(cyl, elsize: float = 0.1):
+    """
+    Creates a cylindrical region and insert it in the model
+
+
+
+    Parameters
+    ----------
+    cyl: CylData
+        will have its tag field filled, must have all other attributes set
+    elsize: float
+        prescribed element size
+    """
+    
+    
+    cyl.tag = [
+        gmsh.model.occ.add_cylinder(
+            cyl.xc[0],cyl.xc[1],cyl.xc[2],
+            cyl.axis[0],cyl.axis[1],cyl.axis[2],
+            cyl.radius)]
+    gmsh.model.occ.synchronize()
+    # Find domain boundary tags
+    boundary_dimtags = gmsh.model.getBoundary(
+        dimTags=[(3, cyl.tag[0])],
+        combined=False, oriented=False, recursive=True)
+    [gmsh.model.mesh.set_size([tag], elsize)
+     for tag in boundary_dimtags if tag[0] == 0]
+    
 
 def create_pml_corner(dimtag, direction: str, dpml, nlayers: int):
     """
