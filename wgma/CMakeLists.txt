@@ -33,6 +33,7 @@ set(headers
   include/post/wgnorm.hpp
   include/post/reflectivity.hpp
   include/post/planewave.hpp
+  include/post/exportsolution.hpp
   include/materials/twisted_wgma.hpp
   include/materials/acousticmodesbase.hpp
   include/materials/acousticmodesbeta.hpp
@@ -62,6 +63,7 @@ set(sources
   src/post/wgnorm.cpp
   src/post/reflectivity.cpp
   src/post/planewave.cpp
+  src/post/exportsolution.cpp
   src/materials/twisted_wgma.cpp
   src/materials/acousticmodesbase.cpp
   src/materials/acousticmodesbeta.cpp
