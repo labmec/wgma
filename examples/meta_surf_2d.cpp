@@ -12,6 +12,7 @@
 #include "gmeshtools.hpp"
 #include "post/waveguidecoupling.hpp"
 #include "post/orthowgsol.hpp"
+#include "post/exportsolution.hpp"
 #include "util.hpp"                // for CreatePath, ExtractPath
 #include <json_util.hpp>
 
@@ -58,6 +59,10 @@ struct SimData{
   std::map<std::string,CSTATE> refractive_indices;
   //!map of domain regions and number of directional refinement steps
   std::map<std::string,int> refine_regions;
+  //!whether to export solution at integration points of given regions
+  bool export_sol{false};
+  //!materials in which solution is to be exported (empty for all vol regions)
+  TPZVec<std::string> export_mats = {};
   //!whether curved regions are described in csv file
   bool curved_els{false};
   //!polynomial order
@@ -152,12 +157,13 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                 const std::map<int,int> &split_mats,
                 const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                 const SimData &simdata,
-                TPZFMatrix<CSTATE> &last_sol);
+                TPZFMatrix<CSTATE> &last_sol,
+                const int iwl);
 
 int main(int argc, char *argv[]) {
 
   wgma::wganalysis::using_tbb_mat=false;
-  wgma::scattering::using_tbb_mat=true;
+  wgma::scattering::using_tbb_mat=false;
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
    * the log should be initialised as:*/
@@ -310,7 +316,7 @@ int main(int argc, char *argv[]) {
       std::cout<<"split mats"<<std::endl;
     }
     const auto res = SolveScattering(gmesh, modal_an_in,  modal_an_out, gmshmats,
-                                     split_mats,periodic_els, simdata, last_sol);
+                                     split_mats,periodic_els, simdata, last_sol, iwl);
     auto timer_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> duration = timer_end-timer_begin;
     std::cout<<"wavelength "<<simdata.lambda<<" took "<<duration.count()<<" ms"<<std::endl;
@@ -501,6 +507,14 @@ SimData ReadSimData(const std::string &dataname){
                                          std::map<std::string,std::string>{});
   sd.refine_regions = data.value("refine_regions", std::map<std::string,int> {});
 
+
+  sd.export_sol = data.value("export_sol",false);
+  if(sd.export_sol){
+    std::vector<std::string> tmpvec_str;
+    tmpvec_str = data["export_mats"].get<std::vector<std::string>>();
+    for(auto mat : tmpvec_str){sd.export_mats.push_back(mat);}
+  }
+  
   sd.curved_els = data.value("curved_els", false);
   sd.meshfile = data["meshfile"];
   sd.prefix =  data["prefix"];
@@ -1113,7 +1127,8 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      const std::map<int,int> &split_mats,
                      const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                      const SimData &simdata,
-                     TPZFMatrix<CSTATE> &last_sol)
+                     TPZFMatrix<CSTATE> &last_sol,
+                     const int iwl)
 {
   /*********************
    * solve(scattering) *  
@@ -1428,6 +1443,55 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     }
     //useful for debuggin weird results
     ost <<computed_res<<std::endl;
+    //now we export the solution at points (if requested)
+    if(simdata.export_sol){
+      using namespace wgma::post;
+      //hcurl in 3d space
+      const int soldim{3};
+      std::set<int> matids;
+
+      //all vol materials
+      auto matmap = gmshmats[3];
+      //if empty, we will post-process everywhere
+      for(auto mat : simdata.export_mats){
+        matids.insert(matmap.at(mat));
+      }
+      
+      
+      auto export_sol = ExportSolution<SingleSpaceIntegrator>(scatt_mesh_wpbc,
+                                                              matids,
+                                                              simdata.n_threads);
+      export_sol.StoreSolutionAtPoints(soldim);
+      //!weight of a given integration point
+      const auto &weightvec = export_sol.GetIntWeightAtPoints();
+      //!solution vector, size = soldim*npts
+      const auto &solvec= export_sol.GetSolutionAtPoints();
+
+      const auto nel = solvec.size()/soldim;
+      //stupid checks just to be sure
+      if( (solvec.size() % soldim) != 0 ){
+        DebugStop();
+      }
+      if(weightvec.size() * soldim != solvec.size()){
+        DebugStop();
+      }
+      const auto npts = weightvec.size();
+      std::string outputfile = simdata.prefix+"_sol_"+std::to_string(iwl)+".csv";
+      std::ofstream ost;
+      ost.open(outputfile, std::ios_base::out);
+      ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
+      
+      int64_t solcount{0};
+      for(auto ipt = 0; ipt < npts; ipt++){
+        ost << weightvec[ipt] << ',';
+        for(int i = 0; i < soldim; i++){
+          const CSTATE val = solvec[solcount++];
+          const char val_sign = val.imag() > 0 ? '+' : '-';
+          ost <<val.real()<<val_sign<<std::abs(val.imag())<<'j';
+          i == soldim - 1 ? ost << '\n' : ost <<',';
+        }
+      }
+    }
   }
   //removing restrictions
   wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wpbc);
