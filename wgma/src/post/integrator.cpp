@@ -65,7 +65,7 @@ namespace wgma::post{
         REAL weight;
         for(auto ipt = 0; ipt < npts; ipt++){
           intrule.Point(ipt, pos, weight);
-          IntPointData(el,*data,pos);
+          IntPointData(el,*data,pos, ipt);
           Compute(*data, weight, index);
         }
         PostProcessData(*data);
@@ -107,10 +107,11 @@ namespace wgma::post{
     data.SetMaterial(el->Material());
   }
     
-  void SingleSpaceIntegrator::IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &qsi)
+  void SingleSpaceIntegrator::IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &qsi, int locid)
   {
     TPZMaterialDataT<CSTATE> &eldata = data;
     eldata.fNeedsSol = true;
+    eldata.intLocPtIndex = locid;
     auto intel = dynamic_cast<TPZInterpolationSpace*>(el);
 		intel->ComputeRequiredData(eldata, qsi);
   }
@@ -130,13 +131,14 @@ namespace wgma::post{
     data.SetMaterial(el->Material());
   }
     
-  void MultiphysicsIntegrator::IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &qsi)
+  void MultiphysicsIntegrator::IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &qsi, int locid)
   {
     auto mfcel = dynamic_cast<TPZMultiphysicsElement*>(el);
     const int64_t nref = mfcel->NMeshes();
     TPZVec<TPZMaterialDataT<CSTATE>>& datavec = data;
     for(int ir = 0; ir < nref; ir++){
       datavec[ir].fNeedsSol= true;
+      datavec[ir].intLocPtIndex = locid;
     }
     TPZManVector<TPZTransform<> > trvec;
     mfcel->AffineTransform(trvec);

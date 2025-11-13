@@ -51,7 +51,7 @@ namespace wgma::post{
     //! Initialises element data
     virtual void InitData(TPZCompEl* el, ElData& data) = 0;
     //! Gets element data at an integration point
-    virtual void IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &x) = 0;
+    virtual void IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &x, int locid) = 0;
     //! Allows for inspecting element data after integrating
     virtual void PostProcessData(ElData& data) {}
     //! Override this method with the desired calculation
@@ -72,7 +72,7 @@ namespace wgma::post{
     //! Initialises element data
     void InitData(TPZCompEl* el, ElData& data) override;
     //! Gets element data at an integration point
-    void IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &x) override;
+    void IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &x, int locid) override;
   };
 
   //! Integrator for comp meshes containing multiple approx spaces
@@ -83,7 +83,7 @@ namespace wgma::post{
     //! Initialises element data
     void InitData(TPZCompEl* el, ElData& data) override;
     //! Gets element data at an integration point
-    void IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &x) override;
+    void IntPointData(TPZCompEl* el, ElData& data, TPZVec<REAL> &x, int locid) override;
   };
 };
 
