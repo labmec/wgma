@@ -1,6 +1,7 @@
 #include "post/integrator.hpp"
 
 #include <TPZMaterial.h>
+#include <pzcondensedcompel.h>
 #include <TPZBndCond.h>
 #include <TPZMaterialDataT.h>
 #include <pzinterpolationspace.h>
@@ -56,6 +57,10 @@ namespace wgma::post{
 
       for(int iel = firstel; iel < lastel; iel++){
         auto el = elvec[iel];
+        auto condensed = dynamic_cast<TPZCondensedCompEl*>(el);
+        if(condensed){
+          el = condensed->ReferenceCompEl();
+        }
         TPZAutoPointer<ElData> data = CreateElData();
         data->SetElIndex(iel);
         InitData(el,*data);
