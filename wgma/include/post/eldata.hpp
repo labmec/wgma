@@ -22,10 +22,14 @@ namespace wgma::post{
     operator const TPZVec<TPZMaterialDataT<CSTATE>>&() const {return m_datavec;}
     const TPZMaterial *GetMaterial() const {return m_mat;}
     void SetMaterial(TPZMaterial *mat){m_mat = mat;}
+    //index of the element for a given wgma::post::Integration instance
+    void SetElIndex(const int64_t idx) {m_el_idx = idx;}
+    int64_t GetElIndex() const {return m_el_idx;}
   protected: 
     TPZMaterialDataT<CSTATE> m_data;
     TPZManVector<TPZMaterialDataT<CSTATE>,10> m_datavec;
     TPZMaterial * m_mat{nullptr};
+    int64_t m_el_idx{-1};
   };
 };
 

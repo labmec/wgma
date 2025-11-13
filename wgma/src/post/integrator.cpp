@@ -57,6 +57,7 @@ namespace wgma::post{
       for(int iel = firstel; iel < lastel; iel++){
         auto el = elvec[iel];
         TPZAutoPointer<ElData> data = CreateElData();
+        data->SetElIndex(iel);
         InitData(el,*data);
         auto &intrule = el->GetIntegrationRule();
         const int npts = intrule.NPoints();
