@@ -1466,7 +1466,9 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       const auto &weightvec = export_sol.GetIntWeightAtPoints();
       //!solution vector, size = soldim*npts
       const auto &solvec= export_sol.GetSolutionAtPoints();
-
+      //!position vector, size = 3*npts
+      const auto &xvec= export_sol.GetCoordinatesAtPoints();
+      
       const auto nel = solvec.size()/soldim;
       //stupid checks just to be sure
       if( (solvec.size() % soldim) != 0 ){
@@ -1483,13 +1485,15 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
       
       int64_t solcount{0};
       for(auto ipt = 0; ipt < npts; ipt++){
-        ost << weightvec[ipt] << ',';
+        ost << xvec[ipt*3+0] << ','
+            << xvec[ipt*3+1] << ','
+            << xvec[ipt*3+2] << ',';
         for(int i = 0; i < soldim; i++){
           const CSTATE val = solvec[solcount++];
           const char val_sign = val.imag() > 0 ? '+' : '-';
-          ost <<val.real()<<val_sign<<std::abs(val.imag())<<'j';
-          i == soldim - 1 ? ost << '\n' : ost <<',';
+          ost <<val.real()<<val_sign<<std::abs(val.imag())<<"j,";
         }
+        ost << weightvec[ipt] << '\n';
       }
     }
   }
