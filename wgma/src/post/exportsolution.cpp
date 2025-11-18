@@ -30,6 +30,7 @@ namespace wgma::post{
     total_pts += GetElPts(this->m_elvec[nel-1]);
     m_weights.Resize(total_pts);
     m_sol.Resize(total_pts*m_sol_dim);
+    m_x.Resize(total_pts*3);
     this->Integrate(this->m_elvec);
   }
 
@@ -46,10 +47,16 @@ namespace wgma::post{
       const TPZMaterialDataT<CSTATE> &data = eldata;
       loc_id = data.intLocPtIndex;
       detjac = data.detjac;
+      m_x[(first_pt+loc_id)*3+0] = data.x[0];
+      m_x[(first_pt+loc_id)*3+1] = data.x[1];
+      m_x[(first_pt+loc_id)*3+2] = data.x[2];
     }else{
       const TPZVec<TPZMaterialDataT<CSTATE>> &datavec = eldata;
       loc_id = datavec[0].intLocPtIndex;
       detjac = datavec[0].detjac;
+      m_x[(first_pt+loc_id)*3+0] = datavec[0].x[0];
+      m_x[(first_pt+loc_id)*3+1] = datavec[0].x[1];
+      m_x[(first_pt+loc_id)*3+2] = datavec[0].x[2];
     }
 
     m_weights[first_pt+loc_id] = weight * fabs(detjac);
