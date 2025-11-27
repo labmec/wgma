@@ -59,6 +59,8 @@ struct SimData{
   std::map<std::string,CSTATE> refractive_indices;
   //!map of domain regions and number of directional refinement steps
   std::map<std::string,int> refine_regions;
+  //!map of domain regions and p order
+  std::map<std::string,int> p_regions;
   //!whether to export solution at integration points of given regions
   bool export_sol{false};
   //!materials in which solution is to be exported (empty for all vol regions)
@@ -506,6 +508,8 @@ SimData ReadSimData(const std::string &dataname){
   sd.custom_periodic_bcs_port_out = data.value("periodic_bcs_port_out",
                                          std::map<std::string,std::string>{});
   sd.refine_regions = data.value("refine_regions", std::map<std::string,int> {});
+
+  sd.p_regions = data.value("p_regions", std::map<std::string,int> {});
 
 
   sd.export_sol = data.value("export_sol",false);
@@ -1120,6 +1124,7 @@ std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &moda
 
 #include "TPZCompMeshTools.h"
 #include "pzsubcmesh.h"
+#include "pzinterpolationspace.h"
 REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                      TPZAutoPointer<ModalData> &src_an,
                      TPZAutoPointer<ModalData> &match_an,
@@ -1167,6 +1172,54 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc =
     CreateScattMesh(gmesh,gmshmats,split_mats,mats_near_wpbc,simdata,periodic_els);
 
+  bool has_to_recompute{false};
+  //first we increase the polynomial order wherever needed
+  {
+    for(auto [name, pord] : simdata.p_regions){
+      bool found{false};
+      int matid{-1};
+      for(auto idim = 0; idim <= 3 && found==false; idim++){
+        auto &mats_dim = gmshmats[idim];
+        if(mats_dim.count(name)){
+          found=true;
+          matid = mats_dim.at(name);
+        }
+      }
+      if(found==false){
+        DebugStop();
+      }
+      for(auto ocel : scatt_mesh_wpbc->ElementVec()){
+        auto cel = dynamic_cast<TPZInterpolationSpace*>(ocel);
+        if(!cel){continue;}
+        auto gel = cel->Reference();
+        if(!gel){continue;}
+        if(gel->MaterialId() !=matid){continue;}
+        cel->PRefine(pord);
+        //we increase order of neighbours as well
+        for (auto is = gel->NNodes(); is < gel->NSides()-1; is++){
+          auto gelside = gel->Neighbour(is);
+          auto neighside = gelside.Neighbour();
+          while(neighside!=gelside){
+            auto neigh = neighside.Element();
+            if(!neigh || neigh->MaterialId() != matid){
+              auto oceln = neigh->Reference();
+              auto celn = dynamic_cast<TPZInterpolationSpace*>(oceln);
+              if(celn){
+                celn->PRefine(pord);
+              }
+            }
+            neighside = neighside.Neighbour();
+          }
+        }
+        has_to_recompute = true;
+      }
+    }
+    if(has_to_recompute){
+      scatt_mesh_wpbc->ComputeNodElCon();
+      scatt_mesh_wpbc->CleanUpUnconnectedNodes();
+      scatt_mesh_wpbc->ExpandSolution();
+    }
+  }
   //now we reduce the polynomial order on refined edges
   {
     //just to avoid iterating through the same elemnet over and over
