@@ -41,6 +41,7 @@ set(headers
   include/materials/massmat.hpp
   include/materials/solutionprojection.hpp
   include/materials/planewavesolutions.hpp
+  include/materials/scattcurrentsrc.hpp
   )
 
 set(sources
@@ -71,6 +72,7 @@ set(sources
   src/materials/massmat.cpp
   src/materials/solutionprojection.cpp
   src/materials/planewavesolutions.cpp
+  src/materials/scattcurrentsrc.cpp
   )
 
 target_sources(wgma PUBLIC ${headers})
