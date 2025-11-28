@@ -39,7 +39,7 @@ if(WGMA_SERIAL)
 endif()
 
 #now we check for json library
-find_package(nlohmann_json 3.11.2 QUIET)
+find_package(nlohmann_json 3.11.3 QUIET)
 if(NOT TARGET nlohmann_json::nlohmann_json)
   #could not find package, downloading it
   include(FetchContent)
