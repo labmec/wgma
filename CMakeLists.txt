@@ -50,16 +50,33 @@ if(NOT TARGET nlohmann_json::nlohmann_json)
   if(NOT json_SOURCE_DIR)
     message(STATUS "Downloading nlohmann_json")
   endif()
-  FetchContent_Declare(json
-    GIT_REPOSITORY https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent
-    GIT_PROGRESS TRUE
-    GIT_SHALLOW TRUE
-    GIT_TAG v3.11.2)
-
+  FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
   FetchContent_MakeAvailable(json)
 
 endif()
 target_link_libraries(wgma PUBLIC nlohmann_json::nlohmann_json)
+
+find_package(rapidcsv 8.50 QUIET)
+if(NOT TARGET rapidcsv)
+  #could not find package, downloading it
+  include(FetchContent)
+
+  # Optional: set this to ON if your target publicly links to nlohmann_json and needs to install() 
+  # set(JSON_Install ON)
+
+  if(NOT rapidcsv_SOURCE_DIR)
+    message(STATUS "Downloading rapidcsv")
+  endif()
+  FetchContent_Declare(rapidcsv
+    GIT_REPOSITORY https://github.com/d99kris/rapidcsv.git
+    GIT_PROGRESS TRUE
+    GIT_SHALLOW TRUE
+    GIT_TAG v8.50)
+
+  FetchContent_MakeAvailable(rapidcsv)
+
+endif()
+target_link_libraries(wgma PUBLIC rapidcsv)
 
 #let us add all the examples
 add_subdirectory(examples)

@@ -15,6 +15,7 @@
 #include "post/exportsolution.hpp"
 #include "util.hpp"                // for CreatePath, ExtractPath
 #include <json_util.hpp>
+#include <rapidcsv.h>
 
 #include <SPZPeriodicData.h>
 #include <TPZSimpleTimer.h>
@@ -31,6 +32,10 @@
 
 
 using namespace std::complex_literals;
+
+//function for computing the refractive index
+typedef std::function<CSTATE(STATE)> n_func;
+
 //!minimum shared sim data
 struct SimData{
   //!.msh mesh
@@ -38,7 +43,7 @@ struct SimData{
   //!wavelength vector
   TPZVec<STATE> wl_vec;
   //!map of refractive indices
-  TPZVec<std::map<std::string,CSTATE>> ref_index_vec;
+  std::map<std::string,n_func> ref_index_map;
   //!wavelength
   STATE lambda{4.0};
   //!geometric scaling (floating point precision)
@@ -261,7 +266,10 @@ int main(int argc, char *argv[]) {
   for(int iwl = 0; iwl < nwl_pts; iwl++){
     auto timer_begin = std::chrono::high_resolution_clock::now();
     simdata.lambda = simdata.wl_vec[iwl];
-    simdata.refractive_indices = simdata.ref_index_vec[iwl];
+    simdata.refractive_indices = {};
+    for(auto [name,func] : simdata.ref_index_map){
+      simdata.refractive_indices[name] = func(simdata.lambda);
+    }
     //in port modal analysis
     TPZAutoPointer<ModalData> modal_an_in;
     if(simdata.custom_periodic_bcs_port_in.size() == 0){
@@ -350,6 +358,9 @@ int main(int argc, char *argv[]) {
 #include <pzvec_extras.h>
 #include <pzstepsolver.h>
 
+
+//!Reads csv file containing refractive index and interpolates it for wl
+CSTATE ComputeFromCSV(const std::string &name, STATE wl);
 
 wgma::cmeshtools::PhysicalData
 FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
@@ -472,35 +483,104 @@ SimData ReadSimData(const std::string &dataname){
       DebugStop();
     }
   }
-  
-  auto test_str_ad =
-    data["test_str"].get<std::vector<std::tuple<double,std::map<std::string,std::vector<double>>>>>();
 
-  for(auto [wl, matinfo] : test_str_ad){
-    sd.wl_vec.push_back(wl);
 
-    std::map<std::string,CSTATE> refractive_indices;
+  if(data.contains("test_str")){//still supporting old data structure
+    auto test_str_ad =
+      data["test_str"].get<std::vector<std::tuple<double,std::map<std::string,std::vector<double>>>>>();
+
+    for(auto [wl, matinfo] : test_str_ad){
+      sd.wl_vec.push_back(wl);
     
-    for(const auto &[name,n] : matinfo){
-      if(n.size() == 0 || n.size()>2){
-        DebugStop();
+      for(const auto &[name,n] : matinfo){
+        if(n.size() == 0 || n.size()>2){
+          DebugStop();
+        }
+        CSTATE myval{0};
+        if(n.size()==2){
+          myval = {n[0],n[1]};
+        }else{
+          myval = {n[0],0};
+        }
+        sd.ref_index_map[name] = [myval](STATE wl){
+          return myval;
+        };
       }
-      if(n.size()==2){
-        refractive_indices[name] = {n[0],n[1]};
+    }
+  }else{
+    std::vector<STATE> tmpvec_wl;
+    tmpvec_wl = data["wl_vec"].get<std::vector<STATE>>();
+    for(auto wl : tmpvec_wl){sd.wl_vec.push_back(wl);}
+
+    auto mat_map = data["ref_index_map"];
+    for(auto [key,val] : mat_map.items()){
+      auto str_ptr = mat_map[key].get_ptr<json::string_t*>();
+      if(str_ptr){
+        //refractive index stored in csv file
+        auto csvname = *str_ptr;
+        //first we check if it exists
+        std::ifstream f(csvname.c_str());
+        if(!f.good()){
+          PZError<<__PRETTY_FUNCTION__
+                 <<"\nInvalid file for material "<<key
+                 <<"\nfile not found: "<<csvname<<std::endl;
+        }
+        sd.ref_index_map[key]  = [csvname](STATE wl){
+          return ComputeFromCSV(csvname,wl);
+        };
       }else{
-        refractive_indices[name] = {n[0],0};
+        //fixed refractive index
+        CSTATE myval;
+        auto array_ptr = mat_map[key].get_ptr<json::array_t*>();
+        if(array_ptr){
+          auto array = *array_ptr;
+          if(array.size() < 1 || array.size() > 2){
+            PZError<<__PRETTY_FUNCTION__
+                   <<"\nInvalid data for material "<<key<<" and data "<<val<<std::endl;
+            DebugStop();
+          }else{
+            if(array.size()==2){
+              myval = {array[0], array[1]};
+            }else{
+              myval = {array[0],0};
+            }
+          }
+        }else{
+          myval = mat_map[key].get<json::number_float_t>();
+        }
+        sd.ref_index_map[key] = [myval](STATE wl){
+          return myval;
+        };
       }
     }
-    //now we check if every material has a refractive index
-    for(auto mat : sd.mats_3d){
-      if(refractive_indices.count(mat)==0){
-        PZError<<__PRETTY_FUNCTION__
-               <<"\nCould not find refractive index of material: "<<mat<<std::endl;
-        DebugStop();
+    auto TestWavelength = [sd](STATE wl){ 
+      for(auto [name,func] : sd.ref_index_map){
+        try{
+          func(wl);
+        }catch(...){
+          PZError<<__PRETTY_FUNCTION__
+                 <<"\nCannot compute ref index of material "<<name<<" at wavelength "<<wl<<std::endl;
+          DebugStop();
+        }
       }
-    }
-    sd.ref_index_vec.push_back(refractive_indices);
+    };
+
+    using std::begin, std::end; // Enables argument-dependent lookup: https://en.cppreference.com/w/cpp/language/adl
+    STATE wl = *std::min_element(begin(sd.wl_vec), end(sd.wl_vec));
+    TestWavelength(wl);
+    wl = *std::max_element(begin(sd.wl_vec), end(sd.wl_vec));
+    TestWavelength(wl);
   }
+  
+  //now we check if every material has a ref index
+  for(auto mat : sd.mats_3d){
+    if(sd.ref_index_map.count(mat)==0){
+      PZError<<__PRETTY_FUNCTION__
+             <<"\nCould not find refractive index of material: "<<mat<<std::endl;
+      DebugStop();
+    }
+  }
+  
   sd.custom_periodic_bcs_3d = data.value("periodic_bcs_3d",
                                          std::map<std::string,std::string>{});
   sd.custom_periodic_bcs_port_in = data.value("periodic_bcs_port_in",
@@ -2188,4 +2268,34 @@ void FindPeriodicBoundaries(const TPZVec<std::map<std::string, int>> &gmshmats,
       DebugStop();
     }
   }
+}
+//!Reads csv file containing refractive index and interpolates it for wl (we read n-jk)
+CSTATE ComputeFromCSV(const std::string &name, STATE wl){
+  //we have tested already, file exists
+  rapidcsv::Document doc(name, rapidcsv::LabelParams(-1, -1),rapidcsv::SeparatorParams(' '));
+  auto wlvec = doc.GetColumn<STATE>(0);
+  auto nvec = doc.GetColumn<STATE>(1);
+  auto kvec = doc.GetColumn<STATE>(2);
+  const auto nwl = wlvec.size();
+  auto wlpos = std::lower_bound(wlvec.begin(),wlvec.end(),wl) - wlvec.begin();
+  if(wlpos == 0 || wlpos == nwl){
+    //we go back one position
+    if(wlpos == nwl) wlpos--;
+    //tolerance
+    if(std::abs(wlvec[wlpos]-wl) < 1e-3){
+      const CSTATE n {doc.GetCell<STATE>(wlpos,1),doc.GetCell<STATE> (wlpos,2)};
+      return n;
+    }else{
+      PZError<<__PRETTY_FUNCTION__
+             <<"\nInvalid range for wl "<<wl
+             <<"\nMinimum wavelength in file "<<name<<" is "<<wlvec[wlpos]<<std::endl;
+      DebugStop();
+    }
+  }
+  const auto wl1 = wlvec[wlpos-1];
+  const CSTATE n1 {nvec[wlpos-1],-kvec[wlpos-1]};
+  const auto wl2 = wlvec[wlpos];
+  const CSTATE n2 {nvec[wlpos],-kvec[wlpos]};
+  const CSTATE n = n1 + (wl-wl1)*(n2-n1)/(wl2-wl1);
+  return n;
 }
