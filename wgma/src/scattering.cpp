@@ -2,6 +2,7 @@
 #include "cmeshtools.hpp"
 #include "gmeshtools.hpp"
 #include "cmeshtools_impl.hpp"
+#include "materials/scattcurrentsrc.hpp"
 
 #include <TPZSpStructMatrix.h>
 #include <TPZSSpStructMatrix.h>
@@ -1083,6 +1084,201 @@ namespace wgma::scattering{
     return scatt_cmesh;
   }
 
+  TPZAutoPointer<TPZCompMesh>
+  CMeshScattering3DPeriodicVolSource(TPZAutoPointer<TPZGeoMesh> gmesh,
+                                     int pOrder,
+                                     wgma::cmeshtools::PhysicalData &data,
+                                     const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
+                                     const std::set<int> src_id_set,
+                                     const STATE lambda, const REAL scale,
+                                     const bool verbose,
+                                     const bool condense)
+  {
+    static constexpr bool isComplex{true};
+    static constexpr int dim{3};
+    TPZAutoPointer<TPZCompMesh> scatt_cmesh = nullptr;
+    {
+      TPZSimpleTimer tscatt("Init");
+      scatt_cmesh = new TPZCompMesh(gmesh,isComplex);
+    }
+    scatt_cmesh->SetDimModel(dim);
+
+    const int nvolmats = data.matinfovec.size();
+    //all mats (so TPZCompMesh::AutoBuild doesnt break on periodic meshes)
+    std::set<int> allmats;
+    //volumetric mats
+    std::set<int> volmats;
+    //volumetric mats - pml
+    std::set<int> realvolmats;
+    //we keep track of PML neighbours because we might need it for sources
+    std::map<int,int> pml_neighs;
+
+    {
+      TPZSimpleTimer t("Matdata");
+      if(verbose && data.matinfovec.size()){std::cout<<"VOLMATS:"<<std::endl;}
+      for(auto [id,er,ur] : data.matinfovec){
+        //mat sources will be created afterwards
+        if(src_id_set.count(id)){continue;}
+        auto *mat =  new TPZScattering(id,er,ur,lambda,scale);
+        scatt_cmesh->InsertMaterialObject(mat);
+        if(verbose){
+          std::cout<<"\tid "<<id<<" er "<<er<<" ur "<<ur<<std::endl;
+        }
+        //for pml
+        realvolmats.insert(id);
+      }
+
+    //volumetric mats
+    volmats = realvolmats;
+
+    {
+      TPZSimpleTimer t("PML");
+      if(verbose && data.pmlvec.size()){std::cout<<"PMLs:"<<std::endl;}
+      for(auto pml : data.pmlvec){
+        //skip PMLs of other dimensions
+        if(pml->dim != scatt_cmesh->Dimension()){continue;}
+        auto cart_pml = TPZAutoPointerDynamicCast<wgma::pml::cart::data>(pml);
+        auto cyl_pml = TPZAutoPointerDynamicCast<wgma::pml::cyl::data>(pml);
+        if(cart_pml){
+          cart_pml->neigh =
+            cmeshtools::AddRectangularPMLRegion<TPZScattering>(*cart_pml, realvolmats, gmesh, scatt_cmesh);
+          if(verbose){
+            std::cout<<"\tid:";
+            for(auto [id,neigh]: pml->neigh){std::cout<<' '<<id<<"("<<neigh<<") ";}
+            std::cout<<"type  "<<wgma::pml::cart::to_string(cart_pml->t)
+                     <<" ax "<<cart_pml->alphax
+                     <<" ay "<<cart_pml->alphay
+                     <<" az "<<cart_pml->alphaz
+                     <<std::endl;
+          }
+        }else if (cyl_pml){
+          cyl_pml->neigh =
+            cmeshtools::AddCylindricalPMLRegion<TPZScattering>(*cyl_pml, realvolmats, gmesh, scatt_cmesh);
+          if(verbose){
+            std::cout<<"\tid(neigh):";
+            for(auto [id,neigh]: pml->neigh){std::cout<<' '<<id<<"("<<neigh<<") ";}
+            std::cout<<"type  "<<wgma::pml::cyl::to_string(cyl_pml->t)
+                     <<" ar "<<cyl_pml->alphar
+                     <<" az "<<cyl_pml->alphaz
+                     <<std::endl;
+          }
+        }else{
+          DebugStop();
+        }
+        for(auto [id, _] : pml->neigh){
+          volmats.insert(id);
+        }
+      }
+    }
+
+    allmats = volmats;
+
+    if(verbose && data.probevec.size()){std::cout<<"PROBES:"<<std::endl;}
+    for(auto [id,matdim] : data.probevec){
+      static constexpr int nstate{1};
+      auto *mat = new TPZNullMaterial<CSTATE>(id,matdim,nstate);
+      scatt_cmesh->InsertMaterialObject(mat);
+      allmats.insert(id);
+      if(verbose){
+        std::cout<<"\t id "<<id<<" dim "<<matdim<<std::endl;
+      }
+    }
+
+    }
+    TPZFNMatrix<1, CSTATE> val1(1, 1, 0);
+    TPZManVector<CSTATE,1> val2(1, 0.);
+
+    /**let us associate each boundary with a given material.
+       this is important for the source boundary*/
+    {
+      TPZSimpleTimer tscatt("find bc neigh");
+      if(verbose){std::cout<<"BC:"<<std::endl;}
+      for(auto &bc : data.bcvec){
+        auto res = wgma::gmeshtools::FindBCNeighbourMat(gmesh, bc.id, volmats);
+        if(!res.has_value()){
+          std::cout<<__PRETTY_FUNCTION__
+                   <<"\nwarning: could not find neighbour of bc "<<bc.id<<std::endl;
+        }
+        bc.volid = res.value();
+        const int bctype = wgma::bc::to_int(bc.t);
+        const int id = bc.id;
+        const int volmatid = bc.volid;
+        auto *volmat =
+          dynamic_cast<TPZMaterialT<CSTATE>*> (scatt_cmesh->FindMaterial(volmatid));
+        auto *bcmat = volmat->CreateBC(volmat, id, bctype, val1, val2);
+        scatt_cmesh->InsertMaterialObject(bcmat);
+        if(verbose){
+          std::cout<<"\tid "<<id<<" bctype "<<wgma::bc::to_string(bc.t)
+                   <<" neigh "<<volmatid<<std::endl;
+        }
+        allmats.insert(id);
+      }
+      
+    }
+    scatt_cmesh->SetAllCreateFunctionsHCurl();
+    scatt_cmesh->SetDefaultOrder(pOrder);
+
+    {
+      TPZSimpleTimer tscatt("AutoBuild1");
+      scatt_cmesh->AutoBuild(allmats);
+      // scatt_cmesh->CleanUpUnconnectedNodes();
+    }
+
+
+    //whether a source material has been created
+    std::set<int> src_mats;
+    //we insert all the materials in the computational mesh
+    {
+      if(verbose && src_id_set.size()){std::cout<<"SOURCES:"<<std::endl;}
+      TPZSimpleTimer tscatt("SrcMats");
+      for(auto src_id : src_id_set){
+        bool found = false;
+        for(auto [id,er,ur] : data.matinfovec){
+          if(id == src_id){
+            auto srcMat = new materials::ScattCurrentSrc(src_id,er,ur,lambda,scale);
+            scatt_cmesh->InsertMaterialObject(srcMat);
+            if(verbose){
+              std::cout<<"\tsrc id : "<<src_id<<std::endl;
+            }
+            src_mats.insert(src_id);
+            found=true;
+            break;
+          }
+        }
+        if(!found){
+           std::cout<<"source "<<src_id<<" could not be found"<<std::endl;
+          DebugStop();
+        }
+      }
+    }
+    if(src_mats.size() > 0){
+      TPZSimpleTimer tscatt("AutoBuild2");
+      //now we insert the proper material
+      scatt_cmesh->SetAllCreateFunctionsHCurlWithMem();
+      //we want different memory areas for each integration point
+      gSinglePointMemory = false;
+      //create computational elements with memory for the source
+      scatt_cmesh->AutoBuild(src_mats);
+    }
+
+    for(auto periodic_els : el_map){
+      wgma::cmeshtools::SetPeriodic(scatt_cmesh,periodic_els);
+    }
+
+    if(condense){
+      //this will already call cleanup unconnected nodes
+      TPZCompMeshTools::CreatedCondensedElements(scatt_cmesh.operator->(),
+                                                 false, false);
+    }else{
+      std::cout<<"This mesh won't condense internal dofs!\n"
+               <<"Is this on purpose?"<<std::endl;
+      scatt_cmesh->ComputeNodElCon();
+      scatt_cmesh->CleanUpUnconnectedNodes();
+      scatt_cmesh->ExpandSolution();
+    } 
+    return scatt_cmesh;
+  }
+  
   void
   SetPropagationConstant(TPZAutoPointer<TPZCompMesh> cmesh,
                          const CSTATE beta)

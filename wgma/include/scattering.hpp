@@ -240,6 +240,52 @@ Usually the source will be the result of a previously computed modal analysis.
   }
 
   /**
+     @brief Creates the computational mesh used for the scattering analysis in 3D.
+     The source is a volumetric source.
+     The mesh will be a Hcurl conforming approximation space and it will approximate
+     the electric field.
+     @param[in] gmesh geometrical mesh
+     @param[in] pOrder polynomial order
+     @param[in] data information regarding domain's regions
+     @param[in] source_ids contains the ids of the excitation source regions
+     @param[in] lambda operational wavelength
+     @param[in] scale geometric scaling (characteristic length) for better floating point precision
+  */
+  TPZAutoPointer<TPZCompMesh>
+  CMeshScattering3DPeriodicVolSource(TPZAutoPointer<TPZGeoMesh> gmesh,
+                                     int pOrder,
+                                     cmeshtools::PhysicalData &data,
+                                     const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &el_map,
+                                     const std::set<int> source_ids,
+                                     const STATE lambda, const REAL scale,
+                                     const bool verbose=false,
+                                     const bool condense=true);
+  
+  /**
+     @brief Creates the computational mesh used for the scattering analysis in 3D.
+     The source is a volumetric source.
+     The mesh will be a Hcurl conforming approximation space and it will approximate
+     the electric field.
+     @param[in] gmesh geometrical mesh
+     @param[in] pOrder polynomial order
+     @param[in] data information regarding domain's regions
+     @param[in] source_ids contains the ids of the excitation source regions
+     @param[in] lambda operational wavelength
+     @param[in] scale geometric scaling (characteristic length) for better floating point precision
+  */
+  TPZAutoPointer<TPZCompMesh>
+  CMeshScattering3DVolSource(TPZAutoPointer<TPZGeoMesh> gmesh,
+                    int pOrder,
+                    cmeshtools::PhysicalData &data,
+                    const std::set<int> source_ids,
+                    const STATE lambda, const REAL scale,
+                    const bool verbose=false,
+                    const bool condense = true)
+  {
+    return CMeshScattering3DPeriodicVolSource(gmesh,pOrder,data,{},
+                                              source_ids,lambda,scale,verbose,condense);
+  }
+  /**
      @brief Set the propagation constant value for the source of the scattering analysis.
      @tparam[in] type of the material corresponding to the source
      @param[in] cmesh computational mesh of the scattering problem
