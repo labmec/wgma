@@ -1328,9 +1328,14 @@ void AdjustRefinedEdges(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
 void AdjustBlendEls(TPZAutoPointer<TPZCompMesh> scatt_mesh);
 
+void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
+                            TPZAutoPointer<TPZCompMesh> pump_mesh,
+                            TPZAutoPointer<TPZCompMesh> sign_mesh,
+                            const std::set<int> &pol_mats);
 #include "TPZCompMeshTools.h"
 #include "pzsubcmesh.h"
 #include "pzinterpolationspace.h"
+#include "TPZMultiphysicsCompMesh.h"
 
 #include "materials/scattcurrentsrc.hpp"
 
@@ -1963,7 +1968,90 @@ void AdjustBlendEls(TPZAutoPointer<TPZCompMesh> scatt_mesh){
   }
 }
 
+void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
+                            TPZAutoPointer<TPZCompMesh> pump_mesh,
+                            TPZAutoPointer<TPZCompMesh> sign_mesh,
+                            const std::set<int> &src_id_set)
+{
+  TPZAutoPointer<TPZGeoMesh> gmesh = scatt_mesh->Reference();
 
+  constexpr bool is_cplx{true};
+  //first we create the multiphysics mesh
+  TPZAutoPointer<TPZMultiphysicsCompMesh> mfmesh =
+    new TPZMultiphysicsCompMesh(gmesh,is_cplx);
+
+  {
+    TPZVec<TPZCompMesh*> meshvec = {pump_mesh.operator->(),sign_mesh.operator->()};
+    TPZVec<int> activevec = {1,1};
+    mfmesh->SetMeshVectorAndActiveSpaces(meshvec,activevec);
+    mfmesh->SetAllCreateFunctionsMultiphysicElem();
+    mfmesh->TPZCompMesh::AutoBuild(src_id_set);
+  }
+  mfmesh->LoadSolutionFromMeshes();
+  gmesh->ResetReference();
+  //the geometric mesh now points back to the scattering mesh
+  mfmesh->LoadReferences();
+  
+  TPZVec<int64_t> mem_indices;
+  for(auto cel : scatt_mesh->ElementVec()){
+    //check if material is source mat
+    const auto has_src = src_id_set.count(cel->Material()->Id());
+    if(!has_src){continue;}
+      
+    auto mat =
+      dynamic_cast<wgma::materials::ScattCurrentSrc*>(cel->Material());
+      
+    if(!mat){
+      DebugStop();
+    }
+
+    //get integration rule
+    auto &intrule = cel->GetIntegrationRule();
+    //get memory indices (indices for all integration points)
+    cel->GetMemoryIndices(mem_indices);
+    //just to make sure
+    if(intrule.NPoints() != mem_indices.size()){
+      DebugStop();
+    }
+
+    auto gel = cel->Reference();
+    //multiphysics element
+    auto mfcel =
+      dynamic_cast<TPZMultiphysicsElement *>(gel->Reference());
+    if(!mfcel){
+      DebugStop();
+    }
+    TPZVec<TPZMaterialDataT<CSTATE>> datavec;
+    
+    mfcel->InitMaterialData(datavec);
+
+    TPZManVector<REAL,3> pt_qsi(intrule.Dimension());
+    REAL w{0};
+    //number of integration points
+    const auto npts = mem_indices.size();
+    for(auto ipt = 0; ipt < npts; ipt++){
+        intrule.Point(ipt, pt_qsi, w);
+        
+        for(auto &data : datavec){data.fNeedsSol = true;}
+        TPZManVector<TPZTransform<> > trvec;
+        mfcel->AffineTransform(trvec);
+        mfcel->ComputeRequiredData(pt_qsi, trvec, datavec);
+        wgma::materials::CurrentSource3D ptsol;
+        //x (for debugging)
+        ptsol.x = datavec[0].x;
+        //sol
+        ptsol.j.Resize(3,1);
+        ptsol.j(0,0) = datavec[0].sol[0][0]+datavec[1].sol[0][0];
+        ptsol.j(1,0) = datavec[0].sol[0][0]+datavec[1].sol[0][1];
+        ptsol.j(2,0) = datavec[0].sol[0][0]+datavec[1].sol[0][2];
+        
+        (*(mat->GetMemory()))[mem_indices[ipt]] = ptsol;
+      }
+  }
+  gmesh->ResetReference();
+  //the geometric mesh now points back to the scattering mesh
+  scatt_mesh->LoadReferences();
+}
 wgma::cmeshtools::PhysicalData
 FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
                          const SimData& simdata,
