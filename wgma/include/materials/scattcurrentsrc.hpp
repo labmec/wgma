@@ -40,10 +40,12 @@ namespace wgma::materials{
   public:
     //! All constructors from base class shall be available
     using TPZScattering::TPZScattering;
-    //! Contribution to the MATRIX ONLY at the integration point
+    //! Contribution to the matrix and rhs at the integration point
     void Contribute(const TPZMaterialDataT<CSTATE> &data, REAL weight,
                     TPZFMatrix<CSTATE> &ek, TPZFMatrix<CSTATE> &ef) override {
       TPZScattering::Contribute(data,weight,ek,ef);
+      //now the rhs
+      Contribute(data,weight,ef);
     }
     
     //! Contribution to the rhs at the integration point
