@@ -1331,7 +1331,8 @@ void AdjustBlendEls(TPZAutoPointer<TPZCompMesh> scatt_mesh);
 void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                             TPZAutoPointer<TPZCompMesh> pump_mesh,
                             TPZAutoPointer<TPZCompMesh> sign_mesh,
-                            const std::set<int> &pol_mats);
+                            const std::set<int> &pol_mats,
+                            const STATE wavelength);
 #include "TPZCompMeshTools.h"
 #include "pzsubcmesh.h"
 #include "pzinterpolationspace.h"
@@ -1668,8 +1669,9 @@ SolveSFG(TPZAutoPointer<TPZGeoMesh> gmesh,
   }
 
 
-  // //now we need to load the polarisation in the memory
-  // LoadPolarisationSource(scatt_mesh_wpbc, pump_data->cmesh,sign_data->cmesh, polarisation_mats);
+  //now we need to load the polarisation in the memory
+  LoadPolarisationSource(scatt_mesh_wpbc, pump_data->cmesh,sign_data->cmesh,
+                         polarisation_mats, simdata.lambda);
   
   /*
     dirichlet boundary connects should not be restricted, otherwise
@@ -1971,7 +1973,8 @@ void AdjustBlendEls(TPZAutoPointer<TPZCompMesh> scatt_mesh){
 void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                             TPZAutoPointer<TPZCompMesh> pump_mesh,
                             TPZAutoPointer<TPZCompMesh> sign_mesh,
-                            const std::set<int> &src_id_set)
+                            const std::set<int> &src_id_set,
+                            const STATE wavelength)
 {
   TPZAutoPointer<TPZGeoMesh> gmesh = scatt_mesh->Reference();
 
@@ -2027,6 +2030,17 @@ void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
     TPZManVector<REAL,3> pt_qsi(intrule.Dimension());
     REAL w{0};
+
+    /*
+          -j w u0 J \cdot F^*
+          J = -j 2 w Pnl (dezert 2022)
+          Pnl_i =  e0 xi Ej Ek (dezert2022)
+          so the resulting source term is:
+          - 2 (k0)^2 xi Ej Ek
+        */
+    constexpr CSTATE xi{200e-12};
+    const CSTATE k0{2*M_PI/wavelength};
+    const CSTATE coeff = -2.0 * k0 * k0 * xi;
     //number of integration points
     const auto npts = mem_indices.size();
     for(auto ipt = 0; ipt < npts; ipt++){
@@ -2041,9 +2055,10 @@ void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
         ptsol.x = datavec[0].x;
         //sol
         ptsol.j.Resize(3,1);
-        ptsol.j(0,0) = datavec[0].sol[0][0]+datavec[1].sol[0][0];
-        ptsol.j(1,0) = datavec[0].sol[0][0]+datavec[1].sol[0][1];
-        ptsol.j(2,0) = datavec[0].sol[0][0]+datavec[1].sol[0][2];
+        
+        ptsol.j(0,0) = coeff * (datavec[0].sol[0][0]+datavec[1].sol[0][0]);
+        ptsol.j(1,0) = coeff * (datavec[0].sol[0][1]+datavec[1].sol[0][1]);
+        ptsol.j(2,0) = coeff * (datavec[0].sol[0][2]+datavec[1].sol[0][2]);
         
         (*(mat->GetMemory()))[mem_indices[ipt]] = ptsol;
       }
