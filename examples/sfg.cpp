@@ -194,19 +194,6 @@ ComputeModalAnalysis(
 std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &modal_mesh,
                                          std::set<int> &all_matids);
 
-void
-SolveSFG(TPZAutoPointer<TPZGeoMesh> gmesh,
-         TPZAutoPointer<ModalData> &src_an,
-         TPZAutoPointer<ModalData> &match_an,
-         TPZAutoPointer<ScattData> &pump_data,
-         TPZAutoPointer<ScattData> &sign_data,
-         const TPZVec<std::map<std::string, int>> &gmshmats,
-         const std::map<int,int> &split_mats,
-         const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
-         SimData &simdata,
-         TPZFMatrix<CSTATE> &last_sol,
-         const int iwl);
-
 TPZAutoPointer<TPZCompMesh>
 SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                 TPZAutoPointer<ModalData> &src_an,
@@ -216,7 +203,10 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                 const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                 SimData &simdata,
                 TPZFMatrix<CSTATE> &last_sol,
-                const int iwl);
+                const int iwl,
+                const bool is_polarisation,
+                TPZAutoPointer<ScattData> pump_data,
+                TPZAutoPointer<ScattData> sign_data);
 
 int main(int argc, char *argv[]) {
 
@@ -258,7 +248,7 @@ int main(int argc, char *argv[]) {
   TPZAutoPointer<TPZGeoMesh> gmesh{nullptr};
   TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> periodic_els;
   {
-    TPZSimpleTimer timer("ReadMesh",true);
+    TPZSimpleTimer timer("ReadMesh");
     TPZAutoPointer<SPZPeriodicData> periodic_data{nullptr};
     gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(simdata.meshfile, simdata.scale,
                                                    gmshmats, periodic_data,
@@ -322,6 +312,7 @@ int main(int argc, char *argv[]) {
     simdata.lambda = wlpump;
     simdata.prefix = orig_prefix +"_pump";
     simdata.source_coeffs = simdata.pump_coeffs;
+    std::cout<<"running pump simulation for wavelength "<<wlpump<<std::endl;
     auto pumpdata = ComputeLinearSimulation(gmesh,gmshmats,periodic_els,
                                             simdata,split_mats, last_sol_pump, ipump);
     for(int isign = 0; isign < nwl_sign; isign++){
@@ -329,10 +320,19 @@ int main(int argc, char *argv[]) {
       simdata.lambda = wlsign;
       simdata.prefix = orig_prefix +"_sign";
       simdata.source_coeffs = simdata.sign_coeffs;
+      std::cout<<"running sign simulation for wavelength "<<wlsign<<std::endl;
       auto signdata = ComputeLinearSimulation(gmesh,gmshmats,periodic_els,
                                               simdata,split_mats, last_sol_sign, isign);
       //now we compute the sfg stuff
+      const int isfg = ipump*nwl_sign + isign;
 
+      const auto wlsfg = 1./(1./wlsign + 1./wlpump);
+      simdata.lambda = wlsfg;
+      simdata.prefix = orig_prefix +"_sfg";
+      simdata.source_coeffs = {};
+      std::cout<<"running sfg simulation for wavelength "<<wlsfg<<std::endl;
+      ComputeSFGSimulation(pumpdata, signdata, gmesh, gmshmats, periodic_els,
+                           simdata, split_mats, last_sol_sfg, isfg);
       //removing restrictions
       auto signmesh = signdata->cmesh;
       wgma::cmeshtools::RemovePeriodicity(signmesh);
@@ -375,6 +375,7 @@ ComputeLinearSimulation(TPZAutoPointer<TPZGeoMesh> gmesh,
                         const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                         SimData &simdata, std::map<int,int> &split_mats,
                         TPZFMatrix<CSTATE> &last_sol, const int iwl){
+  TPZSimpleTimer timer("LinearSimulation",true);
   simdata.refractive_indices = {};
   for(auto [name,func] : simdata.ref_index_map){
     simdata.refractive_indices[name] = func(simdata.lambda);
@@ -434,9 +435,11 @@ ComputeLinearSimulation(TPZAutoPointer<TPZGeoMesh> gmesh,
 
     std::cout<<"split mats"<<std::endl;
   }
-  const auto mesh = SolveScattering(gmesh, modal_an_in,  modal_an_out, gmshmats,
-                                    split_mats,periodic_els, simdata, last_sol, iwl);
-  TPZAutoPointer<ScattData> retval = new  ScattData{mesh,last_sol};
+  constexpr bool is_polarisation{false};
+  auto cmesh = SolveScattering(gmesh, modal_an_in,  modal_an_out, gmshmats,
+                               split_mats,periodic_els, simdata, last_sol, iwl,
+                               is_polarisation, nullptr, nullptr);
+  TPZAutoPointer<ScattData> retval = new  ScattData{cmesh,last_sol};
   return retval;
 }
 
@@ -448,6 +451,9 @@ void ComputeSFGSimulation(
   const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
   SimData &simdata, std::map<int,int> &split_mats,
   TPZFMatrix<CSTATE> &last_sol, const int iwl){
+
+  TPZSimpleTimer timer("SFGSimulation",true);
+  
   simdata.refractive_indices = {};
   for(auto [name,func] : simdata.ref_index_map){
     simdata.refractive_indices[name] = func(simdata.lambda);
@@ -478,10 +484,15 @@ void ComputeSFGSimulation(
                                           simdata.max_k_out,"_port_out");
     }
   }
-  
-  SolveSFG(gmesh, modal_an_in,  modal_an_out,
-           pump_data, sign_data, gmshmats,
-           split_mats,periodic_els, simdata, last_sol, iwl);
+
+  constexpr bool is_polarisation{true};
+  auto cmesh = SolveScattering(gmesh, modal_an_in, modal_an_out, gmshmats,
+                               split_mats,periodic_els, simdata, last_sol, iwl,
+                               is_polarisation, pump_data, sign_data);
+
+  wgma::cmeshtools::RemovePeriodicity(cmesh);
+  cmesh->ComputeNodElCon();
+  cmesh->CleanUpUnconnectedNodes();
 }
 
 //!Reads csv file containing refractive index and interpolates it for wl
@@ -785,7 +796,7 @@ void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh
                          const REAL scale)
 {
 
-  TPZSimpleTimer("Replacing curved els",true);
+  TPZSimpleTimer("Replacing curved els");
   //useful lambda for reading csv file
   auto getNextLineAndSplitIntoTokens =
     [](std::istream &str) -> std::vector<std::string> {
@@ -937,14 +948,14 @@ ComputePlaneWaveSolutions(
   const std::string &suffix)
 {
 
-  TPZSimpleTimer analysis("Plane Wave Solutions",true);
+  TPZSimpleTimer analysis("Plane Wave Solutions");
   auto modal_data =
     FillDataForModalAnalysis(gmshmats,simdata,mats,suffix);
   
   const auto &p_order = simdata.porder;
   const auto &lambda = simdata.lambda;
   const auto &scale = simdata.scale;
-  const bool verbose = true;//simdata.eigen_verbose;
+  const bool verbose = simdata.eigen_verbose;
 
   //now we find the coordinates of the boundaries
   REAL xMin{0},xMax{0},yMin{0},yMax{0},zMin{0},zMax{0};
@@ -984,8 +995,6 @@ ComputePlaneWaveSolutions(
   an->LoadSolution();
 
   TPZVec<CSTATE> betavec = an->GetEigenvalues();
-  
-  TPZSimpleTimer timer("Normalise");
   //now we normalise them
   auto cmesh = an->GetMesh();
   //leave empty for all valid matids
@@ -1021,7 +1030,7 @@ ComputeModalAnalysis(
   const std::string &suffix)
 {
 
-  TPZSimpleTimer analysis("Modal analysis",true);
+  TPZSimpleTimer analysis("Modal analysis");
   auto modal_data =
     FillDataForModalAnalysis(gmshmats,simdata,mats,suffix);
 
@@ -1137,13 +1146,11 @@ ComputeModalAnalysis(
     now we transform back the solutions
   */
   {
-    TPZSimpleTimer timer("TransformModes");
     TransformModes(*an);
     // if constexpr (changing_beta){
     //   TransformModes2(*an, reversed_modes);
     // }
-  }
-  TPZSimpleTimer timer("Normalise");
+  }  
   //now we normalise them
   auto cmesh = an->GetMesh();
   //leave empty for all valid matids
@@ -1328,6 +1335,10 @@ void AdjustRefinedEdges(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
 void AdjustBlendEls(TPZAutoPointer<TPZCompMesh> scatt_mesh);
 
+void AdjustMemoryPts(TPZAutoPointer<TPZCompMesh> scatt_mesh);
+
+void CondenseElsKeepMatrix(TPZCompMesh *cmesh, std::set<int> mat_keep_matrix = {});
+
 void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                             TPZAutoPointer<TPZCompMesh> pump_mesh,
                             TPZAutoPointer<TPZCompMesh> sign_mesh,
@@ -1337,6 +1348,8 @@ void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 #include "pzsubcmesh.h"
 #include "pzinterpolationspace.h"
 #include "TPZMultiphysicsCompMesh.h"
+#include <pzcondensedcompel.h>
+#include <TPZNullMaterialCS.h>
 
 #include "materials/scattcurrentsrc.hpp"
 
@@ -1349,7 +1362,11 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                 const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                 SimData &simdata,
                 TPZFMatrix<CSTATE> &last_sol,
-                const int iwl)
+                const int iwl,
+                const bool is_polarisation,
+                TPZAutoPointer<ScattData> pump_data,
+                TPZAutoPointer<ScattData> sign_data
+                )
 {
   /*********************
    * solve(scattering) *  
@@ -1365,6 +1382,7 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     this vector contains the coefficients of such combination
   */
   TPZVec<CSTATE> src_coeffs(nmodes_left,0);
+  if(simdata.source_coeffs.size() == 0){src_coeffs.resize(0);}
   for(auto [i, alpha] : simdata.source_coeffs){
     if(i >= src_coeffs.size()){
       std::cout<<"ERROR: src coefficient bigger than computed number of modes\n"
@@ -1383,27 +1401,44 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     "Material"};
   
   
-
-  std::set<int> mats_near_wpbc;
-  TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc =
-    CreateScattMesh(gmesh,gmshmats,split_mats,mats_near_wpbc,simdata,periodic_els, {});
-
-  //first we increase the polynomial order wherever needed
-  if(simdata.p_regions.size()){
-    AdjustPOrder(scatt_mesh_wpbc, gmshmats, simdata.p_regions);
+  std::set<int> polarisation_mats = {};
+  if(is_polarisation){
+    //all vol materials
+    auto matmap = gmshmats[3];
+    //if empty, we will post-process everywhere
+    for(auto mat : simdata.polarisation_regions){
+      polarisation_mats.insert(matmap.at(mat));
+    }
   }
-  //now we reduce the polynomial order on refined edges
   
-  if(simdata.h_regions.size()){
-      AdjustRefinedEdges(scatt_mesh_wpbc,gmshmats,simdata.h_regions);
-  }
+  std::set<int> mats_near_wpbc;
+  TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc = nullptr;
+  {
+    TPZSimpleTimer timer("SetupMesh");
+    scatt_mesh_wpbc = CreateScattMesh(gmesh,gmshmats,split_mats,
+                                      mats_near_wpbc, simdata,
+                                      periodic_els, polarisation_mats);
 
-  AdjustBlendEls(scatt_mesh_wpbc);
-    
-  TPZCompMeshTools::CreatedCondensedElements(scatt_mesh_wpbc.operator->(),
-                                             false, false);
-  const std::string suffix = "wpbc";
-  const std::string scatt_file = simdata.prefix+"_scatt"+suffix;
+    //first we increase the polynomial order wherever needed
+    if(simdata.p_regions.size()){
+      AdjustPOrder(scatt_mesh_wpbc, gmshmats, simdata.p_regions);
+    }
+    //now we reduce the polynomial order on refined edges
+  
+    if(simdata.h_regions.size()){
+      AdjustRefinedEdges(scatt_mesh_wpbc,gmshmats,simdata.h_regions);
+    }
+
+    AdjustBlendEls(scatt_mesh_wpbc);
+
+    //now we need to adjust any material with memory
+    AdjustMemoryPts(scatt_mesh_wpbc);
+
+    //not working for now
+    CondenseElsKeepMatrix(scatt_mesh_wpbc.operator->(), {});
+    // CondenseElsKeepMatrix(scatt_mesh_wpbc.operator->(), polarisation_mats);
+  }
+  const std::string scatt_file = simdata.prefix+"_scatt";
   auto vtk = TPZVTKGenerator(scatt_mesh_wpbc, fvars_3d, scatt_file, simdata.vtk_res,3,true);
   vtk.SetNThreads(simdata.n_threads);
   
@@ -1414,7 +1449,7 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   WpbcData match_data;
 
   {
-    TPZSimpleTimer timer("wpbc coeffs",true);
+    TPZSimpleTimer timer("wpbc coeffs");
     src_data.cmesh = src_an->cmesh_hcurl;
     ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
                       src_data.wgbc_f, false, src_coeffs,
@@ -1443,6 +1478,11 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     }
   }
 
+  if(is_polarisation){
+    //now we need to load the polarisation in the memory
+    LoadPolarisationSource(scatt_mesh_wpbc, pump_data->cmesh,sign_data->cmesh,
+                           polarisation_mats, simdata.lambda);
+  }
 
   /*
     dirichlet boundary connects should not be restricted, otherwise
@@ -1456,7 +1496,7 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   //eq num for obtaining reflection and transmittivity
   int64_t refl_pos{-1},trans_pos{-1};
 
-  const std::set<int> polarisation_sources = {};
+  
   const REAL computed_res =
     RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
                          nmodes_left,nmodes_right,
@@ -1464,7 +1504,7 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                          last_sol,
                          refl_pos,
                          trans_pos,
-                         polarisation_sources
+                         polarisation_mats
                          );
   //plot
   if(simdata.export_vtk_scatt){vtk.Do();}
@@ -1474,7 +1514,10 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     
   {
     //for now we assume they are sequential
-    const int nm = simdata.source_coeffs.size();
+    const int nm = 2;
+    if(src_coeffs.size() == 0){
+      src_coeffs.Resize(nm);
+    }
     std::cout<<"wavelength: "<<simdata.lambda;
     for(int i = 0; i < nm; i++){
       const auto s11 = sol.GetVal(refl_pos+i,0)-src_coeffs[i];
@@ -1565,236 +1608,6 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   wgma::cmeshtools::RemovePeriodicity(src_data.cmesh);
   if(match_data.cmesh){wgma::cmeshtools::RemovePeriodicity(match_data.cmesh);}
   return scatt_mesh_wpbc;
-}
-
-void
-SolveSFG(TPZAutoPointer<TPZGeoMesh> gmesh,
-         TPZAutoPointer<ModalData> &src_an,
-         TPZAutoPointer<ModalData> &match_an,
-         TPZAutoPointer<ScattData> &pump_data,
-         TPZAutoPointer<ScattData> &sign_data,
-         const TPZVec<std::map<std::string, int>> &gmshmats,
-         const std::map<int,int> &split_mats,
-         const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
-         SimData &simdata,
-         TPZFMatrix<CSTATE> &last_sol,
-         const int iwl)
-{
-  /*********************
-   * solve(scattering) *  
-   *********************/  
-  TPZSimpleTimer tscatt("Scattering");
-
-  const auto nmodes_left = src_an->cmesh_mf->Solution().Cols();
-  //maybe we have dirichlet on the out boundary?
-  const auto nmodes_right =
-    match_an ? match_an->cmesh_mf->Solution().Cols() : 0;
-
-
-  //set up post processing
-  TPZVec<std::string> fvars_3d = {
-    "Field_real",
-    "Field_imag",
-    "Field_abs",
-    "Material"};
-  
-  
-
-  std::set<int> polarisation_mats;
-  //all vol materials
-  auto matmap = gmshmats[3];
-  //if empty, we will post-process everywhere
-  for(auto mat : simdata.polarisation_regions){
-    polarisation_mats.insert(matmap.at(mat));
-  }
-      
-  std::set<int> mats_near_wpbc;
-  TPZAutoPointer<TPZCompMesh> scatt_mesh_wpbc =
-    CreateScattMesh(gmesh,gmshmats,split_mats,mats_near_wpbc,
-                    simdata,periodic_els, polarisation_mats);
-
-  //first we increase the polynomial order wherever needed
-  if(simdata.p_regions.size()){
-    AdjustPOrder(scatt_mesh_wpbc, gmshmats, simdata.p_regions);
-  }
-  //now we reduce the polynomial order on refined edges
-  
-  if(simdata.h_regions.size()){
-      AdjustRefinedEdges(scatt_mesh_wpbc,gmshmats,simdata.h_regions);
-  }
-
-  AdjustBlendEls(scatt_mesh_wpbc);
-    
-  TPZCompMeshTools::CreatedCondensedElements(scatt_mesh_wpbc.operator->(),
-                                             false, false);
-  const std::string suffix = "wpbc";
-  const std::string scatt_file = simdata.prefix+"_scatt"+suffix;
-  auto vtk = TPZVTKGenerator(scatt_mesh_wpbc, fvars_3d, scatt_file, simdata.vtk_res,3,true);
-  vtk.SetNThreads(simdata.n_threads);
-  
-
-  
-  //compute wgbc coefficients
-  WpbcData src_data;
-  WpbcData match_data;
-
-  {
-    TPZSimpleTimer timer("wpbc coeffs",true);
-    src_data.cmesh = src_an->cmesh_hcurl;
-    ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
-                      src_data.wgbc_f, false, {},
-                      simdata.n_threads);
-
-    //only hcurl mesh is needed from now on, we can delete the  analysis object
-    {
-      auto h1mesh = src_an->cmesh_h1;
-      auto mfmesh = src_an->cmesh_mf;
-      wgma::cmeshtools::RemovePeriodicity(h1mesh);
-      wgma::cmeshtools::RemovePeriodicity(mfmesh);
-      src_an=nullptr;
-    }
-    
-    
-    if(match_an){
-      match_data.cmesh = match_an->cmesh_hcurl;
-      ComputeWpbcCoeffs(match_an, match_data.wgbc_k,
-                      match_data.wgbc_f,true, {},
-                      simdata.n_threads);
-      auto h1mesh = match_an->cmesh_h1;
-      auto mfmesh = match_an->cmesh_mf;
-      wgma::cmeshtools::RemovePeriodicity(h1mesh);
-      wgma::cmeshtools::RemovePeriodicity(mfmesh);
-      match_an=nullptr;
-    }
-  }
-
-
-  //now we need to load the polarisation in the memory
-  LoadPolarisationSource(scatt_mesh_wpbc, pump_data->cmesh,sign_data->cmesh,
-                         polarisation_mats, simdata.lambda);
-  
-  /*
-    dirichlet boundary connects should not be restricted, otherwise
-    this will result in all the equations on the same dependency
-    being removed as well
-  */
-  std::set<int64_t> bound_connects_left, bound_connects_right;
-
-  
-  
-  //eq num for obtaining reflection and transmittivity
-  int64_t refl_pos{-1},trans_pos{-1};
-
-  const REAL computed_res =
-    RestrictDofsAndSolve(scatt_mesh_wpbc, src_data, match_data,
-                         nmodes_left,nmodes_right,
-                         mats_near_wpbc,simdata,
-                         last_sol,
-                         refl_pos,
-                         trans_pos,
-                         polarisation_mats
-                         );
-  //plot
-  if(simdata.export_vtk_scatt){vtk.Do();}
-  //get reflection and transmission
-
-  TPZFMatrix<CSTATE> &sol = scatt_mesh_wpbc->Solution();
-    
-  {
-    //for now we assume they are sequential
-    const int nm = 2;
-    std::cout<<"wavelength: "<<simdata.lambda;
-    for(int i = 0; i < nm; i++){
-      const auto s11 = sol.GetVal(refl_pos+i,0);
-      const auto s21 =  trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
-      const auto ref = std::abs(s11)*std::abs(s11);
-      const auto trans = std::abs(s21)*std::abs(s21);
-      std::cout<<" s11 "<<s11
-               <<" ref "<<ref
-               <<" s21 "<<s21
-               <<" trans "<<trans
-               <<" t + r "<<trans+ref<<std::endl;
-    }
-    std::string outputfile = simdata.prefix+"_reflection.csv";
-    std::ofstream ost;
-    ost.open(outputfile, std::ios_base::app);
-    ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
-    ost << simdata.lambda<<',';
-    for(int i = 0; i < nm; i++){
-      const CSTATE s11 = sol.GetVal(refl_pos+i,0);
-      const CSTATE s21 = trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
-      const char s11_sign = s11.imag() > 0 ? '+' : '-';
-      const char s21_sign = s21.imag() > 0 ? '+' : '-';
-      ost <<s11.real()<<s11_sign<<std::abs(s11.imag())<<'j'<<','
-          <<s21.real()<<s21_sign<<std::abs(s21.imag())<<'j'<<',';
-    }
-    //useful for debuggin weird results
-    ost <<computed_res<<std::endl;
-    //now we export the solution at points (if requested)
-    if(simdata.export_sol){
-      using namespace wgma::post;
-      //hcurl in 3d space
-      const int soldim{3};
-      std::set<int> matids;
-
-      //all vol materials
-      auto matmap = gmshmats[3];
-      //if empty, we will post-process everywhere
-      for(auto mat : simdata.export_mats){
-        matids.insert(matmap.at(mat));
-      }
-      
-      
-      auto export_sol = ExportSolution<SingleSpaceIntegrator>(scatt_mesh_wpbc,
-                                                              matids,
-                                                              simdata.n_threads);
-      export_sol.StoreSolutionAtPoints(soldim);
-      //!weight of a given integration point
-      const auto &weightvec = export_sol.GetIntWeightAtPoints();
-      //!solution vector, size = soldim*npts
-      const auto &solvec= export_sol.GetSolutionAtPoints();
-      //!position vector, size = 3*npts
-      const auto &xvec= export_sol.GetCoordinatesAtPoints();
-      
-      const auto nel = solvec.size()/soldim;
-      //stupid checks just to be sure
-      if( (solvec.size() % soldim) != 0 ){
-        DebugStop();
-      }
-      if(weightvec.size() * soldim != solvec.size()){
-        DebugStop();
-      }
-      const auto npts = weightvec.size();
-      std::string outputfile = simdata.prefix+"_sol_"+std::to_string(iwl)+".csv";
-      std::ofstream ost;
-      ost.open(outputfile, std::ios_base::out);
-      ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
-      
-      int64_t solcount{0};
-      for(auto ipt = 0; ipt < npts; ipt++){
-        ost << xvec[ipt*3+0] << ','
-            << xvec[ipt*3+1] << ','
-            << xvec[ipt*3+2] << ',';
-        for(int i = 0; i < soldim; i++){
-          const CSTATE val = solvec[solcount++];
-          const char val_sign = val.imag() > 0 ? '+' : '-';
-          ost <<val.real()<<val_sign<<std::abs(val.imag())<<"j,";
-        }
-        ost << weightvec[ipt] << '\n';
-      }
-    }
-  }
-
-  if(computed_res > simdata.solver_tol){
-    //fall back to direct solver
-    simdata.direct_solver = true;
-  }
-  //they are going to be deleted, so..
-  wgma::cmeshtools::RemovePeriodicity(src_data.cmesh);
-  if(match_data.cmesh){wgma::cmeshtools::RemovePeriodicity(match_data.cmesh);}
-  wgma::cmeshtools::RemovePeriodicity(scatt_mesh_wpbc);
-  scatt_mesh_wpbc->ComputeNodElCon();
-  scatt_mesh_wpbc->CleanUpUnconnectedNodes();
 }
 
 /**
@@ -1965,9 +1778,70 @@ void AdjustBlendEls(TPZAutoPointer<TPZCompMesh> scatt_mesh){
       for(auto &x : ord){x+=3;}
       intrule->SetOrder(ord);
       cel->SetIntegrationRule(intrule);
-        
     }
   }
+}
+
+void AdjustMemoryPts(TPZAutoPointer<TPZCompMesh> scatt_mesh){
+  std::set<int> mem_ids;
+  for(auto [id,mat] : scatt_mesh->MaterialVec()){
+    auto mem_mat = dynamic_cast<TPZMatWithMemBase*>(mat);
+    if(mem_mat){
+      mem_ids.insert(id);
+      mem_mat->ResetMemory();
+    }
+  }
+  if(mem_ids.size() == 0){return;}
+  //must be empty
+  TPZVec<int64_t> mem_indices = {};
+  //now we adjust the integration rule order for blend elements
+  for(auto cel : scatt_mesh->ElementVec()){
+    if(!cel || !cel->Reference()){continue;}
+    auto gel = cel->Reference();
+    const auto matid = gel->MaterialId();
+    if (mem_ids.count(matid) == 0){continue;}
+    auto mem_mat =
+      dynamic_cast<TPZMatWithMemBase*>(scatt_mesh->FindMaterial(matid));
+    const TPZIntPoints &intrule = cel->GetIntegrationRule();
+    const int intrulepoints = intrule.NPoints();
+    cel->SetMemoryIndices(mem_indices);
+    cel->PrepareIntPtIndices();
+  }
+}
+
+void CondenseElsKeepMatrix(TPZCompMesh *cmesh, std::set<int> mat_keep_matrix){
+  //we avoid iterating over the newly inserted elements
+  int64_t nel = cmesh->NElements();
+    
+  for (int64_t el=0; el<nel; el++) {
+    TPZCompEl *cel = cmesh->Element(el);
+    if (!cel) {
+      continue;
+    }
+    int nc = cel->NConnects();
+    int ic;
+    for (ic=0; ic<nc; ic++) {
+      TPZConnect &c = cel->Connect(ic);
+      if (c.HasDependency() || c.NElConnected() > 1) {
+        continue;
+      }
+      break;
+    }
+    bool cancondense = (ic != nc);
+    if(cancondense)
+    {
+      auto matid = cel->Material()->Id();
+      
+      if(mat_keep_matrix.count(matid) == 0){
+        new TPZCondensedCompElT<CSTATE>(cel, false);
+      }else{
+        new TPZCondensedCompElT<CSTATE>(cel, true);
+      }
+    }
+        
+  }
+
+  cmesh->CleanUpUnconnectedNodes();
 }
 
 void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
@@ -1976,7 +1850,7 @@ void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                             const std::set<int> &src_id_set,
                             const STATE wavelength)
 {
-  TPZAutoPointer<TPZGeoMesh> gmesh = scatt_mesh->Reference();
+  auto  *gmesh = scatt_mesh->Reference();
 
   constexpr bool is_cplx{true};
   //first we create the multiphysics mesh
@@ -1984,19 +1858,34 @@ void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     new TPZMultiphysicsCompMesh(gmesh,is_cplx);
 
   {
+    TPZCompMeshTools::UnCondensedElements(pump_mesh.operator->());
+    TPZCompMeshTools::UnCondensedElements(sign_mesh.operator->());
     TPZVec<TPZCompMesh*> meshvec = {pump_mesh.operator->(),sign_mesh.operator->()};
     TPZVec<int> activevec = {1,1};
     mfmesh->SetMeshVectorAndActiveSpaces(meshvec,activevec);
+    for(auto id : src_id_set){
+      constexpr int matdim{3};
+      constexpr int nstate{1};
+      auto *mat = new TPZNullMaterialCS<CSTATE>(id,matdim,nstate);
+      mfmesh->InsertMaterialObject(mat);
+    }
     mfmesh->SetAllCreateFunctionsMultiphysicElem();
-    mfmesh->TPZCompMesh::AutoBuild(src_id_set);
+    mfmesh->AutoBuild(src_id_set);
   }
   mfmesh->LoadSolutionFromMeshes();
   gmesh->ResetReference();
-  //the geometric mesh now points back to the scattering mesh
+  //the geometric mesh now points to the mf mesh
   mfmesh->LoadReferences();
   
   TPZVec<int64_t> mem_indices;
-  for(auto cel : scatt_mesh->ElementVec()){
+  for(auto ocel : scatt_mesh->ElementVec()){
+    if(!ocel){continue;}
+    auto cel = ocel;
+    auto condensed = dynamic_cast<TPZCondensedCompEl*>(ocel);
+    
+    if(condensed){
+      cel = condensed->ReferenceCompEl();
+    }
     //check if material is source mat
     const auto has_src = src_id_set.count(cel->Material()->Id());
     if(!has_src){continue;}
@@ -2024,7 +1913,8 @@ void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     if(!mfcel){
       DebugStop();
     }
-    TPZVec<TPZMaterialDataT<CSTATE>> datavec;
+    constexpr int nmeshes{2};
+    TPZVec<TPZMaterialDataT<CSTATE>> datavec(nmeshes,{});
     
     mfcel->InitMaterialData(datavec);
 
@@ -2038,7 +1928,8 @@ void LoadPolarisationSource(TPZAutoPointer<TPZCompMesh> scatt_mesh,
           so the resulting source term is:
           - 2 (k0)^2 xi Ej Ek
         */
-    constexpr CSTATE xi{200e-12};
+    //200e-12 m/V is 200e-6 um/V
+    constexpr CSTATE xi{200e-6};
     const CSTATE k0{2*M_PI/wavelength};
     const CSTATE coeff = -2.0 * k0 * k0 * xi;
     //number of integration points
@@ -2136,6 +2027,7 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
                 )
 {
 
+  const bool verbose{false};
   const TPZVec<std::string> &mats = simdata.mats_3d;
 
   const auto &pOrder = simdata.porder;
@@ -2159,7 +2051,7 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
   
   if(simdata.custom_periodic_bcs_3d.size()){
     for(auto [dep,indep] : simdata.custom_periodic_bcs_3d){
-      std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;
+      if(verbose) {std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;}
       scatt_bcs[dep] = wgma::bc::type::PERIODIC;
       scatt_bcs[indep] = wgma::bc::type::PERIODIC;
     }
@@ -2168,9 +2060,9 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     FindPeriodicBoundaries(gmshmats,bcdim,"","xm","xp",depbc,indepbc);
     scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
     scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
-    std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;
+    if(verbose) {std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
     FindPeriodicBoundaries(gmshmats,bcdim,"","ym","yp",depbc,indepbc);
-    std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;
+    if(verbose) {std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
     scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
     scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
   }
@@ -2221,7 +2113,6 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
   mats_near_wpbc =
     UpdatePhysicalDataSplittedMats(gmesh, scatt_data, split_mats,
                                    volids, dim);
-  const bool verbose{true};
   //we must not condense since we will change p order
   const bool condense{false};
   TPZAutoPointer<TPZCompMesh> cmesh{nullptr};
@@ -2398,9 +2289,9 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   std::cout<<"nmodes on source boundary: "<<nmodes_src<<std::endl;
   std::cout<<"nmodes on outgoing boundary: "<<nmodes_match<<std::endl;
 
-  //we precomputed it already
-  scatt_an.StructMatrix()->SetComputeRhs(false);
-
+  // // we precomputed it already
+  // scatt_an.StructMatrix()->SetComputeRhs(false);
+  scatt_an.StructMatrix()->SetComputeRhs(true);
   auto strmtrx =
     TPZAutoPointerDynamicCast<TPZSpStructMatrix<CSTATE,
                                                 TPZStructMatrixOMPorTBB<CSTATE>>>(
@@ -2411,9 +2302,9 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     const int bufsz = maxsz*maxsz;
     strmtrx->BufferSizeForUserMatrix(bufsz);
   }
-  TPZSimpleTimer timer("WPBC:Assemble+solve",true);
+  TPZSimpleTimer timer("WPBC:Assemble+solve");
   {
-    TPZSimpleTimer tassemble("Assemble",true);
+    TPZSimpleTimer tassemble("Assemble");
     if(sol_vec.Rows() > 0){
       std::cout<<"running with custom init vec"<<std::endl;
       const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
@@ -2432,9 +2323,10 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
 
     scatt_an.Assemble();
 
-    if(polarisation_sources.size()){
-      scatt_an.AssembleRhs(polarisation_sources);
-    }
+    //not working for now
+    // if(polarisation_sources.size()){
+    //   scatt_an.AssembleRhs(polarisation_sources);
+    // }
   
     //for now we unwrap the groups as they seem to interfere with the solving stage
     if(group){
@@ -2481,7 +2373,9 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   }
 
   {
-    TPZSimpleTimer twpbc("AddWPBC",true);
+    TPZSimpleTimer twpbc("AddWPBC");
+    TPZFMatrix<CSTATE> &rhs = scatt_an.Rhs();
+    auto nrhs = Norm(rhs);
     //now we must add the waveguide port terms
     AddWaveguidePortContribution(scatt_an, indep_con_id_src,
                                  nmodes_src, src_data.wgbc_k, src_data.wgbc_f);
@@ -2489,18 +2383,25 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
       AddWaveguidePortContribution(scatt_an, indep_con_id_match,
                                  nmodes_match, match_data.wgbc_k, match_data.wgbc_f);
     }
+    std::cout<<"RHS norm (before wpbc) is "<<nrhs<<std::endl;
+    nrhs = Norm(rhs);
+    std::cout<<"RHS norm (after wpbc) is  "<<nrhs<<std::endl;
   }
-
   if(!simdata.direct_solver){
     std::set<int64_t> indices = {indep_con_id_src};
     if(match_mesh){indices.insert(indep_con_id_match);}
     int from_current = sol_vec.Rows() > 0 ? 1 : 0;
     SetupPrecond(scatt_an, indices, simdata.solver_tol, from_current);
   }
-  TPZSimpleTimer tsolve("Solve",true);
+  TPZSimpleTimer tsolve("Solve");
   scatt_an.Solve();
   auto sol = scatt_an.Solution();
   const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
+
+  // const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
+  // auto sol = scatt_an.Solution();
+  // sol.Resize(eqfilt.NEqExpand(),1);
+  
   if(eqfilt.IsActive()){
     const auto neq = eqfilt.NActiveEquations();
     sol_vec.Resize(neq,1);
@@ -2628,7 +2529,7 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                   const std::set<int64_t> &indep_cons,
                   const REAL tol,
                   int from_current) {
-  TPZSimpleTimer solve("SetupPrecond", true);
+  TPZSimpleTimer solve("SetupPrecond");
       
   auto &solver = dynamic_cast<TPZStepSolver<CSTATE>&>(scatt_an.GetSolver());
 
