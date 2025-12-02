@@ -737,7 +737,6 @@ BlockPrecond::UpdateFrom(TPZAutoPointer<TPZBaseMatrix> ref_base)
     }
 
     std::atomic<int> blcount{0};
-    std::cout<<__PRETTY_FUNCTION__;
     std::cout<<"\nDecomposing sparse blocks ..."<<std::endl;
     //first we decompose sparse blocks
     for(auto ibl = 0; ibl < nbl; ibl++){
