@@ -207,7 +207,7 @@ int main(int argc, char *argv[]) {
   TPZAutoPointer<TPZGeoMesh> gmesh{nullptr};
   TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> periodic_els;
   {
-    TPZSimpleTimer timer("ReadMesh",true);
+    TPZSimpleTimer timer("ReadMesh");
     TPZAutoPointer<SPZPeriodicData> periodic_data{nullptr};
     gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(simdata.meshfile, simdata.scale,
                                                    gmshmats, periodic_data,
@@ -264,6 +264,7 @@ int main(int argc, char *argv[]) {
   //number of wavelength points
   const int nwl_pts = simdata.wl_vec.size();
   for(int iwl = 0; iwl < nwl_pts; iwl++){
+    TPZSimpleTimer timer("Total",true);
     auto timer_begin = std::chrono::high_resolution_clock::now();
     simdata.lambda = simdata.wl_vec[iwl];
     simdata.refractive_indices = {};
@@ -668,7 +669,7 @@ void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh
                          const REAL scale)
 {
 
-  TPZSimpleTimer("Replacing curved els",true);
+  TPZSimpleTimer("Replacing curved els");
   //useful lambda for reading csv file
   auto getNextLineAndSplitIntoTokens =
     [](std::istream &str) -> std::vector<std::string> {
@@ -820,14 +821,14 @@ ComputePlaneWaveSolutions(
   const std::string &suffix)
 {
 
-  TPZSimpleTimer analysis("Plane Wave Solutions",true);
+  TPZSimpleTimer analysis("Plane Wave Solutions");
   auto modal_data =
     FillDataForModalAnalysis(gmshmats,simdata,mats,suffix);
   
   const auto &p_order = simdata.porder;
   const auto &lambda = simdata.lambda;
   const auto &scale = simdata.scale;
-  const bool verbose = true;//simdata.eigen_verbose;
+  const bool verbose = simdata.eigen_verbose;
 
   //now we find the coordinates of the boundaries
   REAL xMin{0},xMax{0},yMin{0},yMax{0},zMin{0},zMax{0};
@@ -904,7 +905,7 @@ ComputeModalAnalysis(
   const std::string &suffix)
 {
 
-  TPZSimpleTimer analysis("Modal analysis",true);
+  TPZSimpleTimer analysis("Modal analysis");
   auto modal_data =
     FillDataForModalAnalysis(gmshmats,simdata,mats,suffix);
 
@@ -1489,7 +1490,7 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   WpbcData match_data;
 
   {
-    TPZSimpleTimer timer("wpbc coeffs",true);
+    TPZSimpleTimer timer("wpbc coeffs");
     src_data.cmesh = src_an->cmesh_hcurl;
     ComputeWpbcCoeffs(src_an,  src_data.wgbc_k,
                       src_data.wgbc_f, false, src_coeffs,
@@ -1576,58 +1577,58 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     }
     //useful for debuggin weird results
     ost <<computed_res<<std::endl;
+  }
     //now we export the solution at points (if requested)
-    if(simdata.export_sol){
-      using namespace wgma::post;
-      //hcurl in 3d space
-      const int soldim{3};
-      std::set<int> matids;
+  if(simdata.export_sol){
+    using namespace wgma::post;
+    //hcurl in 3d space
+    const int soldim{3};
+    std::set<int> matids;
 
-      //all vol materials
-      auto matmap = gmshmats[3];
-      //if empty, we will post-process everywhere
-      for(auto mat : simdata.export_mats){
-        matids.insert(matmap.at(mat));
-      }
+    //all vol materials
+    auto matmap = gmshmats[3];
+    //if empty, we will post-process everywhere
+    for(auto mat : simdata.export_mats){
+      matids.insert(matmap.at(mat));
+    }
       
       
-      auto export_sol = ExportSolution<SingleSpaceIntegrator>(scatt_mesh_wpbc,
-                                                              matids,
-                                                              simdata.n_threads);
-      export_sol.StoreSolutionAtPoints(soldim);
-      //!weight of a given integration point
-      const auto &weightvec = export_sol.GetIntWeightAtPoints();
-      //!solution vector, size = soldim*npts
-      const auto &solvec= export_sol.GetSolutionAtPoints();
-      //!position vector, size = 3*npts
-      const auto &xvec= export_sol.GetCoordinatesAtPoints();
+    auto export_sol = ExportSolution<SingleSpaceIntegrator>(scatt_mesh_wpbc,
+                                                            matids,
+                                                            simdata.n_threads);
+    export_sol.StoreSolutionAtPoints(soldim);
+    //!weight of a given integration point
+    const auto &weightvec = export_sol.GetIntWeightAtPoints();
+    //!solution vector, size = soldim*npts
+    const auto &solvec= export_sol.GetSolutionAtPoints();
+    //!position vector, size = 3*npts
+    const auto &xvec= export_sol.GetCoordinatesAtPoints();
       
-      const auto nel = solvec.size()/soldim;
-      //stupid checks just to be sure
-      if( (solvec.size() % soldim) != 0 ){
-        DebugStop();
-      }
-      if(weightvec.size() * soldim != solvec.size()){
-        DebugStop();
-      }
-      const auto npts = weightvec.size();
-      std::string outputfile = simdata.prefix+"_sol_"+std::to_string(iwl)+".csv";
-      std::ofstream ost;
-      ost.open(outputfile, std::ios_base::out);
-      ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
+    const auto nel = solvec.size()/soldim;
+    //stupid checks just to be sure
+    if( (solvec.size() % soldim) != 0 ){
+      DebugStop();
+    }
+    if(weightvec.size() * soldim != solvec.size()){
+      DebugStop();
+    }
+    const auto npts = weightvec.size();
+    std::string outputfile = simdata.prefix+"_sol_"+std::to_string(iwl)+".csv";
+    std::ofstream ost;
+    ost.open(outputfile, std::ios_base::out);
+    ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
       
-      int64_t solcount{0};
-      for(auto ipt = 0; ipt < npts; ipt++){
-        ost << xvec[ipt*3+0] << ','
-            << xvec[ipt*3+1] << ','
-            << xvec[ipt*3+2] << ',';
-        for(int i = 0; i < soldim; i++){
-          const CSTATE val = solvec[solcount++];
-          const char val_sign = val.imag() > 0 ? '+' : '-';
-          ost <<val.real()<<val_sign<<std::abs(val.imag())<<"j,";
-        }
-        ost << weightvec[ipt] << '\n';
+    int64_t solcount{0};
+    for(auto ipt = 0; ipt < npts; ipt++){
+      ost << xvec[ipt*3+0] << ','
+          << xvec[ipt*3+1] << ','
+          << xvec[ipt*3+2] << ',';
+      for(int i = 0; i < soldim; i++){
+        const CSTATE val = solvec[solcount++];
+        const char val_sign = val.imag() > 0 ? '+' : '-';
+        ost <<val.real()<<val_sign<<std::abs(val.imag())<<"j,";
       }
+      ost << weightvec[ipt] << '\n';
     }
   }
   //removing restrictions
@@ -1670,28 +1671,30 @@ FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
   //first we check for periodic BCs
   constexpr int bcdim{1};
 
+  const auto verbose = simdata.eigen_verbose;
+
   if(suffix == "_port_in" && simdata.custom_periodic_bcs_port_in.size()){
     for(auto [dep,indep] : simdata.custom_periodic_bcs_port_in){
       modal_bcs[dep] = wgma::bc::type::PERIODIC;
       modal_bcs[indep] = wgma::bc::type::PERIODIC;
-      std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;
+      if(verbose){std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;}
     }
   }else if(suffix == "_port_out" && simdata.custom_periodic_bcs_port_out.size()){
     for(auto [dep,indep] : simdata.custom_periodic_bcs_port_out){
       modal_bcs[dep] = wgma::bc::type::PERIODIC;
       modal_bcs[indep] = wgma::bc::type::PERIODIC;
-      std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;
+      if(verbose){std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;}
     }
   }else{
     std::string depbc, indepbc;
     FindPeriodicBoundaries(gmshmats,bcdim,suffix,"xm","xp",depbc,indepbc);
     modal_bcs[depbc] = wgma::bc::type::PERIODIC;
     modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
-    std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;
+    if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
     FindPeriodicBoundaries(gmshmats,bcdim,suffix,"ym","yp",depbc,indepbc);
     modal_bcs[depbc] = wgma::bc::type::PERIODIC;
     modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
-    std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;
+    if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
   }
   
   
@@ -1724,7 +1727,7 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     
   const std::string &prefix = simdata.prefix;
 
-    
+  const bool verbose{false};
   // setting up cmesh data
   wgma::cmeshtools::PhysicalData scatt_data;
   std::map<std::string, std::pair<CSTATE, CSTATE>> scatt_mats;
@@ -1739,7 +1742,7 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
   
   if(simdata.custom_periodic_bcs_3d.size()){
     for(auto [dep,indep] : simdata.custom_periodic_bcs_3d){
-      std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;
+      if(verbose){std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;}
       scatt_bcs[dep] = wgma::bc::type::PERIODIC;
       scatt_bcs[indep] = wgma::bc::type::PERIODIC;
     }
@@ -1748,9 +1751,9 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     FindPeriodicBoundaries(gmshmats,bcdim,"","xm","xp",depbc,indepbc);
     scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
     scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
-    std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;
+    if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
     FindPeriodicBoundaries(gmshmats,bcdim,"","ym","yp",depbc,indepbc);
-    std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;
+    if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
     scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
     scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
   }
@@ -1803,7 +1806,6 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
   mats_near_wpbc =
     UpdatePhysicalDataSplittedMats(gmesh, scatt_data, split_mats,
                                    volids, dim);
-  const bool verbose{true};
   //we must not condense since we will change p order
   const bool condense{false};
   auto cmesh =
@@ -1983,9 +1985,9 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     const int bufsz = maxsz*maxsz;
     strmtrx->BufferSizeForUserMatrix(bufsz);
   }
-  TPZSimpleTimer timer("WPBC:Assemble+solve",true);
+  TPZSimpleTimer timer("WPBC:Assemble+solve");
   {
-    TPZSimpleTimer tassemble("Assemble",true);
+    TPZSimpleTimer tassemble("Assemble");
     if(sol_vec.Rows() > 0){
       std::cout<<"running with custom init vec"<<std::endl;
       const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
@@ -2049,7 +2051,7 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
   }
 
   {
-    TPZSimpleTimer twpbc("AddWPBC",true);
+    TPZSimpleTimer twpbc("AddWPBC");
     //now we must add the waveguide port terms
     AddWaveguidePortContribution(scatt_an, indep_con_id_src,
                                  nmodes_src, src_data.wgbc_k, src_data.wgbc_f);
@@ -2065,7 +2067,7 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     int from_current = sol_vec.Rows() > 0 ? 1 : 0;
     SetupPrecond(scatt_an, indices, simdata.solver_tol, from_current);
   }
-  TPZSimpleTimer tsolve("Solve",true);
+  TPZSimpleTimer tsolve("Solve");
   scatt_an.Solve();
   auto sol = scatt_an.Solution();
   const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
@@ -2196,7 +2198,7 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                   const std::set<int64_t> &indep_cons,
                   const REAL tol,
                   int from_current) {
-  TPZSimpleTimer solve("SetupPrecond", true);
+  TPZSimpleTimer solve("SetupPrecond");
       
   auto &solver = dynamic_cast<TPZStepSolver<CSTATE>&>(scatt_an.GetSolver());
 
