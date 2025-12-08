@@ -1545,14 +1545,25 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
   //get reflection and transmission
 
   TPZFMatrix<CSTATE> &sol = scatt_mesh_wpbc->Solution();
-    
+
+  //exporting .csv and printing
   {
+    std::string outputfile = simdata.prefix+"_reflection.csv";
+    std::ofstream ost;
+    ost.open(outputfile, std::ios_base::app);
+    ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
+    ost << simdata.lambda<<',';
     //for now we assume they are sequential
     const int nm = simdata.source_coeffs.size();
     std::cout<<"wavelength: "<<simdata.lambda;
+    //as to normalise the Sparams
+    CSTATE total_field{0};
     for(int i = 0; i < nm; i++){
-      const auto s11 = sol.GetVal(refl_pos+i,0)-src_coeffs[i];
-      const auto s21 =  trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
+      total_field+=src_coeffs[i];
+    }
+    for(int i = 0; i < nm; i++){
+      const auto s11 = (sol.GetVal(refl_pos+i,0)-src_coeffs[i])/total_field;
+      const auto s21 =  trans_pos >= 0 ? sol.GetVal(trans_pos+i,0)/total_field : 0;
       const auto ref = std::abs(s11)*std::abs(s11);
       const auto trans = std::abs(s21)*std::abs(s21);
       std::cout<<" src "<<src_coeffs[i]
@@ -1561,15 +1572,6 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
                <<" s21 "<<s21
                <<" trans "<<trans
                <<" t + r "<<trans+ref<<std::endl;
-    }
-    std::string outputfile = simdata.prefix+"_reflection.csv";
-    std::ofstream ost;
-    ost.open(outputfile, std::ios_base::app);
-    ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
-    ost << simdata.lambda<<',';
-    for(int i = 0; i < nm; i++){
-      const CSTATE s11 = sol.GetVal(refl_pos+i,0)-src_coeffs[i];
-      const CSTATE s21 = trans_pos >= 0 ? sol.GetVal(trans_pos+i,0) : 0;
       const char s11_sign = s11.imag() > 0 ? '+' : '-';
       const char s21_sign = s21.imag() > 0 ? '+' : '-';
       ost <<s11.real()<<s11_sign<<std::abs(s11.imag())<<'j'<<','
