@@ -60,7 +60,7 @@ namespace wgma::planewaveanalysis{
       mtrx->SetTBBorOMP(true);
       strmtrx = mtrx;
     }else{
-      auto mtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOT<CSTATE>>(m_cmesh_mf);
+      auto mtrx = new TPZSpStructMatrix<CSTATE,TPZStructMatrixOR<CSTATE>>(m_cmesh_mf);
       strmtrx = mtrx;
     }
 
