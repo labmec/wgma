@@ -89,12 +89,12 @@ class SphereData(VolData):
     will be used to feed wgma::gmeshtools::SetExactSphereRepresentation
     """
 
-    def __init__(self):
+    def __init__(self, radius = -1, x = 0, y = 0, z = 0):
         VolData.__init__(self)
         self.matid = -10  # physical identifier for the cylinder surface
         self.surftag = []  # tags for the cylinder surface
-        self.radius = -1.
-        self.xc = []
+        self.radius = radius
+        self.xc = [x,y,z]
 
 class TorusData(VolData):
     """
@@ -299,6 +299,31 @@ def create_cyl(cyl, elsize: float = 0.1):
     # Find domain boundary tags
     boundary_dimtags = gmsh.model.getBoundary(
         dimTags=[(3, cyl.tag[0])],
+        combined=False, oriented=False, recursive=True)
+    [gmsh.model.mesh.set_size([tag], elsize)
+     for tag in boundary_dimtags if tag[0] == 0]
+
+def create_sphere(sphere, elsize: float = 0.1):
+    """
+    Creates a spherical region and insert it in the model
+
+
+
+    Parameters
+    ----------
+    sphere: SphereData
+        will have its tag field filled, must have all other attributes set
+    elsize: float
+        prescribed element size
+    """
+    
+
+    sphere.tag = [gmsh.model.occ.add_sphere(
+        sphere.xc[0],sphere.xc[1],sphere.xc[2],sphere.radius)]
+    gmsh.model.occ.synchronize()
+    # Find domain boundary tags
+    boundary_dimtags = gmsh.model.getBoundary(
+        dimTags=[(3, sphere.tag[0])],
         combined=False, oriented=False, recursive=True)
     [gmsh.model.mesh.set_size([tag], elsize)
      for tag in boundary_dimtags if tag[0] == 0]
