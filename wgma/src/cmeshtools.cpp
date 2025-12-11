@@ -35,6 +35,7 @@ cmeshtools::SetupGmshMaterialData(
 {
 
   auto &matinfo = data.matinfovec;
+  auto &matname = data.matnamevec;
   auto &pmlvec = data.pmlvec;
   auto &bcvec = data.bcvec;
   pmlvec.resize(0);
@@ -103,7 +104,6 @@ cmeshtools::SetupGmshMaterialData(
   for(auto mat : gmshmats[dim]){
     const std::string name = mat.first;
     const auto id = mat.second;
-
     if(auto ispml = SetupIfPml(name,id,dim); !ispml){
       if(matmap.find(name) == matmap.end()){
         //material not found
@@ -118,6 +118,7 @@ cmeshtools::SetupGmshMaterialData(
                             matmap.at(name).first,
                             matmap.at(name).second)
                           );
+        matname.push_back(std::make_pair(id,name));
       }
     }
   }

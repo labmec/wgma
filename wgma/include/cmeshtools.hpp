@@ -38,6 +38,8 @@ namespace wgma::cmeshtools{
   struct PhysicalData{
     //! each position contains the tuple (id,er,ur) for a given region of the mesh
     std::vector<std::tuple<int,CSTATE,CSTATE>> matinfovec;
+    //! each position contains the pair (id,name) for a given region of the mesh (excluding PMLs)
+    std::vector<std::pair<int,std::string>> matnamevec;
     //! each position contains data for a given pml region
     std::vector<TPZAutoPointer<wgma::pml::data>> pmlvec;
     //! each position contains data for a given boundary condition
