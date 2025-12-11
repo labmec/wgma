@@ -39,7 +39,8 @@ namespace wgma::materials{
                REAL lx, REAL ly, int max_k);
 
     //! Sets new wavelength and recompute beta values
-    inline void SetWavelength(STATE wl){
+    inline void SetWavelengthAndRefIndex(STATE wl, CSTATE ref){
+      m_ref_index = ref;
       m_wl = wl;
       ComputeBeta();
     }
