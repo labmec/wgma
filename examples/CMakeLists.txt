@@ -146,6 +146,11 @@ add_pz_target(
   )
 target_link_libraries(meta_surf_2d PUBLIC wgma)
 
+add_pz_target(
+  NAME meta_surf_refac
+  SOURCES meta_surf_refac.cpp
+  )
+target_link_libraries(meta_surf_refac PUBLIC wgma)
   
   add_pz_target(
   NAME sfg
