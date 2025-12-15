@@ -11,7 +11,7 @@ namespace wgma::planewaveanalysis{
   //temporary variable (set to false in .cpp)
   extern bool using_tbb_mat;
 
-  class Analysis : private TPZLinearAnalysis {
+  class Analysis : public TPZLinearAnalysis {
   public:
     /**
        @brief Creates the analysis module based on a given computational mesh
