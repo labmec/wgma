@@ -39,14 +39,6 @@ namespace wgma::planewaveanalysis{
     m_cmesh_h1 = meshvec[1 + TPZWgma::H1Index()];
     m_cmesh_hcurl = meshvec[1 + TPZWgma::HCurlIndex()];
 
-    for (auto [id,mat] : m_cmesh_mf->MaterialVec()){
-      auto matplanewave =
-        dynamic_cast<wgma::materials::PlaneWaveSolutions*>(mat);
-      if(matplanewave){
-        matplanewave->GetBeta(m_eigenvalues);
-        break;
-      }
-    }
     //we do not reorder eqs on multiphysics mesh
     this->SetCompMesh(m_cmesh_mf.operator->(), RenumType::ENone);
     if(reorder_eqs){
@@ -117,6 +109,15 @@ namespace wgma::planewaveanalysis{
   void Analysis::Run(){
     Assemble();
     Solve();
+    //Get eigenvalues
+    for (auto [id,mat] : m_cmesh_mf->MaterialVec()){
+      auto matplanewave =
+        dynamic_cast<wgma::materials::PlaneWaveSolutions*>(mat);
+      if(matplanewave){
+        matplanewave->GetBeta(m_eigenvalues);
+        break;
+      }
+    }
   }
   
   void
