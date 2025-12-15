@@ -39,9 +39,9 @@ namespace wgma::scattering{
     m_filter_bound(filter_bound), m_sym(is_sym){
 
 #ifdef PZ_USING_METIS
-    const auto renumtype = RenumType::EMetis;
+    const auto renumtype = reorder_eqs? RenumType::EMetis : RenumType::ENone;
 #else
-    const auto renumtype = RenumType::ECutHillMcKee;
+    const auto renumtype = reorder_eqs ? RenumType::ECutHillMcKee : RenumType::ENone;
 #endif
     this->SetCompMesh(mesh.operator->(), renumtype);
     m_cmesh = mesh;
