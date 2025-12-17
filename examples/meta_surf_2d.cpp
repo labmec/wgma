@@ -52,10 +52,14 @@ struct SimData{
   TPZVec<std::string> mats_3d;
   //!if the periodic boundaries follow a different nomenclature, we should use this
   std::map<std::string,std::string> custom_periodic_bcs_3d;
+  //!whether to perform modal analysis on inlet port (instead of plane wave)
+  bool modal_port_in;
   //!materials used in the ingoing waveguide port
   TPZVec<std::string> mats_port_in;
   //!if the periodic boundaries follow a different nomenclature, we should use this
   std::map<std::string,std::string> custom_periodic_bcs_port_in;
+  //!whether to perform modal analysis on outlet port (instead of plane wave)
+  bool modal_port_out;
   //!materials used in the outgoing waveguide port
   TPZVec<std::string> mats_port_out;
   //!if the periodic boundaries follow a different nomenclature, we should use this
@@ -273,7 +277,7 @@ int main(int argc, char *argv[]) {
     }
     //in port modal analysis
     TPZAutoPointer<ModalData> modal_an_in;
-    if(simdata.custom_periodic_bcs_port_in.size() == 0){
+    if(simdata.modal_port_in == false){
       modal_an_in = ComputePlaneWaveSolutions(gmesh,gmshmats,simdata, periodic_els,
                                               simdata.mats_port_in,
                                               simdata.max_k_in,"_port_in");
@@ -287,7 +291,7 @@ int main(int argc, char *argv[]) {
     TPZAutoPointer<ModalData>
       modal_an_out{nullptr};
     if(simdata.mats_port_out.size()){
-      if(simdata.custom_periodic_bcs_port_out.size() == 0){
+      if(simdata.modal_port_out == false){
         modal_an_out = ComputePlaneWaveSolutions(gmesh,gmshmats,simdata, periodic_els,
                                                  simdata.mats_port_out,
                                                  simdata.max_k_out,"_port_out");
@@ -581,13 +585,25 @@ SimData ReadSimData(const std::string &dataname){
       DebugStop();
     }
   }
+
+  sd.modal_port_in = data.value("modal_port_in", false);
+  sd.modal_port_out = data.value("modal_port_out", false);
   
   sd.custom_periodic_bcs_3d = data.value("periodic_bcs_3d",
                                          std::map<std::string,std::string>{});
   sd.custom_periodic_bcs_port_in = data.value("periodic_bcs_port_in",
                                          std::map<std::string,std::string>{});
+  if(sd.custom_periodic_bcs_port_in.size() && sd.modal_port_in == false){
+    std::cout<<"Performing modal analysis on input port due to custom periodic BCs"<<std::endl;
+    sd.modal_port_in=true;
+  }
   sd.custom_periodic_bcs_port_out = data.value("periodic_bcs_port_out",
                                          std::map<std::string,std::string>{});
+  if(sd.custom_periodic_bcs_port_out.size() && sd.modal_port_out == false){
+    std::cout<<"Performing modal analysis on output port due to custom periodic BCs"<<std::endl;
+    sd.modal_port_out=true;
+  }
+  
   sd.refine_regions = data.value("refine_regions", std::map<std::string,int> {});
 
   sd.p_regions = data.value("p_regions", std::map<std::string,int> {});
@@ -1690,21 +1706,28 @@ FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
   }else{
     std::string depbc, indepbc;
     FindPeriodicBoundaries(gmshmats,bcdim,suffix,"xm","xp",depbc,indepbc);
-    modal_bcs[depbc] = wgma::bc::type::PERIODIC;
-    modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
-    if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
+    if(depbc.size()){
+      modal_bcs[depbc] = wgma::bc::type::PERIODIC;
+      modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
+      if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
+    }
+    depbc.clear();
+    indepbc.clear();
     FindPeriodicBoundaries(gmshmats,bcdim,suffix,"ym","yp",depbc,indepbc);
-    modal_bcs[depbc] = wgma::bc::type::PERIODIC;
-    modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
-    if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
+
+    if(depbc.size()){
+      modal_bcs[depbc] = wgma::bc::type::PERIODIC;
+      modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
+      if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
+    }
   }
   
   
-  // auto pec_bnd = CheckForBoundary(gmshmats,bcdim,"bound"+suffix);
+  auto pec_bnd = CheckForBoundary(gmshmats,bcdim,"bound"+suffix);
   
-  // if(pec_bnd.size() > 0){
-  //   modal_bcs[pec_bnd] = wgma::bc::type::PEC;
-  // }
+  if(pec_bnd.size() > 0){
+    modal_bcs[pec_bnd] = wgma::bc::type::PEC;
+  }
   
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
                                           {0,0,0}, modal_data, modal_dim);
@@ -1751,13 +1774,21 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
   }else{
     std::string depbc, indepbc;
     FindPeriodicBoundaries(gmshmats,bcdim,"","xm","xp",depbc,indepbc);
-    scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
-    scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
-    if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
+    if(depbc.size()){
+      scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
+      scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
+      if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
+    }
+
+    depbc.clear();
+    indepbc.clear();
+    
     FindPeriodicBoundaries(gmshmats,bcdim,"","ym","yp",depbc,indepbc);
-    if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
-    scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
-    scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
+    if(depbc.size()){
+      scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
+      scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
+      if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
+    }
   }
   auto pec_bnd = CheckForBoundary(gmshmats,bcdim,"bound_vol");
   
