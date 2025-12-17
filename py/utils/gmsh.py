@@ -547,11 +547,13 @@ The same applies for "xm" and "ym"
     dim = dimtags[0][0]
     # now we create separately each PML region
     pmlmap = {}
+    vol_tag = []
     for bnd in pml_bnds:
         # get region adjacent to pml boundary
         up, _ = gmsh.model.get_adjacencies(bnd[0], bnd[1])
         # check if there is only one adjacent region of dimension dim
         assert (len(up) == 1)
+        vol_tag.append(up[0])
     nel = [nlayers]
     height = [1]
     pmlregs = gmsh.model.occ.extrude(pml_bnds, dx, dy, dz, nel, height, True)
@@ -561,7 +563,8 @@ The same applies for "xm" and "ym"
     # in the same order as the 3d regions in dimtags
     assert (len(dimtags) == len(pmlregs))
     for i, pml in enumerate(pmlregs):
-        pmlmap.update({(direction, pml): dimtags[i][1]})
+        # pmlmap.update({(direction, pml): dimtags[i][1]})
+        pmlmap.update({(direction, pml): vol_tag[i]})
     return pmlmap
 
 
@@ -930,12 +933,7 @@ def insert_pml_ids(
     """
 
     # first physical id for the PML regions
-    new_id = 0
-    for groups in domain_ids:
-        if not groups:
-            continue
-        for _, id in groups.items():
-            new_id += id
+    new_id = find_new_id(domain_ids)
 
     vol_ids = domain_ids[pmldim]
     # tp is the pml type, tag its tag and reg the asociated region
