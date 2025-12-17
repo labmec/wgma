@@ -64,6 +64,8 @@ struct SimData{
   TPZVec<std::string> mats_port_out;
   //!if the periodic boundaries follow a different nomenclature, we should use this
   std::map<std::string,std::string> custom_periodic_bcs_port_out;
+  //!coefficient of PML attenuation
+  CSTATE pml_coeff;
   //!map of refractive indices
   std::map<std::string,CSTATE> refractive_indices;
   //!map of domain regions and number of directional refinement steps
@@ -216,17 +218,23 @@ int main(int argc, char *argv[]) {
     gmesh = wgma::gmeshtools::ReadPeriodicGmshMesh(simdata.meshfile, simdata.scale,
                                                    gmshmats, periodic_data,
                                                    verbosity_lvl);
-    TPZVec<std::pair<int,int>> desired_mats;
-    const auto np = periodic_data->dep_mat_ids.size();
-    for(auto i = 0; i < np; i++){
-      const auto dep = periodic_data->dep_mat_ids[i];
-      const auto indep = periodic_data->indep_mat_ids[i];
-      desired_mats.push_back({dep,indep});
+    if(periodic_data){
+      TPZVec<std::pair<int,int>> desired_mats;
+      const auto np = periodic_data->dep_mat_ids.size();
+      for(auto i = 0; i < np; i++){
+        const auto dep = periodic_data->dep_mat_ids[i];
+        const auto indep = periodic_data->indep_mat_ids[i];
+        desired_mats.push_back({dep,indep});
+      }
+      wgma::gmeshtools::GetPeriodicElements(gmesh.operator->(),
+                                            desired_mats,
+                                            periodic_data,
+                                            periodic_els);
+    }else{
+      simdata.modal_port_in = true;
+      simdata.modal_port_out = true;
+      std::cout<<"Performing modal analysis on both ports since no periodic regions were found"<<std::endl;
     }
-    wgma::gmeshtools::GetPeriodicElements(gmesh.operator->(),
-                                          desired_mats,
-                                          periodic_data,
-                                          periodic_els);
 
 
     if (simdata.print_gmesh) {
@@ -267,6 +275,7 @@ int main(int argc, char *argv[]) {
   TPZFMatrix<CSTATE> last_sol;
   //number of wavelength points
   const int nwl_pts = simdata.wl_vec.size();
+  std::cout<<"Running for "<<nwl_pts<<" wavelengths"<<std::endl;
   for(int iwl = 0; iwl < nwl_pts; iwl++){
     TPZSimpleTimer timer("Total",true);
     auto timer_begin = std::chrono::high_resolution_clock::now();
@@ -450,6 +459,30 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
 //! Reads sim data from file
 SimData ReadSimData(const std::string &dataname){
   using json = nlohmann::json;
+
+  auto ReadComplexValue = [](auto mat_map, const auto key) -> CSTATE {
+    CSTATE myval;
+    auto array_ptr = mat_map[key].template get_ptr<json::array_t*>();
+    if(array_ptr){
+      auto array = *array_ptr;
+      if(array.size() < 1 || array.size() > 2){
+        PZError<<__PRETTY_FUNCTION__
+               <<"\nInvalid data for key "<<key<<std::endl;
+        DebugStop();
+      }else{
+        if(array.size()==2){
+          myval = {array[0], array[1]};
+        }else{
+          myval = {array[0],0};
+        }
+      }
+    }else{
+      myval = mat_map[key].template get<json::number_float_t>();
+    }
+    return myval;
+  };
+
+  
   std::ifstream f(dataname);
   json data = json::parse(f);
   SimData sd;
@@ -474,6 +507,10 @@ SimData ReadSimData(const std::string &dataname){
     }
     return true;
   };
+  std::cout << "3d materials: "<<std::endl;
+  for(auto mat : sd.mats_3d){
+    std::cout << "\t"<<mat<<std::endl;
+  }
   for(auto mat : sd.mats_port_in){
     if (!find_mat(sd.mats_3d, mat, "_port_in") && !find_mat(sd.mats_3d, mat, "_port")){
       PZError<<__PRETTY_FUNCTION__
@@ -490,13 +527,19 @@ SimData ReadSimData(const std::string &dataname){
   }
 
 
+  if(data.contains("pml_coeff")){
+    sd.pml_coeff = ReadComplexValue(data, "pml_coeff");
+  }else{
+    sd.pml_coeff = 0.;
+  }
+  
   if(data.contains("test_str")){//still supporting old data structure
     auto test_str_ad =
       data["test_str"].get<std::vector<std::tuple<double,std::map<std::string,std::vector<double>>>>>();
 
     for(auto [wl, matinfo] : test_str_ad){
       sd.wl_vec.push_back(wl);
-    
+
       for(const auto &[name,n] : matinfo){
         if(n.size() == 0 || n.size()>2){
           DebugStop();
@@ -535,24 +578,7 @@ SimData ReadSimData(const std::string &dataname){
         };
       }else{
         //fixed refractive index
-        CSTATE myval;
-        auto array_ptr = mat_map[key].get_ptr<json::array_t*>();
-        if(array_ptr){
-          auto array = *array_ptr;
-          if(array.size() < 1 || array.size() > 2){
-            PZError<<__PRETTY_FUNCTION__
-                   <<"\nInvalid data for material "<<key<<" and data "<<val<<std::endl;
-            DebugStop();
-          }else{
-            if(array.size()==2){
-              myval = {array[0], array[1]};
-            }else{
-              myval = {array[0],0};
-            }
-          }
-        }else{
-          myval = mat_map[key].get<json::number_float_t>();
-        }
+        CSTATE myval = ReadComplexValue(mat_map, key);
         sd.ref_index_map[key] = [myval](STATE wl){
           return myval;
         };
@@ -1728,9 +1754,19 @@ FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
   if(pec_bnd.size() > 0){
     modal_bcs[pec_bnd] = wgma::bc::type::PEC;
   }
-  
+
+  const auto pml_coeff = simdata.pml_coeff;
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, modal_mats, modal_bcs,
-                                          {0,0,0}, modal_data, modal_dim);
+                                          {pml_coeff,pml_coeff,pml_coeff}, modal_data, modal_dim);
+  //we must now filter the 2D PMLs
+  std::vector<TPZAutoPointer<wgma::pml::data>>  pmlvec;
+  for(const auto &pml : modal_data.pmlvec){
+    const auto rx = std::regex{suffix, std::regex_constants::icase };
+    
+    const bool found_pattern = std::regex_search(*(pml->names.begin()), rx);
+    if(found_pattern){pmlvec.push_back(pml);}
+  }
+  modal_data.pmlvec = pmlvec;
   return modal_data;
 }
 
@@ -1796,9 +1832,9 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     scatt_bcs[pec_bnd] = wgma::bc::type::PEC;
   }
     
-    
+  const auto pml_coeff = simdata.pml_coeff;
   wgma::cmeshtools::SetupGmshMaterialData(gmshmats, scatt_mats, scatt_bcs,
-                                          {0,0,0}, scatt_data);
+                                          {pml_coeff,pml_coeff,pml_coeff}, scatt_data);
 
 
   //materials that will represent our source
