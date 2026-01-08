@@ -36,14 +36,14 @@ class RectData:
     represents a rectangular region with lower left corner (xc,yc,zc)
     """
 
-    def __init__(self):
+    def __init__(self,x=0,y=0,z=0, wval=0, hval=0):
         self.tag = []
         self.dim = 2
-        self.xc = 0.
-        self.yc = 0.
-        self.zc = 0.
-        self.w = 0.
-        self.h = 0.
+        self.xc = x
+        self.yc = y
+        self.zc = z
+        self.w = wval
+        self.h = hval
 
 
 class VolData:
