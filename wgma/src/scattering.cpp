@@ -168,6 +168,7 @@ namespace wgma::scattering{
     if (nReducedEq == numeq) {
       fSolution = delu;
     }else{
+      fSolution.SetSolType(ESolType::EComplex);
       fSolution.Redim(numeq,1);
       fStructMatrix->EquationFilter().Scatter(delu,fSolution);
     }
