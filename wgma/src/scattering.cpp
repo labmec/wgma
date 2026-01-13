@@ -699,7 +699,7 @@ namespace wgma::scattering{
         if(verbose){
           std::cout<<"\tid:";
           for(auto [id,neigh]: pml->neigh){std::cout<<' '<<id<<"("<<neigh<<") ";}
-          std::cout<<"type  "<<wgma::pml::cart::to_string(cart_pml->t)
+          std::cout<<"\n\t\ttype  "<<wgma::pml::cart::to_string(cart_pml->t)
                    <<" ax "<<cart_pml->alphax
                    <<" ay "<<cart_pml->alphay
                    <<" az "<<cart_pml->alphaz
@@ -711,7 +711,7 @@ namespace wgma::scattering{
         if(verbose){
           std::cout<<"\tid(neigh):";
           for(auto [id,neigh]: pml->neigh){std::cout<<' '<<id<<"("<<neigh<<") ";}
-          std::cout<<"type  "<<wgma::pml::cyl::to_string(cyl_pml->t)
+          std::cout<<"\n\t\ttype  "<<wgma::pml::cyl::to_string(cyl_pml->t)
                    <<" ar "<<cyl_pml->alphar
                    <<" az "<<cyl_pml->alphaz
                    <<std::endl;
@@ -912,7 +912,7 @@ namespace wgma::scattering{
           if(verbose){
             std::cout<<"\tid:";
             for(auto [id,neigh]: pml->neigh){std::cout<<' '<<id<<"("<<neigh<<") ";}
-            std::cout<<"type  "<<wgma::pml::cart::to_string(cart_pml->t)
+            std::cout<<"\n\t\ttype  "<<wgma::pml::cart::to_string(cart_pml->t)
                      <<" ax "<<cart_pml->alphax
                      <<" ay "<<cart_pml->alphay
                      <<" az "<<cart_pml->alphaz
@@ -1146,7 +1146,7 @@ namespace wgma::scattering{
           if(verbose){
             std::cout<<"\tid:";
             for(auto [id,neigh]: pml->neigh){std::cout<<' '<<id<<"("<<neigh<<") ";}
-            std::cout<<"type  "<<wgma::pml::cart::to_string(cart_pml->t)
+            std::cout<<"\n\t\ttype  "<<wgma::pml::cart::to_string(cart_pml->t)
                      <<" ax "<<cart_pml->alphax
                      <<" ay "<<cart_pml->alphay
                      <<" az "<<cart_pml->alphaz
