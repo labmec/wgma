@@ -16,6 +16,9 @@ namespace wgma::util{
   */
   void CreatePath(const std::string path);
 
+  //!Reads csv file containing refractive index and interpolates it for wl (we read n-jk)
+  std::complex<double> GetRefIndexFromCSV(const std::string &name, double wl);
+
   //! Allows for iterating over enums taken from https://stackoverflow.com/a/31836401
   template < typename C, C beginVal, C endVal>
   class Iterator {
