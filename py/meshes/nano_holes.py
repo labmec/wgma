@@ -19,6 +19,7 @@ from utils.gmsh import (
     split_region_dir,
     BoxData,
     CylinderData,
+    RectData,
 )
 
 
@@ -72,6 +73,7 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
     air = BoxData(-period/2, -period/2, z_air, period, period, h_air)
     create_box(air)    
 
+    z_total = z_air + h_air
     # cyl 1
     cyl1 = CylinderData(radius,x_holes[0], y_holes[0], z_ag, 0,0, h_ag)
     create_cyl(cyl1)
@@ -80,6 +82,7 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
         # cyl 2
         cyl2 = CylinderData(radius,x_holes[1], y_holes[1], z_ag, 0,0, h_ag)
         create_cyl(cyl2)
+        
 
     # now we cut the holes from the silver
     objs = []
@@ -89,21 +92,35 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
     ag_map = apply_boolean_operation(objs, tools, "cut", False)
     remap_tags([ag], ag_map)
 
+
+    xmax=ymax=zmax = -period
+    xmin=ymin=zmin = period
+    for t in cyl1.tag + cyl2.tag:
+        xmi, ymi, zmi, xma, yma, zma = gmsh.model.get_bounding_box(3,t)
+        xmax = max(xmax,xma)
+        ymax = max(ymax,yma)
+        zmax = max(zmax,zma)
+
+        xmin = min(xmin,xmi)
+        ymin = min(ymin,ymi)
+        zmin = min(zmin,zmi)
+    
     airtags = fuse_domains([(3, t) for t in cyl1.tag + cyl2.tag], [(3, t) for t in air.tag])
-    airtags = [t for _, t in airtags]
+    air.tag = [t for _, t in airtags]
 
     gmsh.model.occ.remove_all_duplicates()
     gmsh.model.occ.synchronize()
-    
     # we dont need the box data anymore, so
-    air = airtags
+    air = air.tag
     sub = sub.tag
     ag = ag.tag
 
+    gmsh.model.occ.remove_all_duplicates()
+    gmsh.model.occ.synchronize()
     # now we create the PMLs
     vol_domains = [(3,t) for t in air+sub+ag]
     pmlmap = {}
-    nlayerspml = 6
+    nlayerspml = 10
     pmlmap.update(create_pml_region(vol_domains, "xp", d_pml, nlayerspml))
     pmlmap.update(create_pml_region(vol_domains, "xm", d_pml, nlayerspml))
     pmlmap.update(create_pml_region(vol_domains, "yp", d_pml, nlayerspml))
@@ -177,6 +194,20 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
     #we remove the ports from all_bounds
     port_domains = [t for _,t in sub_all_domains+air_all_domains]
     all_bounds = [t for t in all_bounds if t not in port_domains]
+
+    #now we select edges for h-refinement
+    edge_list = []
+    if len(x_holes > 1):
+        dim = 1 # we want edges
+        eps = h_ag/10
+        xrmin = -radius-eps
+        xrmax = radius+eps
+        yrmin = min(x_holes)-eps
+        yrmax = max(x_holes)+eps
+        zrmin = z_ag-eps
+        zrmax = z_air+eps
+        dtlist = gmsh.model.get_entities_in_bounding_box(xrmin,yrmin,zrmin,xrmax,yrmax,zrmax,dim)
+        edge_list = [t for _,t in dtlist]
     
     # set element size per region
     field_ct = 1
@@ -200,10 +231,26 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
     gmsh.model.mesh.field.set_number(
         field_ct, "VIn", el_ag)
     field_ct += 1
+
+    gmsh.model.mesh.field.add("Box", field_ct)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "XMin", xmin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "YMin", ymin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "ZMin", zmin)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "XMax", xmax)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "YMax", ymax)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "ZMax", zmax)
+    gmsh.model.mesh.field.set_number(
+        field_ct, "VIn", el_ag/2)
+    field_ct += 1
     
     gmsh.model.mesh.field.add("Min", field_ct)
-    gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList",
-                                     [1, 2, 3])
+    gmsh.model.mesh.field.setNumbers(field_ct, "FieldsList",np.arange(1,field_ct))
 
     gmsh.model.mesh.field.setAsBackgroundMesh(field_ct)
     gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
@@ -225,6 +272,7 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
     domain_physical_ids_1d = {
         "bound_port_in" : 20,
         "bound_port_out" : 21,
+        "ref_edges" : 22,
     }
 
     domain_physical_ids_0d = {
@@ -243,6 +291,7 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
         "sub_port_out" : sub_port,
         "bound_port_out" : sub_bounds,
         "bound_port_in" : air_bounds,
+        "ref_edges": edge_list,
     }
 
     insert_pml_ids(pmlmap, domain_physical_ids, domain_regions)
@@ -290,16 +339,16 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
 
 
 
-nel = 4
-min_wavelength = 720/1000
+nel = 6
+min_wavelength = 1000/1000
 el_air = min_wavelength/nel
 el_sub = min_wavelength/(1.45*nel)
 el_ag = min_wavelength/(4*nel)
 
 
 
-period = 800/1000
-d_pml = 200/1000
+period = 1000/1000
+d_pml = 1200/1000
 
 h_sub = 100/1000
 h_air = 500/1000
