@@ -714,6 +714,26 @@ def find_pml_region(dimtags: list, pmlmap: dict, pmldim: int):
     pml_regions.update(new_pmls)
     return pml_regions
 
+def get_boundary_in_dir(dt, dirsign):
+    """
+    Given a list of dimtags and a direction,
+    it gets the boundaries (region of dim-1) in the
+    given direction.
+    Useful for setting up PMLs
+    """
+    dirmap = {'xp': 'x', 'xm': 'x',
+              'yp': 'y', 'ym': 'y',
+              'zp': 'z', 'zm': 'z'}
+    direction = dirmap[dirsign]
+    sign = '+' if 'p' in dirsign else '-'
+    reg_m, reg_p = split_region_dir(dt, direction)
+    vol = reg_p if sign == '+' else reg_m
+    bnd = gmsh.model.get_boundary(vol, combined=True, oriented=False)
+    reg_m, reg_p = split_region_dir(bnd, direction, True)
+    res = {}
+    res = reg_p if sign == '+' else reg_m
+    res = [t for _, t in res]
+    return res
 
 def split_region_dir(dimtags: list, direction: str, chkbnd: bool = False):
     """
