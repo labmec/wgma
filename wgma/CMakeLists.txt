@@ -42,6 +42,7 @@ set(headers
   include/materials/solutionprojection.hpp
   include/materials/planewavesolutions.hpp
   include/materials/scattcurrentsrc.hpp
+  include/materials/scatteredfield.hpp
   )
 
 set(sources
@@ -73,6 +74,7 @@ set(sources
   src/materials/solutionprojection.cpp
   src/materials/planewavesolutions.cpp
   src/materials/scattcurrentsrc.cpp
+  src/materials/scatteredfield.cpp
   )
 
 target_sources(wgma PUBLIC ${headers})
