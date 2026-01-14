@@ -10,6 +10,8 @@ from utils.gmsh import (
     create_cyl,
     create_pml_region,
     create_pml_corner,
+    create_rect,
+    cut_vol_with_plane,
     find_pml_region,
     fuse_domains,
     get_boundary_in_dir,
@@ -92,7 +94,8 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
     ag_map = apply_boolean_operation(objs, tools, "cut", False)
     remap_tags([ag], ag_map)
 
-
+    gmsh.model.occ.synchronize()
+    
     xmax=ymax=zmax = -period
     xmin=ymin=zmin = period
     for t in cyl1.tag + cyl2.tag:
@@ -113,6 +116,43 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
         holes = cyl1.tag
     gmsh.model.occ.remove_all_duplicates()
     gmsh.model.occ.synchronize()
+
+    # we divide it at the y=0 plane to avoid issues when finding the PML
+    x_plane = RectData()
+    x_plane.xc = 0
+    x_plane.yc = -period/2
+    x_plane.zc = z_total
+    x_plane.h = period
+    x_plane.w = z_total
+
+    y_plane = RectData()
+    y_plane.xc = -period/2
+    y_plane.yc = 0
+    y_plane.zc = 0
+    y_plane.h = z_total
+    y_plane.w = period
+
+    create_rect(x_plane,0.1,'x')
+    create_rect(y_plane,0.1,'y')
+
+    class Dummy:
+        def __init__(self):
+            self.tag = []
+            self.dim = 3
+
+    dummy = Dummy()
+    dummy.tag = holes
+    vol_list = [air,sub,ag,dummy]
+    surf_list = [x_plane]
+    gmsh.model.occ.synchronize()
+    cut_vol_with_plane(vol_list,surf_list,0.000001)
+    gmsh.model.occ.synchronize()
+
+    surf_list = [y_plane]
+    cut_vol_with_plane(vol_list,surf_list,0.000001)
+    gmsh.model.occ.synchronize()
+
+    holes = dummy.tag
     # we dont need the box data anymore, so
     air = air.tag
     sub = sub.tag
@@ -170,33 +210,45 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
 
 
     
-    # now we create the PMLs
+    # creating PMLs
 
+    dim = 3
+    vol_domains = gmsh.model.get_entities(dim)
+    xm, xp = split_region_dir(vol_domains, 'x')
+    ym, yp = split_region_dir(vol_domains, 'y')
     zm, zp = split_region_dir(vol_domains, 'z')
+    # split once more
+    ymzp, ypzp = split_region_dir(zp, 'y')
+    ymzm, ypzm = split_region_dir(zm, 'y')
+    # split once more
+    xmymzp, xpymzp = split_region_dir(ymzp, 'x')
+    xmypzp, xpypzp = split_region_dir(ypzp, 'x')
+    xmymzm, xpymzm = split_region_dir(ymzm, 'x')
+    xmypzm, xpypzm = split_region_dir(ypzm, 'x')
+    
 
-    outer_domains = [(3,tag) for _,tag in vol_domains if tag not in holes]
-    print(f"vol_domains {vol_domains}\nouter_domains {outer_domains}\nholes {holes}")
     pmlmap = {}
     nlayerspml = 6
-    pmlmap.update(create_pml_region(outer_domains, "xp", d_pml, nlayerspml))
-    pmlmap.update(create_pml_region(outer_domains, "xm", d_pml, nlayerspml))
-    pmlmap.update(create_pml_region(outer_domains, "yp", d_pml, nlayerspml))
-    pmlmap.update(create_pml_region(outer_domains, "ym", d_pml, nlayerspml))
+    pmlmap.update(create_pml_region(xp, "xp", d_pml, nlayerspml))
+    pmlmap.update(create_pml_region(xm, "xm", d_pml, nlayerspml))
+    pmlmap.update(create_pml_region(yp, "yp", d_pml, nlayerspml))
+    pmlmap.update(create_pml_region(ym, "ym", d_pml, nlayerspml))
     pmlmap.update(create_pml_region(zp, "zp", d_pml, nlayerspml))
     pmlmap.update(create_pml_region(zm, "zm", d_pml, nlayerspml))
+
     gmsh.model.occ.remove_all_duplicates()
     gmsh.model.occ.synchronize()
 
     dpmlvec = [d_pml, d_pml, d_pml]
 
     [pmlmap.update(create_pml_corner(reg, "xpyp", dpmlvec, nlayerspml))
-     for reg in outer_domains]
+     for reg in yp]
     [pmlmap.update(create_pml_corner(reg, "xmyp", dpmlvec, nlayerspml))
-     for reg in outer_domains]
+     for reg in yp]
     [pmlmap.update(create_pml_corner(reg, "xpym", dpmlvec, nlayerspml))
-     for reg in outer_domains]
+     for reg in ym]
     [pmlmap.update(create_pml_corner(reg, "xmym", dpmlvec, nlayerspml))
-     for reg in outer_domains]
+     for reg in ym]
 
     [pmlmap.update(create_pml_corner(reg, "xpzp", dpmlvec, nlayerspml))
      for reg in zp]
@@ -220,25 +272,44 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
     gmsh.model.occ.synchronize()
 
     [pmlmap.update(create_pml_corner(reg, "xmypzp", dpmlvec, nlayerspml))
-     for reg in zp]
+     for reg in xmypzp]
     [pmlmap.update(create_pml_corner(reg, "xpypzp", dpmlvec, nlayerspml))
-     for reg in zp]
+     for reg in xpypzp]
     [pmlmap.update(create_pml_corner(reg, "xmymzp", dpmlvec, nlayerspml))
-     for reg in zp]
+     for reg in xmymzp]
     [pmlmap.update(create_pml_corner(reg, "xpymzp", dpmlvec, nlayerspml))
-     for reg in zp]
+     for reg in xpymzp]
 
     [pmlmap.update(create_pml_corner(reg, "xmypzm", dpmlvec, nlayerspml))
-     for reg in zm]
+     for reg in xmypzm]
     [pmlmap.update(create_pml_corner(reg, "xpypzm", dpmlvec, nlayerspml))
-     for reg in zm]
+     for reg in xpypzm]
     [pmlmap.update(create_pml_corner(reg, "xmymzm", dpmlvec, nlayerspml))
-     for reg in zm]
+     for reg in xmymzm]
     [pmlmap.update(create_pml_corner(reg, "xpymzm", dpmlvec, nlayerspml))
-     for reg in zm]
+     for reg in xpymzm]
 
     gmsh.model.occ.remove_all_duplicates()
     gmsh.model.occ.synchronize()
+
+    #now we create physical ids for the x-y plane (debugging)
+    eps = period/100
+    xmin = -period/50-eps
+    xmax = period/50+eps
+    ymin = -period/2-d_pml-eps
+    ymax = period/2+d_pml+eps
+    zmin = -d_pml-eps
+    zmax = z_total+d_pml+eps
+    
+    dt = gmsh.model.occ.get_entities_in_bounding_box(xmin,ymin,zmin,xmax,ymax,zmax,2)
+    x_plane.tag = [t for _,t in dt]
+
+    xmin = -period/2-d_pml-eps
+    xmax = period/2+d_pml+eps
+    ymin = -period/50-eps
+    ymax = period/50+eps
+    dt = gmsh.model.occ.get_entities_in_bounding_box(xmin,ymin,zmin,xmax,ymax,zmax,2)
+    y_plane.tag = [t for _,t in dt]
     
     #finally, we get all PEC boundaries
     dim = 3
@@ -323,6 +394,8 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
         "bound_periodic_xp": 14,
         "bound_periodic_ym": 15,
         "bound_periodic_yp": 16,
+        "xplane" : 17,
+        "yplane" : 18,
     }
 
     domain_physical_ids_1d = {
@@ -365,6 +438,8 @@ def nanop_mesh(period, d_pml, h_sub, h_air, h_ag, radius, x_holes, y_holes,
         "bound_port_out_periodic_ym": ym_bnd_port_out,
         "bound_port_out_periodic_yp": yp_bnd_port_out,
         "ref_edges": edge_list,
+        "xplane" : x_plane.tag,
+        "yplane" : y_plane.tag,
     }
 
     insert_pml_ids(pmlmap, domain_physical_ids, domain_regions)
