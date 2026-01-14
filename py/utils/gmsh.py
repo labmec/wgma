@@ -735,6 +735,19 @@ def get_boundary_in_dir(dt, dirsign):
     res = [t for _, t in res]
     return res
 
+def cut_vol_with_plane(vols, surfs, elsize):
+    objs = []
+    [objs.append((3, v)) for vol in vols for v in vol.tag]
+    tools = []
+    [tools.append((2, s)) for surf in surfs for s in surf.tag]
+    [tools.append(b)
+         for surf in surfs
+         for s in surf.tag
+         for b in gmsh.model.get_boundary([(2, s)],
+                                          oriented=False)]
+    domain_map = apply_boolean_operation(objs, tools, "fragment", True, elsize)
+    remap_tags(vols+surfs, domain_map)
+
 def split_region_dir(dimtags: list, direction: str, chkbnd: bool = False):
     """
     Categorise regions in "x", "y" or "z" directions by comparing
