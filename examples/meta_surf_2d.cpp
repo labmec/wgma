@@ -175,8 +175,9 @@ SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
 
 int main(int argc, char *argv[]) {
 
-  wgma::wganalysis::using_tbb_mat=false;
-  wgma::scattering::using_tbb_mat=false;
+  wgma::wganalysis::using_tbb_mat=true;
+  wgma::planewaveanalysis::using_tbb_mat=true;
+  wgma::scattering::using_tbb_mat=true;
 #ifdef PZ_LOG
   /**if the NeoPZ library was configured with log4cxx,
    * the log should be initialised as:*/
@@ -952,9 +953,11 @@ ComputeModalAnalysis(
     FillDataForModalAnalysis(gmshmats,simdata,mats,suffix);
 
   STATE max_n{0};
+  std::set<int> modal_mats;
   for(auto [matid, er, ur] : modal_data.matinfovec){
     const auto n = std::sqrt(er);
     if(std::real(n) > max_n){max_n = std::real(n);}
+    modal_mats.insert(matid);
   }
 
   const STATE k0scale = (2*M_PI/simdata.lambda)*simdata.scale;
@@ -1074,6 +1077,7 @@ ComputeModalAnalysis(
   auto cmesh = an->GetMesh();
   //leave empty for all valid matids
   std::set<int> matids {};
+  matids = modal_mats;
   constexpr bool conj{true};
   auto norm =
     wgma::post::WgNorm<wgma::post::MultiphysicsIntegrator>(cmesh,matids,
@@ -1122,8 +1126,6 @@ void PostProcessModes(wgma::wganalysis::Wgma2D &an,
   for(auto is = 0; is < nsol; is++){
     sols.insert(is);
   }
-  sols.insert(81);
-  sols.insert(82);
   
   std::cout<<"Exporting "<<sols.size()<<" solutions"<<std::endl;
   for(auto isol : sols){
@@ -1242,6 +1244,10 @@ std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &moda
       }
     }
   }
+  std::cout<<"new ids created: "<<std::endl;
+  for(auto [orig_id,new_id] : matid_map){
+    std::cout<<"\t"<<new_id<<" created from "<<orig_id <<std::endl;
+  }
   return matid_map;
 }
 
@@ -1287,7 +1293,9 @@ REAL SolveScattering(TPZAutoPointer<TPZGeoMesh> gmesh,
     "Field_real",
     "Field_imag",
     "Field_abs",
-    "Material"};
+    "Material",
+    "Permittivity"
+  };
   
   
 
@@ -1788,7 +1796,7 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     
   const std::string &prefix = simdata.prefix;
 
-  const bool verbose{false};
+  const bool verbose{true};
   // setting up cmesh data
   wgma::cmeshtools::PhysicalData scatt_data;
   std::map<std::string, std::pair<CSTATE, CSTATE>> scatt_mats;
@@ -2074,7 +2082,6 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     std::cout<<"Assembling..."<<std::endl;
 
     scatt_an.Assemble();
-  
     //for now we unwrap the groups as they seem to interfere with the solving stage
     if(group){
       const auto nel = scatt_mesh->ElementVec().NElements();
@@ -2130,6 +2137,7 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     }
   }
 
+  std::cout<<"Solving..."<<std::endl;
   if(!simdata.direct_solver){
     std::set<int64_t> indices = {indep_con_id_src};
     if(match_mesh){indices.insert(indep_con_id_match);}
@@ -2137,6 +2145,7 @@ REAL RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     SetupPrecond(scatt_an, indices, simdata.solver_tol, from_current);
   }
   TPZSimpleTimer tsolve("Solve");
+  
   scatt_an.Solve();
   auto sol = scatt_an.Solution();
   const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
