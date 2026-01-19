@@ -5,6 +5,7 @@
 
 #include <pzgmesh.h>
 #include <pzcmesh.h>
+#include <pzcondensedcompel.h>
 #include <TPZBndCond.h>
 #include <pzvec_extras.h>
 #include <TPZSimpleTimer.h>
@@ -324,20 +325,27 @@ void cmeshtools::ExtractSolFromMesh(TPZAutoPointer<TPZCompMesh>& mesh_dest,
                                     TPZFMatrix<CSTATE> &sol_dest)
 {
   sol_dest.Zero();
+  //if the elements are condensed, the reference will be the uncondensed el
   mesh_orig->LoadReferences();
   const TPZFMatrix<CSTATE> &sol_orig = mesh_orig->Solution();
   const auto &block_dest = mesh_dest->Block();
   const auto &block_orig = mesh_orig->Block();
   const int nel = mesh_dest->NElements();
-  pzutils::ParallelFor(0,nel,[mesh_dest,&block_dest,&block_orig,
+  pzutils::ParallelFor(0,nel,[mesh_dest,mesh_orig,&block_dest,&block_orig,
                               &sol_dest,&sol_orig](int iel){
     auto el_dest = mesh_dest->Element(iel);
+    auto condensed = dynamic_cast<TPZCondensedCompEl*>(el_dest);
+    if(condensed){
+      el_dest = condensed->ReferenceCompEl();
+    }
     if(el_dest->Dimension() < mesh_dest->Dimension()){return;}
     //geometric mesh has orig mesh as reference
     auto el_orig = el_dest->Reference()->Reference();
     if(!el_orig){DebugStop();}
+    if(el_orig->Mesh() != mesh_orig.operator->()){return;}
     const auto ncon = el_orig->NConnects();
-    if(ncon != el_dest->NConnects()){
+    const auto ncon_dest = el_dest->NConnects();
+    if(ncon != ncon_dest){
       DebugStop();
     }
     for(auto icon = 0; icon < ncon; icon++){
