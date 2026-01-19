@@ -1070,6 +1070,6 @@ void SolveWithPML(TPZAutoPointer<TPZCompMesh> scatt_cmesh,
   using namespace wgma::post;
   SolutionReflectivity<SingleSpaceIntegrator>ref_calc(ref_mesh);
   ref_calc.SetNThreads(simdata.n_threads);
-  auto ref = ref_calc.ComputeReflectivity();
+  auto ref = ref_calc.ComputeReflectivity() - 1.0;
   std::cout<<"ref: "<<std::abs(ref)<<'('<<ref<<')'<<std::endl;
 }
