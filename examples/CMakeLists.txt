@@ -7,7 +7,7 @@ add_pz_target(
   NAME stepfiber
   SOURCES stepfiber.cpp
   FILES meshes/stepfiber.msh meshes/stepfiber_circdata.csv
-  )
+)
 target_link_libraries(stepfiber PUBLIC wgma)
 
 add_pz_target(
@@ -33,7 +33,7 @@ add_pz_target(
   SOURCES pcwg.cpp
   FILES meshes/pcwg.msh meshes/pcwg_circdata.csv
   FILES meshes/pcwg_test.msh meshes/pcwg_test_circdata.csv
-  )
+)
 target_link_libraries(pcwg PUBLIC wgma)
 
 
@@ -46,17 +46,17 @@ add_pz_target(
   NAME slab_disc
   SOURCES slab_disc.cpp
   FILES meshes/slab_disc.msh meshes/slab_disc_validation.msh
-  )
+)
 target_link_libraries(slab_disc PUBLIC wgma)
 
 add_pz_target(
   NAME sf3d
   SOURCES sf3d.cpp
   FILES meshes/sf3d.msh meshes/sf3d_cyldata.csv
-  )
-  target_link_libraries(sf3d PUBLIC wgma)
+)
+target_link_libraries(sf3d PUBLIC wgma)
 
-  list(APPEND sf3d_files ../py/scripts/sf3d_validation.py  ../py/scripts/sf3d_nmodes.py
+list(APPEND sf3d_files ../py/scripts/sf3d_validation.py  ../py/scripts/sf3d_nmodes.py
   ../py/scripts/sf3d_pml_comp.py)
 foreach(file ${sf3d_files})
   get_filename_component(filename ${file} NAME)
@@ -65,14 +65,14 @@ endforeach(file)
 add_pz_target(
   NAME sf3d_cyl
   SOURCES sf3d_cyl.cpp
-  )
+)
 target_link_libraries(sf3d_cyl PUBLIC wgma)  
 
 add_pz_target(
   NAME pcf
   SOURCES pcf.cpp
   FILES meshes/pcf.msh meshes/pcf_circdata.csv
-  )
+)
 target_link_libraries(pcf PUBLIC wgma)  
 
 
@@ -138,22 +138,29 @@ endforeach(file)
 add_pz_target(
   NAME wg_disc_3d
   SOURCES wg_disc_3d.cpp
-  )
-  target_link_libraries(wg_disc_3d PUBLIC wgma)
+)
+target_link_libraries(wg_disc_3d PUBLIC wgma)
 add_pz_target(
   NAME meta_surf_2d
   SOURCES meta_surf_2d.cpp
-  )
+)
 target_link_libraries(meta_surf_2d PUBLIC wgma)
 
 add_pz_target(
   NAME meta_surf_refac
   SOURCES meta_surf_refac.cpp
-  )
+)
 target_link_libraries(meta_surf_refac PUBLIC wgma)
-  
-  add_pz_target(
+
+add_pz_target(
   NAME sfg
   SOURCES sfg.cpp
-  )
-target_link_libraries(sfg PUBLIC wgma) 
+)
+target_link_libraries(sfg PUBLIC wgma)
+
+add_pz_target(
+  NAME scatt_field_3d
+  SOURCES scatt_field_3d.cpp
+)
+target_compile_options(scatt_field_3d PUBLIC -Wunused -Wunused-member-function -Wunused-function -Wunneeded-member-function)
+target_link_libraries(scatt_field_3d PUBLIC wgma) 
