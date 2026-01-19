@@ -42,7 +42,7 @@ namespace wgma::post{
       CSTATE val_num = 0;
       const int solsize = sol.size();
       for(auto ix = 0; ix < solsize; ix++){
-        val_num +=(sol[ix]-src[ix])*std::conj(src[ix]);
+        val_num +=sol[ix]*std::conj(src[ix]);
         val_den +=src[ix]*std::conj(src[ix]);
       }
       this->m_numerator[index] += weight * fabs(data.detjac) * val_num;

@@ -11,9 +11,10 @@ namespace wgma::post{
       while the next column is the source
       This class will compute the parameter
 
-      \int_k (E_c-E_s)\cdot E_s^* dA
+      \int_k (E_c)\cdot E_s^* dA
       \int_k E_s\cdot E_s^* dA
-      where E_c is the computed field and E_s the source field
+      where E_c is the computed field and E_s the source field,
+      so to compute the Sparam one simply subtracts the incident field.
 
    */
   template<class TSPACE>
