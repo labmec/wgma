@@ -109,6 +109,20 @@ class TorusData(VolData):
         self.r_large = -1.
         self.xc = []
 
+class WedgeData(VolData):
+    """
+    represents a wedge with right angle corner(xc,yc,zc)
+    """
+
+    def __init__(self, x=0, y=0, z=0, dxval=0, dyval=0, dzval=0):
+        VolData.__init__(self)
+        self.xc = x
+        self.yc = y
+        self.zc = z
+        self.dx = dxval
+        self.dy = dyval
+        self.dz = dzval
+
 def create_line(line: LineData, elsize: float = 0.1):
     """
     Creates a 1D line and insert it in the model
@@ -260,8 +274,6 @@ def create_box(box, elsize: float = 0.1):
         will have its tag field filled, must have all other attributes set
     elsize: float
         prescribed element size
-    normal: string
-        direction of the normal vector of the rectangle ('x', 'y' or 'z')
     """
 
     box.tag = [
@@ -271,6 +283,31 @@ def create_box(box, elsize: float = 0.1):
     # Find domain boundary tags
     boundary_dimtags = gmsh.model.getBoundary(
         dimTags=[(3, box.tag[0])],
+        combined=False, oriented=False, recursive=True)
+    [gmsh.model.mesh.set_size([tag], elsize)
+     for tag in boundary_dimtags if tag[0] == 0]
+
+def create_wedge(wedge, elsize: float = 0.1):
+    """
+    Creates a wedge volume and insert it in the model
+
+
+
+    Parameters
+    ----------
+    wedge : WedgeData
+        will have its tag field filled, must have all other attributes set
+    elsize: float
+        prescribed element size
+    """
+
+    wedge.tag = [
+        gmsh.model.occ.add_wedge(
+            wedge.xc, wedge.yc, wedge.zc, wedge.dx, wedge.dy, wedge.dz)]
+    gmsh.model.occ.synchronize()
+    # Find domain boundary tags
+    boundary_dimtags = gmsh.model.getBoundary(
+        dimTags=[(3, wedge.tag[0])],
         combined=False, oriented=False, recursive=True)
     [gmsh.model.mesh.set_size([tag], elsize)
      for tag in boundary_dimtags if tag[0] == 0]
