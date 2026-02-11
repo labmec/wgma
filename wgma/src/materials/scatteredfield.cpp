@@ -13,6 +13,7 @@ ScatteredField::ScatteredField(int id, const CSTATE er,
 {
   SetPermeability(ur);
   SetPermittivity(er);
+  SetBackgroundPermittivity(er);
 }
 ScatteredField::ScatteredField(int id, const TPZFMatrix<CSTATE>& er,
                                const TPZFMatrix<CSTATE> &ur,
@@ -22,6 +23,7 @@ ScatteredField::ScatteredField(int id, const TPZFMatrix<CSTATE>& er,
 {
   SetPermeability(ur);
   SetPermittivity(er);
+  SetBackgroundPermittivity(er);
 }
 
 
@@ -105,13 +107,15 @@ void ScatteredField::Contribute(const TPZMaterialDataT<CSTATE> &data,
     *curl_phi_ptr++ = *curl_phi_real_ptr++;
   }
 
+  constexpr int no_transp{0}, transp{1}, conj{2};
   TPZFNMatrix<MEMSHAPE,CSTATE> tmp;
   tmp = curl_phi;
   ur_inv_mat.Substitution(&tmp);
-  ek.AddContribution(0, 0, curl_phi, true, tmp, false, weight);
+  ek.AddContribution(0, 0, curl_phi, conj, tmp, no_transp, weight);
   er_mat.Multiply(phi, tmp);
-  ek.AddContribution(0, 0, phi, true, tmp, false, -k0*k0*weight);
+  ek.AddContribution(0, 0, phi, conj, tmp, no_transp, -k0*k0*weight);
 
+  if(m_has_sol == false){return;}
   //now for the rhs we use the background field
   CSTATE const *solvec = &(data.sol[0][0]);
   CSTATE const *curlvec = &(data.curlsol[0][0]);
@@ -124,11 +128,26 @@ void ScatteredField::Contribute(const TPZMaterialDataT<CSTATE> &data,
     *curl_ptr++ = *curlvec++;
   }
 
-  tmp = curl;
-  ur_inv_mat.Substitution(&tmp);
-  ef.AddContribution(0, 0, curl_phi, true, tmp, false, -weight);
+  TPZFNMatrix<9,CSTATE> er_background_mat;
+  GetBackgroundPermittivity(er_background_mat);
+
+  constexpr int sign{1};
+  er_mat -= er_background_mat;
   er_mat.Multiply(sol, tmp);
-  ef.AddContribution(0, 0, phi, true, tmp, false, k0*k0*weight);
+  ef.AddContribution(0, 0, phi, conj, tmp, no_transp, sign*k0*k0*weight);
+
+  // constexpr int sign{1};
+  // tmp = curl;
+  // ur_inv_mat.Substitution(&tmp);
+  // ef.AddContribution(0, 0, curl_phi, conj, tmp, no_transp, -sign*weight);
+  // er_mat.Multiply(sol, tmp);
+  // ef.AddContribution(0, 0, phi, conj, tmp, no_transp, sign*k0*k0*weight);
+  
+  // tmp = sol;
+  // ur_inv_mat.Substitution(&tmp);
+  // ef.AddContribution(0, 0, phi, true, tmp, false, -sign*k0*k0*weight);
+  // er_mat.Multiply(sol, tmp);
+  // ef.AddContribution(0, 0, phi, true, tmp, false, sign*k0*k0*weight);
 }
 
 

@@ -47,7 +47,7 @@ namespace wgma::materials{
     //! Sets the solution as a required data
     void FillDataRequirements(TPZMaterialData &data) const override{
       TBase::FillDataRequirements(data);
-      data.fNeedsSol = true;
+      data.fNeedsSol = m_has_sol;
     }
 
     /**
@@ -72,6 +72,21 @@ namespace wgma::materials{
     //! Gets the permittivity of the material
     virtual void GetPermittivity([[maybe_unused]] const TPZVec<REAL> &x,
                                  TPZFMatrix<CSTATE> &er) const;
+
+    //! Sets the permittivity of the material
+    void SetBackgroundPermittivity(CSTATE er){
+        m_back_er.Identity();
+        m_back_er *= er;
+    }
+    //! Sets the permittivity of the material
+    void SetBackgroundPermittivity(const TPZFMatrix<CSTATE> &er){
+        m_back_er = er;
+    }
+    //! Gets the permittivity of the material
+    void GetBackgroundPermittivity(TPZFMatrix<CSTATE> &er) const{
+        er = m_back_er;
+    }
+      
     /**@}*/
 
     std::string Name() const override { return "ScatteredField"; }
@@ -122,6 +137,8 @@ namespace wgma::materials{
       du_row = m_dim;
       du_col = 1;
     }
+    //! Sets whether solution should be computed in this specific instance
+    void SetComputeSol(bool val){m_has_sol = val;}
     /**@}*/
     virtual int ClassId() const override;
   protected:
@@ -132,11 +149,14 @@ namespace wgma::materials{
     TPZFNMatrix<9,CSTATE> m_ur{{1.,0,0},{0,1,0},{0,0,1}};
     //! Relative electric permittivity (xx, yy, zz)
     TPZFNMatrix<9,CSTATE> m_er{{1.,0,0},{0,1,0},{0,0,1}};
+    //! Relative background electric permittivity (xx, yy, zz)
+    TPZFNMatrix<9,CSTATE> m_back_er{{1.,0,0},{0,1,0},{0,0,1}};
     //! Wavelength being analysed
     STATE m_wl{0};
     //! Scale factor for the domain (helps with floating point arithmetic on small domains)
     const REAL m_scale{1.};
-  
+    //! Whether it has a background field solution or not (ex: PML domain)
+    bool m_has_sol{true};
   };
 };
 #endif
