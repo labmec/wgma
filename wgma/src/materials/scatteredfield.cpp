@@ -82,10 +82,13 @@ void ScatteredField::Contribute(const TPZMaterialDataT<CSTATE> &data,
 {
   //we now for sure that we wont have more than 200 shape functions
   constexpr int MEMSHAPE{3*200};
-  TPZFNMatrix<9,CSTATE> er_mat,ur_inv_mat;
+  TPZFNMatrix<9,CSTATE> er_mat, ur, urinv(3,3,0);
   GetPermittivity(data.x,er_mat);
-  GetPermeability(data.x,ur_inv_mat);
-  ur_inv_mat.Decompose(ELU);
+  GetPermeability(data.x,ur);
+  urinv.s(0,0) = 1./ur.g(0,0);
+  urinv.s(1,1) = 1./ur.g(1,1);
+  urinv.s(2,2) = 1./ur.g(2,2);
+  
   const int nshape = data.phi.Rows();
   const auto &phi_real = data.phi;
   const auto &curl_phi_real = data.curlphi;
@@ -110,7 +113,7 @@ void ScatteredField::Contribute(const TPZMaterialDataT<CSTATE> &data,
   constexpr int no_transp{0}, transp{1}, conj{2};
   TPZFNMatrix<MEMSHAPE,CSTATE> tmp;
   tmp = curl_phi;
-  ur_inv_mat.Substitution(&tmp);
+  urinv.Multiply(curl_phi,tmp);
   ek.AddContribution(0, 0, curl_phi, conj, tmp, no_transp, weight);
   er_mat.Multiply(phi, tmp);
   ek.AddContribution(0, 0, phi, conj, tmp, no_transp, -k0*k0*weight);
