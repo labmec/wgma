@@ -26,19 +26,6 @@ ScatteredField::ScatteredField(int id, const TPZFMatrix<CSTATE>& er,
   SetBackgroundPermittivity(er);
 }
 
-
-void ScatteredField::GetPermittivity(
-  [[maybe_unused]] const TPZVec<REAL> &x,TPZFMatrix<CSTATE> &er) const
-{
-  er = m_er;
-}
-
-void ScatteredField::GetPermeability(
-  [[maybe_unused]] const TPZVec<REAL> &x,TPZFMatrix<CSTATE> &ur) const
-{
-  ur = m_ur;
-}
-
 void ScatteredField::SetPermeability(CSTATE ur)
 {
   m_ur.Redim(3,3);
@@ -131,26 +118,19 @@ void ScatteredField::Contribute(const TPZMaterialDataT<CSTATE> &data,
     *curl_ptr++ = *curlvec++;
   }
 
+
   TPZFNMatrix<9,CSTATE> er_background_mat;
   GetBackgroundPermittivity(er_background_mat);
-
   constexpr int sign{1};
   er_mat -= er_background_mat;
   er_mat.Multiply(sol, tmp);
   ef.AddContribution(0, 0, phi, conj, tmp, no_transp, sign*k0*k0*weight);
 
   // constexpr int sign{1};
-  // tmp = curl;
-  // ur_inv_mat.Substitution(&tmp);
+  // urinv.Multiply(curl,tmp);
   // ef.AddContribution(0, 0, curl_phi, conj, tmp, no_transp, -sign*weight);
   // er_mat.Multiply(sol, tmp);
   // ef.AddContribution(0, 0, phi, conj, tmp, no_transp, sign*k0*k0*weight);
-  
-  // tmp = sol;
-  // ur_inv_mat.Substitution(&tmp);
-  // ef.AddContribution(0, 0, phi, true, tmp, false, -sign*k0*k0*weight);
-  // er_mat.Multiply(sol, tmp);
-  // ef.AddContribution(0, 0, phi, true, tmp, false, sign*k0*k0*weight);
 }
 
 
@@ -231,8 +211,10 @@ void ScatteredField::Solution(const TPZMaterialDataT<CSTATE> &data,
   const TPZVec<CSTATE> &val = var < 3 ? sol :
     (var == 7 ? epsvec : curlsol);
 
+  //we might want the field in V/m
+  const CSTATE scale_factor = var == 7 ? 1 : m_scale_post;
   for(auto x = 0; x < 3; x++){
-    solout[x] = op(val[x]);
+    solout[x] = scale_factor*op(val[x]);
   }
 }
 

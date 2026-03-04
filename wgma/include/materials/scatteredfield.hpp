@@ -63,15 +63,17 @@ namespace wgma::materials{
     //! Sets the permeability of the material
     void SetPermeability(const TPZFMatrix<CSTATE> &ur);
     //! Gets the permeability of the material
-    virtual void GetPermeability([[maybe_unused]] const TPZVec<REAL> &x,
-                                 TPZFMatrix<CSTATE> &ur) const;
+    inline virtual void GetPermeability([[maybe_unused]] const TPZVec<REAL> &x,
+                                        TPZFMatrix<CSTATE> &ur) const
+    {ur = m_ur;}
     //! Sets the permittivity of the material
     void SetPermittivity(CSTATE er);
     //! Sets the permittivity of the material
     void SetPermittivity(const TPZFMatrix<CSTATE> &er);
     //! Gets the permittivity of the material
-    virtual void GetPermittivity([[maybe_unused]] const TPZVec<REAL> &x,
-                                 TPZFMatrix<CSTATE> &er) const;
+    inline virtual void GetPermittivity([[maybe_unused]] const TPZVec<REAL> &x,
+                                        TPZFMatrix<CSTATE> &er) const
+    {er = m_er;}
 
     //! Sets the permittivity of the material
     void SetBackgroundPermittivity(CSTATE er){
@@ -137,6 +139,10 @@ namespace wgma::materials{
       du_row = m_dim;
       du_col = 1;
     }
+    //! Sets a multiplicative scale factor for .vtk fields
+    void SetScaleVTK(REAL scale){m_scale_post = scale;}
+    //! Gets the multiplicative scale factor for .vtk fields
+    REAL GetScaleVTK() const {return m_scale_post ;}
     //! Sets whether solution should be computed in this specific instance
     void SetComputeSol(bool val){m_has_sol = val;}
     /**@}*/
@@ -155,6 +161,8 @@ namespace wgma::materials{
     STATE m_wl{0};
     //! Scale factor for the domain (helps with floating point arithmetic on small domains)
     const REAL m_scale{1.};
+    //! Scale factor for post processing vtk files (ONLY)
+    REAL m_scale_post{1.};
     //! Whether it has a background field solution or not (ex: PML domain)
     bool m_has_sol{true};
   };
