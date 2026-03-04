@@ -308,12 +308,15 @@ int main(int argc, char *argv[]) {
   for(auto [mat,values] : simdata.scatterers_map){
     simdata.mats_3d.push_back(mat);
   }
+  //pml orig
+  const CSTATE alpha_pml_orig = simdata.pml_coeff;
   //number of wavelength points
   const int nwl_pts = simdata.wl_vec.size();
   for(int iwl = 0; iwl < nwl_pts; iwl++){
     TPZSimpleTimer timer("Total",true);
     auto timer_begin = std::chrono::high_resolution_clock::now();
     simdata.lambda = simdata.wl_vec[iwl];
+    simdata.pml_coeff = alpha_pml_orig/simdata.lambda;
     simdata.refractive_indices = {};
     for(auto [name,func] : simdata.ref_index_map){
       simdata.refractive_indices[name] = func(simdata.lambda);
@@ -809,6 +812,14 @@ void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh
       cyl.m_matid = std::stoi(line[7]);
       cyls.push_back(cyl);
 
+      std::cout<<"cyl "<<cyl.m_matid
+               <<" xc "<<cyl.m_xc
+               <<" yc "<<cyl.m_yc
+               <<" zc "<<cyl.m_zc
+               <<" xaxis "<<cyl.m_xaxis
+               <<" yaxis "<<cyl.m_yaxis
+               <<" zaxis "<<cyl.m_zaxis
+               <<" radius "<<cyl.m_radius<<std::endl;
       line = getNextLineAndSplitIntoTokens(read);
     }
   }
@@ -869,6 +880,7 @@ void ReplaceForCurvedEls(const std::string & meshfile, TPZAutoPointer<TPZGeoMesh
   wgma::gmeshtools::SetExactSphereRepresentation(gmesh, spheres, false);
   wgma::gmeshtools::SetExactTorusRepresentation(gmesh, toruses, false);
   wgma::gmeshtools::ReplaceNeighsWithBlend(*gmesh);
+  
 }
 
 TPZAutoPointer<ModalData>
@@ -982,9 +994,38 @@ void ComputePlaneWaveSolutions(TPZAutoPointer<ModalData> portdata,
   norm.SetBeta(betavec);
   norm.SetWavelength(simdata.lambda/simdata.scale);
   norm.Normalise();
-  TPZFMatrix<CSTATE> &mesh_sol=cmesh->Solution();
+  TPZFMatrix<CSTATE> mesh_sol=cmesh->Solution();
   an->LoadSolution(mesh_sol);
+  
   portdata->eigenvalues = an->GetEigenvalues();
+  if(simdata.export_vtk_modes == false){return;}
+  TPZVec<std::string> fvars = {
+    "Ez_real",
+    "Ez_abs",
+    "Et_real",
+    "Et_abs"};
+
+  const std::string file{simdata.prefix+"_modal"+suffix};
+  const auto vtkres = simdata.vtk_res;
+  const auto nthreads = simdata.n_threads;
+  auto vtk = TPZVTKGenerator(cmesh, fvars, file, vtkres);
+  vtk.SetNThreads(nthreads);
+
+  std::set<int> sols;
+  const auto nsol = std::min((int64_t)20,an->GetEigenvalues().size());
+  for(auto is = 0; is < nsol; is++){
+    sols.insert(is);
+  }
+  
+  std::cout<<"Exporting "<<sols.size()<<" solutions"<<std::endl;
+  const auto neq = mesh_sol.Rows();
+  TPZFMatrix<CSTATE> current_sol(neq, 1, 0);
+  for(auto isol : sols){
+    mesh_sol.GetSub(0, isol, neq, 1, current_sol);
+    cmesh->LoadSolution(current_sol);
+    vtk.Do();
+  }
+  an->LoadSolution(mesh_sol);
 }
 
 
@@ -1027,8 +1068,7 @@ std::map<int,int> SplitMaterialsNearWpbc(const TPZAutoPointer<TPZCompMesh> &moda
     if(modalmats.find(modalid)==modalmats.end()){continue;}
     //now we know it is a modal element
     const int nsides = gel_2d->NSides();
-    const int nnodes = gel_2d->NCornerNodes();
-    for(int is = nnodes; is < nsides; is++){
+    for(int is = nsides-1; is < nsides; is++){
       TPZGeoElSide gelside(gel_2d,is);
       TPZGeoElSide neigh = gelside.Neighbour();
       while(neigh!=gelside){
@@ -1238,11 +1278,46 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
   TPZAutoPointer<TPZCompMesh> sf_mesh = 
     CreateSFMesh(gmesh,gmshmats,split_mats,simdata);
 
+  std::set<int> pml_ids;
+  for(auto [id, mat] : sf_mesh->MaterialVec()){
+    if(mat->Dimension() != 3){continue;}
+    auto pml = dynamic_cast<TPZCartesianPML<wgma::materials::ScatteredField>*>(mat);
+    if(pml){
+      pml_ids.insert(id);
+    }
+  }
+  // for(auto [id, mat] : sf_mesh->MaterialVec()){
+  //   if(mat->Dimension() != 3){continue;}
+  //   auto pml = dynamic_cast<TPZCartesianPML<wgma::materials::ScatteredField>*>(mat);
+  //   if(pml){
+  //     auto neigh_id = pml->GetRefMatId();
+  //     std::cout<<"pml "<<id<<" neigh "<<neigh_id<<std::endl;
+  //     const auto pmlid = split_mats.count(id) ? split_mats.at(id) : id;
+  //     const auto refmatid = split_mats.count(neigh_id) ? split_mats.at(neigh_id) : neigh_id;
+  //     for (auto [name, matid] : gmshmats[3]){
+  //       if(matid == pmlid){
+  //         std::cout<<"pml is called "<<name;
+  //         break;
+  //       }
+  //     }
+  //     for (auto [name, matid] : gmshmats[3]){
+  //       if(matid == refmatid){
+  //         std::cout<<" and ref mat is "<<refmatid<<" which corresponds to "<<name<<std::endl;
+  //         break;
+  //       }
+  //     }
+  //     REAL begin, d;
+  //     CSTATE alpha;
+  //     pml->GetAttX(begin,alpha,d);
+  //     std::cout<<"\tatt x "<<alpha<<" begin "<<begin<<" d "<<d<<std::endl;
+  //     pml->GetAttY(begin,alpha,d);
+  //     std::cout<<"\tatt y "<<alpha<<" begin "<<begin<<" d "<<d<<std::endl;
+  //     pml->GetAttZ(begin,alpha,d);
+  //     std::cout<<"\tatt z "<<alpha<<" begin "<<begin<<" d "<<d<<std::endl;
+  //   }
+  // }
 
-  AdjustRefinedEls(sf_mesh, gmshmats, simdata);
-
-
-  //now we adjust the integration rule order for blend elements
+  AdjustRefinedEls(sf_mesh, gmshmats, simdata);  //now we adjust the integration rule order for blend elements
   for(auto cel : sf_mesh->ElementVec()){
     if(!cel){continue;}
     auto gel = cel->Reference();
@@ -1258,18 +1333,79 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
   }
 
   //before condensing we load the background sol into the mesh and store it
+  std::set<int> scatt_ids;
   {
     TPZFMatrix<CSTATE> background_sol = sf_mesh->Solution();
     wgma::cmeshtools::ExtractSolFromMesh(sf_mesh, background_mesh, background_sol);
     sf_mesh->LoadReferences();
     sf_mesh->LoadSolution(background_sol);
+
+    for(auto [scatt,values] : simdata.scatterers_map){
+      const auto [old_mat,new_mat] = values;
+      const auto old_n = simdata.refractive_indices.at(old_mat);
+      const auto new_n = simdata.refractive_indices.at(new_mat);
+      const auto matid = gmshmats[3].at(scatt);
+      scatt_ids.insert(matid);
+      std::cout<<"scatterer "<<matid<<" with old ref index "<<old_n
+               <<" and new ref index "<<new_n<<std::endl;
+      for(auto [id,mat] : sf_mesh->MaterialVec()){
+        if(id == matid){
+          auto scatt_mat = dynamic_cast<wgma::materials::ScatteredField*>(mat);
+          if(!scatt_mat){DebugStop();}
+          scatt_mat->SetBackgroundPermittivity(old_n*old_n);
+          scatt_mat->SetComputeSol(true);
+        }
+      }
+    }
+    for(auto [id,mat] : sf_mesh->MaterialVec()){
+      auto scatt_mat = dynamic_cast<wgma::materials::ScatteredField*>(mat);
+      if(scatt_mat){
+        //fields in V/m
+        scatt_mat->SetScaleVTK(1e6);
+        if(scatt_ids.count(id) == 0){
+          scatt_mat->SetComputeSol(false);
+        }
+      }
+    }
+
+    // for(auto [scatt,values] : simdata.scatterers_map){
+    //   const auto [old_mat,new_mat] = values;
+    //   const auto old_n = simdata.refractive_indices.at(old_mat);
+    //   const auto new_n = simdata.refractive_indices.at(new_mat);
+    //   const auto matid = gmshmats[3].at(scatt);
+    //   scatt_ids.insert(matid);
+    //   std::cout<<"scatterer "<<matid<<" with old ref index "<<old_n
+    //            <<" and new ref index "<<new_n<<std::endl;
+    //   for(auto [id,mat] : sf_mesh->MaterialVec()){
+    //     if(id == matid){
+    //       auto scatt_mat = dynamic_cast<wgma::materials::ScatteredField*>(mat);
+    //       if(!scatt_mat){DebugStop();}
+    //       scatt_mat->SetBackgroundPermittivity(old_n*old_n);
+    //     }
+    //   }
+    // }
+    // for(auto [id,mat] : sf_mesh->MaterialVec()){
+    //   auto scatt_mat = dynamic_cast<wgma::materials::ScatteredField*>(mat);
+    //   auto pml = dynamic_cast<TPZCartesianPML<wgma::materials::ScatteredField>*>(mat);
+    //   if(scatt_mat){
+    //     //fields in V/m
+    //     scatt_mat->SetScaleVTK(1e6);
+    //     if(pml){
+    //       scatt_mat->SetComputeSol(false);
+    //     }else{
+    //       scatt_mat->SetComputeSol(true);
+    //     }
+    //   }
+    // }
+    
   }
+  
   
   TPZCompMeshTools::CreatedCondensedElements(sf_mesh.operator->(),
                                              false, false);
 
-  const std::string scatt_file = simdata.prefix+"_scatt";
-  auto vtk = TPZVTKGenerator(sf_mesh, fvars_3d, scatt_file, simdata.vtk_res,3,true);
+  const std::string scatt_file = simdata.prefix+"_scatt_"+std::to_string(iwl);
+  auto vtk = TPZVTKGenerator(sf_mesh, fvars_3d, scatt_file, simdata.vtk_res,3,false);
   vtk.SetNThreads(simdata.n_threads);
 
   //now we must load the solution in the mesh
@@ -1303,9 +1439,11 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
 
   
   {
-    TPZSimpleTimer timer("Assemble");
+    TPZSimpleTimer timer("Assemble",true);
     std::cout<<"Assembling..."<<std::endl;
     scatt_an.Assemble();
+    TPZFMatrix<CSTATE> &rhs = scatt_an.Rhs();
+    std::cout<<"rhs norm is "<<Norm(rhs)<<std::endl;
   }
   if(!simdata.direct_solver){
     std::set<int64_t> indices = {};
@@ -1313,9 +1451,12 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
     SetupPrecond(scatt_an, indices, simdata.solver_tol, from_current);
   }
 
+  REAL residual{0};
+
   {
     TPZSimpleTimer tsolve("Solve");
     scatt_an.Solve();
+    residual = scatt_an.GetResidual();
   }
   auto sol = scatt_an.Solution();
   const auto eqfilt = scatt_an.StructMatrix()->EquationFilter();
@@ -1331,11 +1472,17 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
   }
   //sum solution as to obtain the total field
 
-  
+  wgma::cmeshtools::RemovePeriodicity(sf_mesh);
   //scattered field
   if(simdata.export_vtk_scatt){vtk.Do();}
   
   TPZFMatrix<CSTATE> &total_field = sf_mesh->Solution();
+
+  {
+    const TPZMatrixWindow<CSTATE> curr_sol(total_field,0,0,total_field.Rows(),1);
+    const auto norm = Norm(curr_sol);
+    std::cout<<"norm of scattered sol: "<<norm<<std::endl;
+  }
   
   {
     TPZFMatrix<CSTATE> background_sol = sf_mesh->Solution();
@@ -1344,9 +1491,20 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
     sf_mesh->LoadReferences();
     total_field+=background_sol;
   }
+
+  {
+    const TPZMatrixWindow<CSTATE> curr_sol(total_field,0,0,total_field.Rows(),1);
+    const auto norm = Norm(curr_sol);
+    std::cout<<"norm of total sol: "<<norm<<std::endl;
+  }
   
   if(simdata.export_vtk_scatt){vtk.Do();}
 
+  {
+    const TPZMatrixWindow<CSTATE> curr_sol(total_field,0,0,total_field.Rows(),1);
+    const auto norm = Norm(curr_sol);
+    std::cout<<"norm of total sol AFTER VTK: "<<norm<<std::endl;
+  }
    
   const auto nmodes_left = src_an->eigenvalues.size();
   /*
@@ -1387,11 +1545,13 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
 
   //now we compute the reflection
   TPZAutoPointer<TPZCompMesh> ref_mesh = src_mesh->Clone();
+  wgma::cmeshtools::RemovePeriodicity(ref_mesh);
   //we always compare two solutions at a time
   TPZFMatrix<CSTATE> refl_sol(solsz,2,0);
   //we copy the solution to the first column
   TPZFMatrix<CSTATE> dummy_ref_0(solsz,1,refl_sol.Elem(),solsz);
   wgma::cmeshtools::ExtractSolFromMesh(ref_mesh, sf_mesh, dummy_ref_0);
+  
   //we will copy the src to the second column
   TPZFMatrix<CSTATE> dummy_ref_1(solsz,1,refl_sol.Elem()+solsz,solsz);
   //now we compute the reflection
@@ -1411,17 +1571,28 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
   }
   
   using namespace wgma::post;
-  
+  std::string outputfile = simdata.prefix+"_reflection.csv";
+  std::ofstream ost;
+  ost.open(outputfile, std::ios_base::app);
+  ost << std::setprecision(std::numeric_limits<STATE>::max_digits10);
+  ost << simdata.lambda<<',';
+  {
+    const TPZMatrixWindow<CSTATE> curr_sol(refl_sol,0,0,solsz,1);
+    const auto norm = Norm(curr_sol);
+    std::cout<<"first norm of computed sol: "<<norm<<std::endl;
+  }
   for(int i = 0; i < nm_in; i++){
     const TPZMatrixWindow<CSTATE> curr_sol(src_all_sols,0,i,solsz,1);
     dummy_ref_1 = curr_sol;
     ref_mesh->LoadSolution(refl_sol);
+
+    
     
     SolutionReflectivity<SingleSpaceIntegrator>ref_calc(ref_mesh);
     ref_calc.SetNThreads(simdata.n_threads);
     const auto comp_ref = ref_calc.ComputeReflectivity();
     const auto s11 = (comp_ref - src_coeffs[i])/total_field_in;
-    const auto ref = s11*s11;
+    const auto ref = std::abs(s11)*std::abs(s11);
     CSTATE s21{0};
     if(match_an){
       TPZFMatrix<CSTATE> & trans_all_sols  = match_mesh->Solution();
@@ -1434,7 +1605,7 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
       s21 = trans_calc.ComputeReflectivity()/total_field_in;
       
     }
-    const auto trans = s21*s21;
+    const auto trans = std::abs(s21)*std::abs(s21);
     std::cout<<" src "<<src_coeffs[i]
              <<" comp ref "<<comp_ref
              <<" tpi "<<total_field_in
@@ -1443,7 +1614,12 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
              <<" s21 "<<s21
              <<" trans "<<trans
              <<" t + r "<<trans+ref<<std::endl;
+    const char s11_sign = s11.imag() > 0 ? '+' : '-';
+    const char s21_sign = s21.imag() > 0 ? '+' : '-';
+    ost <<s11.real()<<s11_sign<<std::abs(s11.imag())<<'j'<<','
+        <<s21.real()<<s21_sign<<std::abs(s21.imag())<<'j'<<',';
   }
+  ost <<residual<<std::endl;
 
   wgma::cmeshtools::RemovePeriodicity(sf_mesh);
 }
@@ -1668,7 +1844,7 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
   const auto &lambda = simdata.lambda;
   const auto &scale = simdata.scale;
 
-  const bool verbose{true};
+  const bool verbose{false};
   // setting up cmesh data
   wgma::cmeshtools::PhysicalData scatt_data;
   std::map<std::string, std::pair<CSTATE, CSTATE>> scatt_mats;
@@ -1759,7 +1935,7 @@ CreateSFMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
   const auto &lambda = simdata.lambda;
   const auto &scale = simdata.scale;
 
-  const bool verbose{true};
+  const bool verbose{false};
   // setting up cmesh data
   wgma::cmeshtools::PhysicalData scatt_data;
   std::map<std::string, std::pair<CSTATE, CSTATE>> scatt_mats;
@@ -2072,7 +2248,7 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
                                                   scatt_an.StructMatrix());
   if(strmtrx){
     //300 is the number of shape functions in a k4 hexahedron
-    const int maxsz = std::max(nmodes_match,nmodes_src) + 540;
+    const int maxsz = std::max(nmodes_match,nmodes_src) + 100;
     const int bufsz = maxsz*maxsz;
     strmtrx->BufferSizeForUserMatrix(bufsz);
   }
@@ -2152,7 +2328,8 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     }
   }
 
-  if(!simdata.direct_solver){
+  //always using iterative for smaller system
+  {
     std::set<int64_t> indices = {indep_con_id_src};
     if(match_mesh){indices.insert(indep_con_id_match);}
     int from_current = sol_vec.Rows() > 0 ? 1 : 0;
@@ -2328,7 +2505,7 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                                               colors, numc,
                                               sparse_blocks);
   }
-  const int64_t n_iter = {300};
+  const int64_t n_iter = {1000};
   const int n_vecs = {30};
   solver.SetGMRES(n_iter, n_vecs, *precond, tol, from_current);
 }
