@@ -386,11 +386,14 @@ FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
 inline std::string
 CheckForBoundary(const TPZVec<std::map<std::string, int>> &gmshmats,
                  const int dim,
-                 const std::string &pattern){
+                 const std::string &pattern,
+                 const TPZVec<std::string> &found_bcs){
   for(auto &[name,id] : gmshmats[dim]){
-    const auto rx = std::regex{pattern, std::regex_constants::icase };
-    const bool found = std::regex_search(name,rx);
-    if(found){return name;}
+    if ( std::find(found_bcs.begin(), found_bcs.end(), name) == found_bcs.end() ){
+      const auto rx = std::regex{pattern, std::regex_constants::icase };
+      const bool found = std::regex_search(name,rx);
+      if(found){return name;}
+    }
   }
   return "";
 }
@@ -1725,16 +1728,21 @@ FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
 
   const auto verbose = simdata.eigen_verbose;
 
+  TPZVec<std::string> found_bcs;
   if(suffix == "_port_in" && simdata.custom_periodic_bcs_port_in.size()){
     for(auto [dep,indep] : simdata.custom_periodic_bcs_port_in){
       modal_bcs[dep] = wgma::bc::type::PERIODIC;
       modal_bcs[indep] = wgma::bc::type::PERIODIC;
+      found_bcs.push_back(dep);
+      found_bcs.push_back(indep);
       if(verbose){std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;}
     }
   }else if(suffix == "_port_out" && simdata.custom_periodic_bcs_port_out.size()){
     for(auto [dep,indep] : simdata.custom_periodic_bcs_port_out){
       modal_bcs[dep] = wgma::bc::type::PERIODIC;
       modal_bcs[indep] = wgma::bc::type::PERIODIC;
+      found_bcs.push_back(dep);
+      found_bcs.push_back(indep);
       if(verbose){std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;}
     }
   }else{
@@ -1743,6 +1751,8 @@ FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
     if(depbc.size()){
       modal_bcs[depbc] = wgma::bc::type::PERIODIC;
       modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
+      found_bcs.push_back(depbc);
+      found_bcs.push_back(indepbc);
       if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
     }
     depbc.clear();
@@ -1752,12 +1762,14 @@ FillDataForModalAnalysis(const TPZVec<std::map<std::string, int>> &gmshmats,
     if(depbc.size()){
       modal_bcs[depbc] = wgma::bc::type::PERIODIC;
       modal_bcs[indepbc] = wgma::bc::type::PERIODIC;
+      found_bcs.push_back(depbc);
+      found_bcs.push_back(indepbc);
       if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
     }
   }
   
   
-  auto pec_bnd = CheckForBoundary(gmshmats,bcdim,"bound"+suffix);
+  auto pec_bnd = CheckForBoundary(gmshmats,bcdim,"bound"+suffix, found_bcs);
   
   if(pec_bnd.size() > 0){
     modal_bcs[pec_bnd] = wgma::bc::type::PEC;
@@ -1808,12 +1820,15 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
 
   constexpr int dim{3};
   constexpr int bcdim{2};
-  
+
+  TPZVec<std::string> found_bcs;
   if(simdata.custom_periodic_bcs_3d.size()){
     for(auto [dep,indep] : simdata.custom_periodic_bcs_3d){
       if(verbose){std::cout<<"found periodic bcs "<<dep<<" and "<<indep<<std::endl;}
       scatt_bcs[dep] = wgma::bc::type::PERIODIC;
       scatt_bcs[indep] = wgma::bc::type::PERIODIC;
+      found_bcs.push_back(dep);
+      found_bcs.push_back(indep);
     }
   }else{
     std::string depbc, indepbc;
@@ -1821,6 +1836,8 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     if(depbc.size()){
       scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
       scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
+      found_bcs.push_back(depbc);
+      found_bcs.push_back(indepbc);
       if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
     }
 
@@ -1831,10 +1848,12 @@ CreateScattMesh(TPZAutoPointer<TPZGeoMesh> gmesh,
     if(depbc.size()){
       scatt_bcs[depbc] = wgma::bc::type::PERIODIC;
       scatt_bcs[indepbc] = wgma::bc::type::PERIODIC;
+      found_bcs.push_back(depbc);
+      found_bcs.push_back(indepbc);
       if(verbose){std::cout<<"found periodic bcs "<<depbc<<" and "<<indepbc<<std::endl;}
     }
   }
-  auto pec_bnd = CheckForBoundary(gmshmats,bcdim,"bound_vol");
+  auto pec_bnd = CheckForBoundary(gmshmats,bcdim,"bound_vol", found_bcs);
   
   if(pec_bnd.size() > 0){
     scatt_bcs[pec_bnd] = wgma::bc::type::PEC;
@@ -2329,12 +2348,13 @@ void FindPeriodicBoundaries(const TPZVec<std::map<std::string, int>> &gmshmats,
                             std::string &s_dep,
                             std::string &s_indep){
 
+  TPZVec<std::string> found_bcs = {};
   const std::string pattern_1 = suffix+"_periodic_"+pt1;
-  const auto indepname = CheckForBoundary(gmshmats, dim, pattern_1);
+  const auto indepname = CheckForBoundary(gmshmats, dim, pattern_1, found_bcs);
   if(indepname.size() > 0){
     //found
     const std::string pattern_2 = suffix+"_periodic_"+pt2;
-    const auto depname = CheckForBoundary(gmshmats, dim, pattern_2);
+    const auto depname = CheckForBoundary(gmshmats, dim, pattern_2, found_bcs);
     if(depname.size() > 0){
       //found
       s_dep = depname;
