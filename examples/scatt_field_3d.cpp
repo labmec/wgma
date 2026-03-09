@@ -1232,6 +1232,7 @@ TPZAutoPointer<TPZCompMesh> ComputeBackgroundField(TPZAutoPointer<TPZGeoMesh> gm
     eval.SetNThreads(simdata.n_threads);
     STATE min{0};
     eval.EvalSolutionAtPoints(min,max_background_val);
+    std::cout<<"maximum background val is "<<max_background_val<<std::endl;
   }
   
   //get reflection and transmission (for debugging)
@@ -1654,7 +1655,7 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
     ost <<s11.real()<<s11_sign<<std::abs(s11.imag())<<'j'<<','
         <<s21.real()<<s21_sign<<std::abs(s21.imag())<<'j'<<',';
   }
-  ost <<residual<<max_background_val<<","<<max_scattered_val<<std::endl;
+  ost <<residual<<","<<max_background_val<<","<<max_scattered_val<<std::endl;
 
   wgma::cmeshtools::RemovePeriodicity(sf_mesh);
 }
