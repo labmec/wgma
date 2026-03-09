@@ -18,8 +18,8 @@ namespace wgma::post{
     m_max_sol.Resize(size_res); m_max_sol.Fill(0);
     this->Integrate(this->m_elvec);
 
-    min = *std::min_element(m_min_sol.begin(),m_min_sol.end());
-    max = *std::max_element(m_max_sol.begin(),m_max_sol.end());
+    min = std::sqrt(*std::min_element(m_min_sol.begin(),m_min_sol.end()));
+    max = std::sqrt(*std::max_element(m_max_sol.begin(),m_max_sol.end()));
 
     
   }
