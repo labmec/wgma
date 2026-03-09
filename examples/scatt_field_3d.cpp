@@ -12,7 +12,7 @@
 #include "cmeshtools_impl.hpp"
 #include "post/waveguidecoupling.hpp"
 #include "post/orthowgsol.hpp"
-#include "post/exportsolution.hpp"
+#include "post/evalsolution.hpp"
 #include "post/reflectivity.hpp"
 #include "util.hpp"                // for CreatePath, ExtractPath
 #include <json_util.hpp>
@@ -181,6 +181,7 @@ ComputeBackgroundField(TPZAutoPointer<TPZGeoMesh> gmesh,
                        const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                        const SimData &simdata,
                        TPZFMatrix<CSTATE> &last_sol,
+                       STATE &max_val,
                        const int iwl);
 
 void
@@ -192,6 +193,7 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
                       const std::map<int,int> &split_mats,
                       const SimData &simdata,
                       TPZFMatrix<CSTATE> &last_sol,
+                      STATE max_background_val,
                       const int iwl);
 
  
@@ -364,9 +366,11 @@ int main(int argc, char *argv[]) {
       auto [first, second] = values;
       simdata.refractive_indices[mat] = simdata.refractive_indices[first];
     }
+    STATE max_background_val{0};
     auto background_mesh =
       ComputeBackgroundField(gmesh, modal_an_in,  modal_an_out, gmshmats,
-                             split_mats,periodic_els, simdata, last_background_sol, iwl);
+                             split_mats,periodic_els, simdata,
+                             last_background_sol, max_background_val, iwl);
     //the refractive index map must be set for the scattered field
     for(auto [mat,values] : simdata.scatterers_map){
       auto [first, second] = values;
@@ -374,7 +378,8 @@ int main(int argc, char *argv[]) {
     }
     //we finally compute the scattered field
     ComputeScatteredField(gmesh, modal_an_in, modal_an_out, background_mesh,
-                          gmshmats, split_mats,simdata, last_scattered_sol, iwl);
+                          gmshmats, split_mats,simdata, last_scattered_sol,
+                          max_background_val, iwl);
     auto timer_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> duration = timer_end-timer_begin;
     std::cout<<"wavelength "<<simdata.lambda<<" took "<<duration.count()<<" ms"<<std::endl;
@@ -1109,6 +1114,7 @@ TPZAutoPointer<TPZCompMesh> ComputeBackgroundField(TPZAutoPointer<TPZGeoMesh> gm
                                                    const TPZVec<TPZAutoPointer<std::map<int64_t,int64_t>>> &periodic_els,
                                                    const SimData &simdata,
                                                    TPZFMatrix<CSTATE> &last_sol,
+                                                   STATE &max_background_val,
                                                    const int iwl)
 {
   /*********************
@@ -1217,6 +1223,17 @@ TPZAutoPointer<TPZCompMesh> ComputeBackgroundField(TPZAutoPointer<TPZGeoMesh> gm
                        );
   //plot
   if(simdata.export_vtk_scatt){vtk.Do();}
+
+  //compute max value
+
+  {
+    using namespace wgma::post;
+    EvalSolution<SingleSpaceIntegrator>eval(scatt_mesh_wpbc);
+    eval.SetNThreads(simdata.n_threads);
+    STATE min{0};
+    eval.EvalSolutionAtPoints(min,max_background_val);
+  }
+  
   //get reflection and transmission (for debugging)
   TPZFMatrix<CSTATE> &sol = scatt_mesh_wpbc->Solution();
   
@@ -1259,6 +1276,7 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
                       const std::map<int,int> &split_mats,
                       const SimData &simdata,
                       TPZFMatrix<CSTATE> &sol_vec,
+                      STATE max_background_val,
                       const int iwl)
 {
   /*********************
@@ -1500,11 +1518,28 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
   
   if(simdata.export_vtk_scatt){vtk.Do();}
 
+
+  STATE max_scattered_val{0};
   {
-    const TPZMatrixWindow<CSTATE> curr_sol(total_field,0,0,total_field.Rows(),1);
-    const auto norm = Norm(curr_sol);
-    std::cout<<"norm of total sol AFTER VTK: "<<norm<<std::endl;
+    std::set<int> materials;
+    for(auto [name, id] : gmshmats[3]){
+      std::string pattern{"pml"};
+      const auto rx = std::regex{pattern, std::regex_constants::icase };
+      const bool found = std::regex_search(name,rx);
+      if(!found){
+        materials.insert(id);
+      }
+    }
+    using namespace wgma::post;
+    EvalSolution<SingleSpaceIntegrator>eval(sf_mesh,materials);
+    eval.SetNThreads(simdata.n_threads);
+    STATE min{0};
+    eval.EvalSolutionAtPoints(min,max_scattered_val);
   }
+
+  std::cout<<"max background val "<<max_background_val
+           <<" max scattered val "<<max_scattered_val
+           <<" ratio "<<max_scattered_val/max_background_val<<std::endl;
    
   const auto nmodes_left = src_an->eigenvalues.size();
   /*
@@ -1619,7 +1654,7 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
     ost <<s11.real()<<s11_sign<<std::abs(s11.imag())<<'j'<<','
         <<s21.real()<<s21_sign<<std::abs(s21.imag())<<'j'<<',';
   }
-  ost <<residual<<std::endl;
+  ost <<residual<<max_background_val<<","<<max_scattered_val<<std::endl;
 
   wgma::cmeshtools::RemovePeriodicity(sf_mesh);
 }

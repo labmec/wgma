@@ -162,5 +162,5 @@ add_pz_target(
   NAME scatt_field_3d
   SOURCES scatt_field_3d.cpp
 )
-target_compile_options(scatt_field_3d PUBLIC -Wunused -Wunused-member-function -Wunused-function -Wunneeded-member-function)
+# target_compile_options(scatt_field_3d PUBLIC -Wunused -Wunused-member-function -Wunused-function -Wunneeded-member-function)
 target_link_libraries(scatt_field_3d PUBLIC wgma) 
