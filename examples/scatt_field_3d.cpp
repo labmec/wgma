@@ -318,7 +318,7 @@ int main(int argc, char *argv[]) {
     TPZSimpleTimer timer("Total",true);
     auto timer_begin = std::chrono::high_resolution_clock::now();
     simdata.lambda = simdata.wl_vec[iwl];
-    simdata.pml_coeff = alpha_pml_orig/simdata.lambda;
+    simdata.pml_coeff = alpha_pml_orig*simdata.lambda;
     simdata.refractive_indices = {};
     for(auto [name,func] : simdata.ref_index_map){
       simdata.refractive_indices[name] = func(simdata.lambda);
