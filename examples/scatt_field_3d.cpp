@@ -43,6 +43,7 @@
 #include <TPZSpStructMatrix.h>
 #include <TPZStructMatrixOMPorTBB.h>
 #include "TPZYSMPMatrix.h"
+#include "TPZSYSMPMatrix.h"
 #include <TPZNullMaterial.h>
 #include <pzelementgroup.h>
 #include <pzvec_extras.h>
@@ -1430,7 +1431,8 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
   //now we must load the solution in the mesh
   
   //assemble and solve
-  constexpr bool sym{false};
+  //TODO: debug why it doesnt work with Precond
+  const bool sym = simdata.direct_solver;
   //either we solve by iterative method or we send it to pardiso to order, so...
   constexpr bool optimize_bandwidth{false};
   auto scatt_an = wgma::scattering::Analysis(sf_mesh, simdata.n_threads,
@@ -1463,6 +1465,14 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
     scatt_an.Assemble();
     TPZFMatrix<CSTATE> &rhs = scatt_an.Rhs();
     std::cout<<"rhs norm is "<<Norm(rhs)<<std::endl;
+  }
+
+  if(sym){
+    auto mat = scatt_an.GetSolver().Matrix();
+    auto sparse_mat =
+      TPZAutoPointerDynamicCast<TPZSYsmpMatrix<CSTATE>>(mat);
+    //it is not hermitian
+    sparse_mat->SetSymmetry(SymProp::Sym);
   }
   if(!simdata.direct_solver){
     std::set<int64_t> indices = {};
@@ -2542,7 +2552,7 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                                               sparse_blocks);
   }
   const int64_t n_iter = {1000};
-  const int n_vecs = {30};
+  const int n_vecs = {50};
   solver.SetGMRES(n_iter, n_vecs, *precond, tol, from_current);
 }
 
