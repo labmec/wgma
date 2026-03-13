@@ -103,6 +103,10 @@ struct SimData{
   bool direct_solver;
   //! tolerance for the iterative solver
   REAL solver_tol;
+  //! dimension of krylov space for the iterative solver
+  int solver_nvec;
+  //! max number of iterations for the iterative solver
+  int solver_niter;
   //!pairs of mode index/coefficient to be used as source
   std::vector<std::pair<int,double>> source_coeffs;
   //!whether to filter dirichlet eqs
@@ -484,6 +488,8 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
 
 void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                   const std::set<int64_t> &indep_cons,
+                  const int niter,
+                  const int nvec,
                   const REAL tol,
                   int from_current);
 
@@ -676,6 +682,8 @@ SimData ReadSimData(const std::string &dataname){
   sd.scale = data["scale"];
   sd.direct_solver = data.value("direct_solver",false);
   sd.solver_tol = data.value("solver_tol",(REAL)5e-5);
+  sd.solver_nvec = data.value("solver_nvec",(int)50);
+  sd.solver_niter = data.value("solver_niter",(int)500);
   
   sd.porder = data["porder"];
   sd.source_coeffs = data["source_coeffs"].get<std::vector<std::pair<int,double>>>();
@@ -1477,9 +1485,10 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
   if(!simdata.direct_solver){
     std::set<int64_t> indices = {};
     int from_current = sol_vec.Rows() > 0 ? 1 : 0;
-    SetupPrecond(scatt_an, indices, simdata.solver_tol, from_current);
+    SetupPrecond(scatt_an, indices, simdata.solver_niter, simdata.solver_nvec, simdata.solver_tol, from_current);
   }
 
+  std::cout<<"solving with "<<simdata.n_threads<<std::endl;
   REAL residual{0};
 
   {
@@ -2379,7 +2388,8 @@ void RestrictDofsAndSolve(TPZAutoPointer<TPZCompMesh> scatt_mesh,
     std::set<int64_t> indices = {indep_con_id_src};
     if(match_mesh){indices.insert(indep_con_id_match);}
     int from_current = sol_vec.Rows() > 0 ? 1 : 0;
-    SetupPrecond(scatt_an, indices, simdata.solver_tol, from_current);
+    SetupPrecond(scatt_an, indices, simdata.solver_niter, simdata.solver_nvec,
+                 simdata.solver_tol, from_current);
   }
   TPZSimpleTimer tsolve("Solve");
   scatt_an.Solve();
@@ -2510,6 +2520,8 @@ void AddWaveguidePortContribution(wgma::scattering::Analysis &scatt_an,
 
 void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                   const std::set<int64_t> &indep_cons,
+                  const int niter,
+                  const int nvec,
                   const REAL tol,
                   int from_current) {
   TPZSimpleTimer solve("SetupPrecond");
@@ -2551,9 +2563,7 @@ void SetupPrecond(wgma::scattering::Analysis &scatt_an,
                                               colors, numc,
                                               sparse_blocks);
   }
-  const int64_t n_iter = {1000};
-  const int n_vecs = {50};
-  solver.SetGMRES(n_iter, n_vecs, *precond, tol, from_current);
+  solver.SetGMRES(niter, nvec, *precond, tol, from_current);
 }
 
   
