@@ -1433,7 +1433,18 @@ ComputeScatteredField(TPZAutoPointer<TPZGeoMesh> gmesh,
                                              false, false);
 
   const std::string scatt_file = simdata.prefix+"_scatt_"+std::to_string(iwl);
-  auto vtk = TPZVTKGenerator(sf_mesh, fvars_3d, scatt_file, simdata.vtk_res,3,false);
+
+  //for now let us skip this as it takes time for larger meshes
+  std::set<int> post_proc_mats;
+  for(auto [id, mat] : sf_mesh->MaterialVec()){
+    if(mat->Dimension() != 3){continue;}
+    auto pml = dynamic_cast<TPZMatPML<wgma::materials::ScatteredField>*>(mat);
+    if(!pml){
+      post_proc_mats.insert(id);
+    }
+  }
+
+  auto vtk = TPZVTKGenerator(sf_mesh, post_proc_mats, fvars_3d, scatt_file, simdata.vtk_res,false);
   vtk.SetNThreads(simdata.n_threads);
 
   //now we must load the solution in the mesh
